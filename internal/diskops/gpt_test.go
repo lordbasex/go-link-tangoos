@@ -65,7 +65,7 @@ func TestBuildGPTRejects(t *testing.T) {
 	size := 4 * tg
 	ok := GPTPart{Start: mib, Size: tg, Type: GUIDLinuxRAID, Name: "x"}
 	cases := map[string][]GPTPart{
-		"superpuestas": {ok, {Start: mib + tg - mib, Size: mib, Type: GUIDLinuxRAID}},
+		"superpuestas":            {ok, {Start: mib + tg - mib, Size: mib, Type: GUIDLinuxRAID}},
 		"antes de la zona usable": {{Start: 512, Size: mib, Type: GUIDLinuxRAID}},
 		"después del final":       {{Start: mib, Size: size, Type: GUIDLinuxRAID}},
 		"sin alinear":             {{Start: mib + 1, Size: mib, Type: GUIDLinuxRAID}},
