@@ -43,10 +43,11 @@ license (MIT) in writing in an issue.
   the code and review every user-visible string and keyword. Mentioning the Mac Finder to explain where the
   NAS appears on the network (first-boot wizard) is descriptive and acceptable.
 
-## Synology
+## Other NAS vendors
 
-We do not use DSM, SHR, File Station, Hyper Backup, QuickConnect, Synology Drive or their icons.
-Saying "alternative to Synology DSM" descriptively is fine; with their logo, it is not.
+The project does not name competing products or vendors in its documentation, interface or marketing,
+and does not use their product names, terms or icons. We describe them generically ("commercial NAS
+systems").
 
 ## Name: TangoOS
 

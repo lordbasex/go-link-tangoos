@@ -39,7 +39,7 @@ documented and accepted.
 ## M2 — Storage (5–6 weeks)
 
 - [x] Disk inventory (sysfs + udev + native SMART), read-only.
-- [ ] Detect Synology volumes (without mounting them).
+- [ ] Detect volumes from other NAS systems (without mounting them).
       _Only in the UI with simulated data; the backend does not detect them yet._
 - [x] Create a Basic / RAID1 volume with a plan + confirmation token.
 - [x] Shared folders = subvolumes; snapshots and retention; restore a file.
@@ -60,7 +60,7 @@ documented and accepted.
       Verified on VM 108 (protocol/README.md §14)._
 - [ ] `tango-desk` for Windows and Linux (webview + pion + bridge), pairing and SMB mounting.
 - [ ] macOS and Windows client tests.
-- [ ] Synology volumes: mount read-only and browse them in Files ([12](12-strategy-vs-synology.md)).
+- [ ] Volumes from other NAS systems: mount read-only and browse them in Files ([12](12-strategy-vs-commercial-nas.md)).
 
 **Gate:** the [MVP success metric](01-vision-and-scope.md#mvp-success-metric) is met.
 
@@ -88,7 +88,7 @@ documented and accepted.
       _Done and verified on the VM: RAID 5/6/10, notifications and UPS over NUT (local over USB or remote,
       orderly shutdown). Missing: LUKS2._
 - [ ] Configuration backup/import; recovery mode.
-- [ ] Synology volume import wizard + tests with real DSM 6/7 volumes.
+- [ ] Import wizard for volumes from other NAS systems + tests with real volumes.
 - [x] Mission Control and widgets.
 - [ ] Release with SBOM, signed sums and a hardware matrix.
       _Today there are only `.sha256` files for the ISO._
@@ -97,7 +97,7 @@ documented and accepted.
 
 ## Next (post v1.0)
 
-Priorities from the comparison with Synology, minus what was already done in the v1.0 phase
+Priorities from the comparison with commercial NAS systems, minus what was already done in the v1.0 phase
 (app proxy with session, TOTP 2FA, NUT, NFS, SFTP, Time Machine).
 
 - **P0, credibility:**
@@ -111,7 +111,7 @@ Priorities from the comparison with Synology, minus what was already done in the
   - [ ] Guided 3-2-1 backup (restic/Kopia to USB, S3, B2 or another TangoOS) and `btrfs send` replication.
   - [ ] Remote access: Tailscale/WireGuard in one click, and TangoConnect P2P with TURN.
         _TangoConnect done ([16](16-tangoconnect.md)). Missing: Tailscale/WireGuard._
-  - [ ] Migration from Synology: mount SHR/RAID read-only and browse it.
+  - [ ] Migration from another NAS: mount hybrid RAID/RAID read-only and browse it.
   - [ ] Jellyfin with QSV/VAAPI and automatic `/dev/dri`.
   - [ ] Native Btrfs RAID1 for two disks.
   - [ ] Quotas, LUKS2 and power profiles.

@@ -66,7 +66,7 @@ export function disks(s: Scenario): Disk[] {
     case "empty":
       return [systemDisk, d1, d2, d3];
     case "migrate": {
-      const foreign = { vendor: "synology" as const, label: "DS920+ · volume_1", profile: "SHR-1 (2 discos)" };
+      const foreign = { label: "NAS de 4 bahías · volume_1", profile: "RAID híbrido (2 discos)" };
       return [systemDisk, { ...d1, foreign }, { ...d2, foreign }, d3];
     }
     case "degraded":
@@ -410,7 +410,7 @@ export function initialNotices(s: Scenario): Notice[] {
   if (s === "degraded")
     base.unshift({ id: "n-deg", level: "crit", app: "tango.storage", title: "volume1 sin redundancia", body: "El disco de la bahía 2 dejó de responder. Tus datos siguen completos en el disco 1.", at: iso(9 * 60_000), action: { label: "Ver qué hacer", app: "tango.storage" } });
   if (s === "migrate")
-    base.unshift({ id: "n-mig", level: "info", app: "tango.storage", title: "Encontramos discos de un Synology", body: "Un volumen SHR-1 de 2 discos. Podés montarlo en solo lectura y revisar tus datos.", at: iso(60_000), action: { label: "Abrir Almacenamiento", app: "tango.storage" } });
+    base.unshift({ id: "n-mig", level: "info", app: "tango.storage", title: "Encontramos discos de otro NAS", body: "Un volumen RAID híbrido de 2 discos. Podés montarlo en solo lectura y revisar tus datos.", at: iso(60_000), action: { label: "Abrir Almacenamiento", app: "tango.storage" } });
   if (s === "empty")
     base.splice(0, 2, { id: "n-new", level: "info", app: "tango.storage", title: "Tu NAS está listo", body: "Creá tu primer volumen para empezar a guardar archivos.", at: iso(60_000), action: { label: "Crear volumen", app: "tango.storage" } });
   return base;

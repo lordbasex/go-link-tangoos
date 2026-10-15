@@ -1,5 +1,5 @@
 // Íconos de app propios: superelipse (squircle), degradé, glifo y brillo superior.
-// Ningún ícono de Apple ni de Synology (docs/11).
+// Ningún ícono de Apple ni de otros fabricantes de NAS (docs/11).
 import type { ReactNode } from "react";
 
 /** Superelipse |x|^n + |y|^n = 1 con n = 5, en un viewBox de 100. */

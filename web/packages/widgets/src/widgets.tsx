@@ -256,7 +256,7 @@ function StorageWidget() {
             <HardDrive size={22} strokeWidth={1.7} style={{ color: "var(--tg-widget-text-2)" }} />
           </Donut>
           <div className="tw-vol-info">
-            <strong style={{ fontSize: 15, fontWeight: 650 }}>{foreign ? "Discos de un Synology" : "Sin volúmenes"}</strong>
+            <strong style={{ fontSize: 15, fontWeight: 650 }}>{foreign ? "Discos de otro NAS" : "Sin volúmenes"}</strong>
             <span className="tw-sub">{foreign ? "Podés montarlos en solo lectura y revisar tus datos." : `${disks.filter((d) => d.use === "free").length} discos listos para crear el primero.`}</span>
             {bayRow}
           </div>

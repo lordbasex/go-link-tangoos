@@ -12,7 +12,7 @@ import { ScheduleSheet, scheduleSummary } from "./Schedule";
 // ---- Discos -----------------------------------------------------------------------
 
 const useLabel = (d: Disk, vols: Volume[]) =>
-  d.use === "system" ? "Disco del sistema" : d.use === "failed" ? "Falló" : d.foreign ? "Synology (ajeno)" : d.use === "member" ? vols.find((v) => v.id === d.volume)?.name ?? "En uso" : "Sin usar";
+  d.use === "system" ? "Disco del sistema" : d.use === "failed" ? "Falló" : d.foreign ? "Otro NAS (ajeno)" : d.use === "member" ? vols.find((v) => v.id === d.volume)?.name ?? "En uso" : "Sin usar";
 
 function smartRows(d: Disk) {
   const failed = d.use === "failed";

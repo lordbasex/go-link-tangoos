@@ -1,6 +1,6 @@
 # TangoOS — Design documentation
 
-> An open-source (MIT) NAS operating system built to compete with Synology DSM: its product quality, on your hardware and with your disks,
+> An open-source (MIT) NAS operating system built to compete with commercial NAS systems on product quality, on your hardware and with your disks,
 > a web desktop with a macOS look, and **all administration traffic over WebRTC**.
 
 Status: **v0.1 (pre-release). M0–M3.5 implemented, M4 (v1.0) mostly done and in testing** on VMs, and TangoConnect
@@ -14,15 +14,15 @@ and what is pending is in [09 → Next](09-roadmap.md#next-post-v10).
 | 01 | [Vision and scope](01-vision-and-scope.md) | Parity with DSM, MVP, non-goals |
 | 02 | [Architecture](02-architecture.md) | Processes, layers, the flow of an operation |
 | 03 | [WebRTC protocol](03-webrtc-protocol.md) | Signaling, embedded STUN, channels, RPC, events, files |
-| 04 | [Storage](04-storage.md) | mdadm + Btrfs (the Synology model), snapshots, shares |
+| 04 | [Storage](04-storage.md) | mdadm + Btrfs (the commercial NAS model), snapshots, shares |
 | 05 | [Desktop and themes](05-desktop-and-themes.md) | Window manager, Dock, theme system, quality bar |
 | 06 | [Native apps](06-native-apps.md) | Windows / Linux (and later macOS) with the same desktop |
 | 07 | [Security](07-security.md) | Threat model, auth, privileged agent |
 | 08 | [Base system, installer and updates](08-base-system-installer-updates.md) | Debian 13 minimal + apt repo, ISO, updates with rollback |
 | 09 | [Roadmap](09-roadmap.md) | Milestones M0–M6 with gates, and their current status |
 | 10 | [Repo structure and conventions](10-repo-structure-and-conventions.md) | Monorepo, pinned stack, build |
-| 11 | [Licenses and brand](11-licenses-and-brand.md) | MIT, Mac-OS-Desktop, Apple, Synology, name |
-| 12 | [Strategy vs Synology](12-strategy-vs-synology.md) | Where Synology is weak, our wedges, migration from DSM |
+| 11 | [Licenses and brand](11-licenses-and-brand.md) | MIT, Mac-OS-Desktop, Apple, other vendors, name |
+| 12 | [Strategy vs commercial NAS](12-strategy-vs-commercial-nas.md) | Where commercial NAS systems are weak, our wedges, migration |
 | 13 | [Desktop prototype](13-desktop-prototype.md) | Full spec: screens, shell, tokens, motion, apps, mock, acceptance |
 | 14 | [Test plan](14-test-plan.md) | Unit, API and UI end-to-end, storage matrix, installer |
 | 16 | [TangoConnect](16-tangoconnect.md) | Remote access and share links through signalhub |
@@ -38,7 +38,7 @@ and what is pending is in [09 → Next](09-roadmap.md#next-post-v10).
    (TangoConnect) reuses go-link's infrastructure (signalhub + coturn).
 3. **Same stack as go-link-desk:** Go 1.26 + `pion/webrtc/v4`, React 19 + TypeScript + Vite in
    npm workspaces, no state library, `{type,…}` JSON envelopes, nFPM, Ed25519-signed sums.
-4. **Storage like Synology:** RAID with `mdadm` + single-device Btrfs on top
+4. **Storage like commercial NAS systems:** RAID with `mdadm` + single-device Btrfs on top
    (not Btrfs's native RAID5/6). Shares = subvolumes.
 5. **Our own desktop, from scratch.** Mac-OS-Desktop is the *visual reference*; no code
    or assets are copied (it has no license and ships Apple artwork). The default theme follows the macOS look;
