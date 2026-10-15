@@ -312,8 +312,8 @@ export class MockTransport implements Transport {
       return { job: j.id };
     },
     "storage.foreign.mount": ({ label }) => {
-      const j = this.startJob("storage.foreign.mount", "Montando volumen de Synology", `${label} · solo lectura`, 0, 0.02, undefined, () => {
-        this.notify("ok", "tango.storage", "Volumen de Synology montado", "Está en /import/volume_1 en solo lectura. Nada se modificó en los discos.");
+      const j = this.startJob("storage.foreign.mount", "Montando volumen de otro NAS", `${label} · solo lectura`, 0, 0.02, undefined, () => {
+        this.notify("ok", "tango.storage", "Volumen de otro NAS montado", "Está en /import/volume_1 en solo lectura. Nada se modificó en los discos.");
       });
       return { job: j.id };
     },

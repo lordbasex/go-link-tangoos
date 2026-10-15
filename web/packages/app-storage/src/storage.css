@@ -140,7 +140,7 @@
 .ts-doctor-body ol { margin: 0 0 12px; padding-left: 20px; font-size: 13px; line-height: 1.6; }
 .ts-doctor-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11.5px; }
 
-/* ---- Migración desde Synology ------------------------------------------------------- */
+/* ---- Migración desde otro NAS ------------------------------------------------------- */
 
 .ts-migrate {
   display: flex;

@@ -19,26 +19,26 @@ everything updates in real time. Open source (MIT), no telemetry, no dependence 
 6. **Product-grade visual quality.** The bar is Mac-OS-Desktop / DSM: 60 fps animations,
    careful typography, useful empty states.
 
-## Parity map with Synology DSM
+## Parity map with commercial NAS systems
 
 The names are provisional and shown here in English; the UI itself is Spanish-only today (there is no
 i18n framework yet). See [11](11-licenses-and-brand.md)
 to avoid brand names.
 
-| DSM equivalent | TangoOS app | MVP | Later |
+| Typical commercial NAS feature | TangoOS app | MVP | Later |
 |---|---|---|---|
-| Storage Manager | **Storage** | disks, SMART, mdadm+Btrfs volume (single/RAID1), scrub | RAID5/6/10, SHR-style hybrid, SSD cache, online expansion |
-| File Station | **Files** | browse, upload/download, rename, move, trash, preview | share by link, indexed search, compression |
-| Control Panel | **Settings** | users, groups, shared folders, permissions, network, time, SMB | LDAP/AD, quotas, UPS, notifications, hardware/power |
-| Snapshot Replication | **Snapshots** | scheduled snapshots, retention, file restore | `btrfs send` replication to another TangoOS |
-| Hyper Backup | **Backup** | — | rsync/restic to USB, another NAS or S3 |
-| Resource Monitor | **Monitor** | live CPU, RAM, network, disk I/O | history, per process/service |
-| Log Center | **Log** | audit + filterable system logs | syslog forwarding |
-| Package Center + Container Manager | **App Center** | — | catalog of container apps (Compose) |
-| Security Advisor | **Security** | active sessions, 2FA, IP blocking | configuration scanner |
-| QuickConnect | **TangoConnect** | — | remote access via signalhub + coturn |
-| Synology Drive / Photos | — | — | App Center apps |
-| iSCSI Manager | **iSCSI** (in Storage) | — | targets/LUNs with LIO, CHAP |
+| Storage manager | **Storage** | disks, SMART, mdadm+Btrfs volume (single/RAID1), scrub | RAID5/6/10, hybrid RAID, SSD cache, online expansion |
+| File browser | **Files** | browse, upload/download, rename, move, trash, preview | share by link, indexed search, compression |
+| Control panel | **Settings** | users, groups, shared folders, permissions, network, time, SMB | LDAP/AD, quotas, UPS, notifications, hardware/power |
+| Snapshot replication | **Snapshots** | scheduled snapshots, retention, file restore | `btrfs send` replication to another TangoOS |
+| Backup | **Backup** | — | rsync/restic to USB, another NAS or S3 |
+| Resource monitor | **Monitor** | live CPU, RAM, network, disk I/O | history, per process/service |
+| Log center | **Log** | audit + filterable system logs | syslog forwarding |
+| Package center + container manager | **App Center** | — | catalog of container apps (Compose) |
+| Security advisor | **Security** | active sessions, 2FA, IP blocking | configuration scanner |
+| Vendor remote access | **TangoConnect** | — | remote access via signalhub + coturn |
+| File sync / photos | — | — | App Center apps |
+| iSCSI manager | **iSCSI** (in Storage) | — | targets/LUNs with LIO, CHAP |
 | Terminal (SSH) | **Terminal** | admin terminal over the `term` channel (xterm.js) | — |
 | Notifications | **Notification Center** | live system events | email / ntfy / Telegram |
 
@@ -49,7 +49,7 @@ MVP network services: **SMB3** (with Time Machine support via `vfs_fruit`),
 
 ## Audience
 
-1. First: technical / homelab users who use DSM, TrueNAS or OMV today and want something nicer and more modern.
+1. First: technical / homelab users who use a commercial or open-source NAS today and want something nicer and more modern.
 2. Later: small and medium businesses (AD/LDAP and backup are a requirement).
 
 ## Non-goals (for now)
