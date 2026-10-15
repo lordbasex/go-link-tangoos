@@ -1048,6 +1048,12 @@ func (p *poolsAPI) failed(name string) {
 }
 
 func (p *poolsAPI) unlock(ctx context.Context, volID, pass string, useKey bool) error {
+	if z := p.s.a.zfs; z != nil && strings.HasPrefix(volID, "zfs-") { // cifrado nativo de ZFS (§18)
+		if useKey {
+			return rtcrpc.Errorf(codeNotSupported, "los volúmenes ZFS se desbloquean con la frase")
+		}
+		return z.unlock(ctx, volID, pass)
+	}
 	v, err := p.encrypted(ctx, volID)
 	if err != nil {
 		return err
@@ -1075,6 +1081,9 @@ func (p *poolsAPI) unlock(ctx context.Context, volID, pass string, useKey bool) 
 }
 
 func (p *poolsAPI) lock(ctx context.Context, volID string) error {
+	if z := p.s.a.zfs; z != nil && strings.HasPrefix(volID, "zfs-") {
+		return z.lock(ctx, volID)
+	}
 	v, err := p.encrypted(ctx, volID)
 	if err != nil {
 		return err
@@ -1092,6 +1101,9 @@ func (p *poolsAPI) lock(ctx context.Context, volID string) error {
 }
 
 func (p *poolsAPI) passphrase(ctx context.Context, volID, old, newPass string) error {
+	if z := p.s.a.zfs; z != nil && strings.HasPrefix(volID, "zfs-") {
+		return z.passphrase(ctx, volID, old, newPass)
+	}
 	v, err := p.encrypted(ctx, volID)
 	if err != nil {
 		return err

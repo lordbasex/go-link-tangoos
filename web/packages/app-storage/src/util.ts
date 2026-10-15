@@ -3,7 +3,7 @@ import type { Method } from "@tango/client";
 import type { Disk, DiskHealth, Pool, Volume, VolumeProfile } from "@tango/client";
 import type { Tone } from "@tango/ui";
 
-export type Section = "overview" | "pools" | "volumes" | "disks" | "snapshots" | "iscsi";
+export type Section = "overview" | "pools" | "zfs" | "volumes" | "disks" | "snapshots" | "iscsi";
 
 export type Led = "ok" | "warn" | "crit" | "off" | "busy" | "rebuild";
 
@@ -55,7 +55,7 @@ export function ledOf(d: Disk | undefined, vols: Volume[], pools: Pool[] = []): 
 }
 
 /** Nombre de un sistema de archivos. */
-export const fsName: Record<Volume["fs"], string> = { btrfs: "Btrfs", xfs: "XFS", ext4: "ext4" };
+export const fsName: Record<Volume["fs"], string> = { btrfs: "Btrfs", xfs: "XFS", ext4: "ext4", zfs: "ZFS" };
 
 const VOL_COLORS = ["#2F7CF6", "#22C55E", "#F97316", "#8B5CF6", "#EC4899", "#14B8A6", "#EAB308"];
 
@@ -73,6 +73,12 @@ export const profileName: Record<VolumeProfile, string> = {
   raid10: "RAID 10",
   hybrid1: "Híbrido-1",
   hybrid2: "Híbrido-2",
+  stripe: "ZFS sin redundancia",
+  mirror: "Espejo ZFS",
+  raidz1: "RAIDZ1",
+  raidz2: "RAIDZ2",
+  raidz3: "RAIDZ3",
+  mixed: "ZFS mixto",
 };
 
 export const profileHelp: Record<VolumeProfile, string> = {
@@ -83,6 +89,12 @@ export const profileHelp: Record<VolumeProfile, string> = {
   raid10: `${profileInfo("raid10").description} ${profileInfo("raid10").tolerance}`,
   hybrid1: `${profileInfo("hybrid1").description} ${profileInfo("hybrid1").tolerance}`,
   hybrid2: `${profileInfo("hybrid2").description} ${profileInfo("hybrid2").tolerance}`,
+  stripe: `${profileInfo("stripe").description} ${profileInfo("stripe").tolerance}`,
+  mirror: `${profileInfo("mirror").description} ${profileInfo("mirror").tolerance}`,
+  raidz1: `${profileInfo("raidz1").description} ${profileInfo("raidz1").tolerance}`,
+  raidz2: `${profileInfo("raidz2").description} ${profileInfo("raidz2").tolerance}`,
+  raidz3: `${profileInfo("raidz3").description} ${profileInfo("raidz3").tolerance}`,
+  mixed: `${profileInfo("mixed").description} ${profileInfo("mixed").tolerance}`,
 };
 
 /** Capacidad útil / protección / sin usar para un perfil y un conjunto de discos (reglas de @tango/client). */

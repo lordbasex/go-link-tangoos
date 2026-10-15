@@ -2,12 +2,14 @@
 // (protocol/README.md §17, docs/17-cluster.md).
 import "./cluster.css";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Boxes, Database, FolderOpen, HardDrive, Layers, Network, Play, Plus, RefreshCw, Server, Settings2, Share2, ShieldCheck, Square, Terminal, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, Boxes, Camera, Database, FolderOpen, Gauge, HardDrive, Layers, Lock, LockOpen, Network, Play, Plus, RefreshCw, Server, Settings2, Share2, ShieldCheck, Square, Terminal, Trash2, UserPlus } from "lucide-react";
 import { RpcError, clusterInfoText, clusterVolumeTone, fmtBytes, useIsReal, useLive, useTransport } from "@tango/client";
 import type { ClusterNode, ClusterStatus, ClusterVolume } from "@tango/client";
 import { WindowToolbar, toast, useWindowMenus } from "@tango/shell";
 import type { AppProps } from "@tango/shell";
 import { Badge, Button, DemoBadge, EmptyState, Group, IconButton, Progress, Row, Segmented, Sheet, SidebarItem, Status, TextInput, Toggle } from "@tango/ui";
+import { AddNodeSheet, BrickPicker, BricksSheet, InviteSheet, NFSSheet, QuotaSheet, SecurityGroup, SnapshotsSheet, TLSSheet, choiceSpec, defaultChoice } from "./Stage2";
+import type { BrickChoice } from "./Stage2";
 
 const SIDE = 230;
 const APP = "tango.cluster";
@@ -51,7 +53,8 @@ export default function ClusterApp({ win }: AppProps) {
   const real = useIsReal("cluster.status");
   const { data: st, reload } = useLive("cluster.status", undefined, ["cluster.changed", "jobs.changed"]);
   const [view, setView] = useState<View>({ kind: "overview" });
-  const [sheet, setSheet] = useState<null | "invite" | "add" | "create">(null);
+  const [sheet, setSheet] = useState<null | "invite" | "add" | "create" | "tls">(null);
+  const [certify, setCertify] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setInterval(reload, 10_000);
@@ -113,7 +116,7 @@ export default function ClusterApp({ win }: AppProps) {
           {!st ? null : !st.installed || !st.running ? (
             <Install st={st} />
           ) : view.kind === "nodes" ? (
-            <Nodes st={st} onInvite={() => setSheet("invite")} onAdd={() => setSheet("add")} />
+            <Nodes st={st} onInvite={() => setSheet("invite")} onAdd={() => setSheet("add")} onTLS={() => setSheet("tls")} onCertify={setCertify} />
           ) : current ? (
             <VolumeView st={st} v={current} />
           ) : (
@@ -123,6 +126,8 @@ export default function ClusterApp({ win }: AppProps) {
       </div>
       {st && sheet === "invite" && <InviteSheet st={st} onClose={() => setSheet(null)} />}
       {st && sheet === "add" && <AddNodeSheet st={st} onClose={() => setSheet(null)} />}
+      {st && certify && <AddNodeSheet st={st} certifyHost={certify} onClose={() => setCertify(null)} />}
+      {st && sheet === "tls" && <TLSSheet st={st} onClose={() => setSheet(null)} />}
       {st && sheet === "create" && (
         <CreateSheet
           st={st}
@@ -175,6 +180,7 @@ function Overview({ st, open, onCreate, onAdd }: { st: ClusterStatus; open: (nam
         <Stat icon={Server} label="Nodos" value={`${connected} de ${st.nodes.length}`} tone={connected === st.nodes.length ? "ok" : "warn"} hint={connected === st.nodes.length ? "Todos conectados" : "Hay nodos sin conexión"} />
         <Stat icon={Database} label="Volúmenes" value={String(st.volumes.length)} tone={issues.length ? "warn" : "ok"} hint={issues.length ? `${issues.length} con avisos` : "Todos en orden"} />
         <Stat icon={ShieldCheck} label="Firewall" value={`${st.allowed.length} permitidos`} tone="info" hint="Solo estos equipos llegan a GlusterFS" />
+        <Stat icon={st.tls.secure ? Lock : LockOpen} label="Entre nodos" value={st.tls.secure ? "Con TLS" : "Sin cifrar"} tone={st.tls.secure ? "ok" : "warn"} hint={st.tls.secure ? "Certificados de la CA del clúster" : "Prendelo desde Nodos"} />
       </div>
 
       {st.volumes.some((v) => v.splitBrain > 0) && (
@@ -231,9 +237,9 @@ function Orphans({ st }: { st: ClusterStatus }) {
   return (
     <Group title="Bricks huérfanos en este nodo">
       {st.orphans.map((o) => (
-        <Row key={o.path} icon={<HardDrive size={16} />} label={o.path} hint={`Quedaron del volumen ${o.name}, que ya no existe. Ocupan espacio en ${o.tango_volume}.`}>
+        <Row key={o.path} icon={<HardDrive size={16} />} label={o.path} hint={o.kind === "lv" ? `Volumen dedicado del brick de ${o.name} que ya no usa ningún brick. Ocupa espacio en el grupo ${o.tango_volume}.` : `Quedaron del volumen ${o.name}, que ya no existe. Ocupan espacio en ${o.tango_volume}.`}>
           {confirm === o.path ? (
-            <Button variant="danger" onClick={() => void act("No se pudo borrar", () => t.call("cluster.brick.cleanup", { tangoVolume: o.tango_volume, name: o.name }), `Borrado ${o.path}`).then(() => setConfirm(null))}>
+            <Button variant="danger" onClick={() => void act("No se pudo borrar", () => t.call("cluster.brick.cleanup", { kind: o.kind, tangoVolume: o.tango_volume, name: o.name }), `Borrado ${o.path}`).then(() => setConfirm(null))}>
               Borrar los datos
             </Button>
           ) : (
@@ -253,7 +259,7 @@ function latencyText(n: ClusterNode) {
   return `${n.latencyMs} ms`;
 }
 
-function Nodes({ st, onInvite, onAdd }: { st: ClusterStatus; onInvite: () => void; onAdd: () => void }) {
+function Nodes({ st, onInvite, onAdd, onTLS, onCertify }: { st: ClusterStatus; onInvite: () => void; onAdd: () => void; onTLS: () => void; onCertify: (host: string) => void }) {
   const t = useTransport();
   const act = useAct();
   const [removing, setRemoving] = useState<string | null>(null);
@@ -266,6 +272,7 @@ function Nodes({ st, onInvite, onAdd }: { st: ClusterStatus; onInvite: () => voi
             <th>Nodo</th>
             <th>Estado</th>
             <th>Latencia</th>
+            <th>Certificado</th>
             <th>Bricks</th>
             <th />
           </tr>
@@ -283,6 +290,7 @@ function Nodes({ st, onInvite, onAdd }: { st: ClusterStatus; onInvite: () => voi
               <td className="tcl-num" data-slow={!n.self && n.latencyMs > 20 ? true : undefined}>
                 {latencyText(n)}
               </td>
+              <td>{st.nodeInfo[n.host] ? <Badge tone="ok">{st.nodeInfo[n.host].cn}</Badge> : <Badge tone="warn">Sin certificado</Badge>}</td>
               <td className="tcl-num">{bricksOn(n.host)}</td>
               <td className="tcl-actions">
                 {!n.self &&
@@ -298,7 +306,9 @@ function Nodes({ st, onInvite, onAdd }: { st: ClusterStatus; onInvite: () => voi
           ))}
         </tbody>
       </table>
-      <p className="tcl-note">Un nodo con bricks no se puede sacar: primero reemplazá o quitá sus bricks desde cada volumen.</p>
+      <p className="tcl-note">Un nodo con bricks no se puede sacar: primero reemplazá o quitá sus bricks desde cada volumen. Al sacarlo, sale del firewall de todos y de la lista TLS de cada volumen.</p>
+
+      <SecurityGroup st={st} onTLS={onTLS} onCertify={onCertify} />
 
       <Group title="Invitaciones abiertas en este NAS">
         {st.invites.length === 0 ? (
@@ -307,7 +317,18 @@ function Nodes({ st, onInvite, onAdd }: { st: ClusterStatus; onInvite: () => voi
           </Row>
         ) : (
           st.invites.map((i) => (
-            <Row key={i.host} icon={<UserPlus size={16} />} label={i.host} hint={`${i.addrs.join(", ")} · vence ${new Date(i.expires).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`}>
+            <Row
+              key={i.host}
+              icon={<UserPlus size={16} />}
+              label={
+                <span>
+                  {i.host}
+                  {i.code && !i.joined && <code className="tcl-path">{i.code}</code>}
+                  {i.joined && <Badge tone="ok">Unido</Badge>}
+                </span>
+              }
+              hint={`${i.addrs.join(", ")} · vence ${new Date(i.expires).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}${i.fingerprint ? ` · huella ${i.fingerprint}` : ""}`}
+            >
               <Button variant="plain" onClick={() => void act("No se pudo cancelar", () => t.call("cluster.invite.cancel", { host: i.host }))}>
                 Cancelar
               </Button>
@@ -326,96 +347,13 @@ function Nodes({ st, onInvite, onAdd }: { st: ClusterStatus; onInvite: () => voi
   );
 }
 
-function InviteSheet({ st, onClose }: { st: ClusterStatus; onClose: () => void }) {
-  const t = useTransport();
-  const act = useAct();
-  const [host, setHost] = useState("");
-  const [done, setDone] = useState(false);
-  const send = () => void act("No se pudo invitar", () => t.call("cluster.invite", { host: host.trim() })).then((ok) => ok && setDone(true));
-  return (
-    <Sheet
-      open
-      onClose={onClose}
-      width={460}
-      footer={
-        done ? (
-          <Button variant="primary" onClick={onClose}>
-            Listo
-          </Button>
-        ) : (
-          <>
-            <Button onClick={onClose}>Cancelar</Button>
-            <Button variant="primary" disabled={!host.trim()} onClick={send}>
-              Invitar
-            </Button>
-          </>
-        )
-      }
-    >
-      <h2 className="tg-h2">Invitar un nodo</h2>
-      {done ? (
-        <p className="tg-lead">
-          Durante 15 minutos, <b>{host}</b> puede sumar a este NAS a su clúster. Ahora, en <b>{host}</b>, abrí Clúster → «Agregar un nodo» y escribí <b>{st.selfAddrs?.[0] ?? st.self}</b>.
-        </p>
-      ) : (
-        <>
-          <p className="tg-lead">Es la confirmación de este lado: GlusterFS no pide contraseña, así que este NAS solo acepta a los equipos que invites.</p>
-          <label className="tcl-field">
-            <span>IP o nombre del otro TangoOS</span>
-            <TextInput autoFocus value={host} placeholder="192.168.1.21" onChange={(e) => setHost(e.target.value)} onKeyDown={(e) => e.key === "Enter" && host.trim() && send()} />
-          </label>
-        </>
-      )}
-    </Sheet>
-  );
-}
-
-function AddNodeSheet({ st, onClose }: { st: ClusterStatus; onClose: () => void }) {
-  const t = useTransport();
-  const act = useAct();
-  const [host, setHost] = useState("");
-  const [busy, setBusy] = useState(false);
-  const add = () => {
-    setBusy(true);
-    void act("No se pudo agregar el nodo", () => t.call("cluster.peer.add", { host: host.trim() }), `${host.trim()} se unió al clúster`).then((ok) => {
-      setBusy(false);
-      if (ok) onClose();
-    });
-  };
-  return (
-    <Sheet
-      open
-      onClose={onClose}
-      width={460}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" disabled={!host.trim() || busy} onClick={add}>
-            Agregar
-          </Button>
-        </>
-      }
-    >
-      <h2 className="tg-h2">Agregar un nodo</h2>
-      <p className="tg-lead">
-        Antes, en el otro equipo, abrí Clúster → «Invitar un nodo» y escribí <b>{st.selfAddrs?.[0] ?? st.self}</b>. Sin esa invitación, su firewall rechaza la conexión.
-      </p>
-      <label className="tcl-field">
-        <span>IP o nombre del otro TangoOS</span>
-        <TextInput autoFocus value={host} placeholder="192.168.1.21" onChange={(e) => setHost(e.target.value)} onKeyDown={(e) => e.key === "Enter" && host.trim() && add()} />
-      </label>
-      {busy && <Progress indeterminate />}
-    </Sheet>
-  );
-}
-
 // ---- Volumen ---------------------------------------------------------------------------
 
 function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
   const t = useTransport();
   const act = useAct();
   const [showInfo, setShowInfo] = useState(false);
-  const [sheet, setSheet] = useState<null | "options" | "mount" | "delete">(null);
+  const [sheet, setSheet] = useState<null | "options" | "mount" | "delete" | "bricks" | "quota" | "snaps" | "nfs">(null);
   const mount = st.mounts.find((m) => m.name === v.name);
   const used = v.sizeTotal ? (v.sizeTotal - v.sizeFree) / v.sizeTotal : 0;
   const sets = useMemo(() => {
@@ -439,12 +377,18 @@ function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
             {volLabel(v)} · {v.status === "Started" ? "Arrancado" : v.status === "Stopped" ? "Detenido" : "Creado"}
             {mount?.mounted && ` · montado en ${mount.path}`}
             {mount?.share && ` · carpeta SMB «${mount.share}»`}
+            {st.nfs[v.name]?.length ? ` · NFS para ${st.nfs[v.name].map((r) => r.host).join(", ")}` : ""}
+            {v.tls ? " · TLS" : ""}
           </span>
         </div>
         <div className="tcl-vbtns">
           {v.status === "Started" ? <IconButton icon={Square} label="Detener" onClick={() => action("stop")} /> : <IconButton icon={Play} label="Arrancar" onClick={() => action("start")} />}
           <IconButton icon={RefreshCw} label="Curar ahora" disabled={v.status !== "Started" || v.replica < 2} onClick={() => void act("No se pudo lanzar la curación", () => t.call("cluster.volume.heal", { name: v.name }), "Curación lanzada")} />
           <IconButton icon={Settings2} label="Opciones" onClick={() => setSheet("options")} />
+          <IconButton icon={HardDrive} label="Bricks: agregar, quitar, reemplazar, rebalancear" onClick={() => setSheet("bricks")} />
+          <IconButton icon={Gauge} label="Cuotas" onClick={() => setSheet("quota")} />
+          <IconButton icon={Camera} label="Instantáneas" onClick={() => setSheet("snaps")} />
+          <IconButton icon={Network} label="NFS" onClick={() => setSheet("nfs")} />
           <IconButton icon={Terminal} label="Ver como gluster volume info" pressed={showInfo} onClick={() => setShowInfo(!showInfo)} />
           <Button onClick={() => setSheet("mount")}>
             <FolderOpen size={13} /> {mount?.mounted ? "Montaje y SMB…" : "Montar…"}
@@ -491,6 +435,8 @@ function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
                     <b>{b.host}</b>
                     <span className="tcl-path">{b.path}</span>
                     {b.arbiter && <Badge>Árbitro</Badge>}
+                    {b.kind === "lv" && <Badge tone="info">Volumen dedicado</Badge>}
+                    {b.kind === "snap" && <Badge tone="info">Restaurado</Badge>}
                   </span>
                 }
                 hint={
@@ -511,6 +457,10 @@ function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
       {sheet === "options" && <OptionsSheet st={st} v={v} onClose={() => setSheet(null)} />}
       {sheet === "mount" && <MountSheet v={v} mounted={!!mount?.mounted} share={mount?.share} onClose={() => setSheet(null)} />}
       {sheet === "delete" && <DeleteSheet v={v} mounted={!!mount?.mounted} onClose={() => setSheet(null)} />}
+      {sheet === "bricks" && <BricksSheet st={st} v={v} onClose={() => setSheet(null)} />}
+      {sheet === "quota" && <QuotaSheet v={v} onClose={() => setSheet(null)} />}
+      {sheet === "snaps" && <SnapshotsSheet v={v} onClose={() => setSheet(null)} />}
+      {sheet === "nfs" && <NFSSheet st={st} v={v} onClose={() => setSheet(null)} />}
     </div>
   );
 }
@@ -708,12 +658,11 @@ function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: (
   const [replica, setReplica] = useState(Math.min(3, Math.max(2, connected.length)));
   const [arbiter, setArbiter] = useState(false);
   const [start, setStart] = useState(true);
-  const [picked, setPicked] = useState<Record<string, string>>(() => Object.fromEntries(connected.slice(0, 3).map((n) => [n.host, st.tangoVolumes[0]?.name ?? "volume1"])));
+  const [picked, setPicked] = useState<Record<string, BrickChoice>>(() => Object.fromEntries(connected.slice(0, 3).map((n) => [n.host, defaultChoice(st, n)])));
   const hosts = Object.keys(picked);
   const nameOk = /^[a-z][a-z0-9_]{0,31}$/.test(name) && !st.volumes.some((v) => v.name === name);
   const countOk = hosts.length > 0 && hosts.length % replica === 0;
   const summary = replica > 1 ? `${hosts.length > replica ? "Distributed-Replicate" : "Replicate"} ${hosts.length / replica || 0} × ${replica} = ${hosts.length}` : `Distribute · ${hosts.length} bricks`;
-  const volChoices = (n: ClusterNode) => (n.self ? st.tangoVolumes.map((v) => v.name) : ["volume1", "volume2", "volume3", "volume4"]);
 
   const create = () =>
     void act(
@@ -725,7 +674,7 @@ function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: (
           arbiter: replica === 3 && arbiter,
           preset,
           start,
-          bricks: connected.filter((n) => picked[n.host]).map((n) => ({ host: n.host, tangoVolume: picked[n.host] })),
+          bricks: connected.filter((n) => picked[n.host]).map((n) => choiceSpec(n.host, picked[n.host])),
         }),
       `Creando ${name}…`,
     ).then((ok) => ok && onCreated(name));
@@ -792,32 +741,22 @@ function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: (
       )}
 
       <div className="tcl-field">
-        <span>Bricks: un nodo por copia y el volumen de TangoOS donde va en cada uno</span>
+        <span>Bricks: un nodo por copia. Carpeta en un volumen de TangoOS, o un volumen dedicado (XFS) en un grupo de almacenamiento; thin permite instantáneas</span>
         <div className="tcl-bricks">
           {connected.map((n) => (
-            <div key={n.host} className="tcl-brick" data-on={picked[n.host] ? true : undefined}>
-              <Toggle
-                checked={!!picked[n.host]}
-                label={n.host}
-                onChange={(on) => {
-                  const next = { ...picked };
-                  if (on) next[n.host] = volChoices(n)[0] ?? "volume1";
-                  else delete next[n.host];
-                  setPicked(next);
-                }}
-              />
-              <b>{n.host}</b>
-              {n.self && <Badge>Este NAS</Badge>}
-              <span className="tcl-grow" />
-              {picked[n.host] && (
-                <select className="tg-select" value={picked[n.host]} aria-label={`Volumen de ${n.host}`} onChange={(e) => setPicked({ ...picked, [n.host]: e.target.value })}>
-                  {volChoices(n).map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </select>
-              )}
-              {picked[n.host] && <code className="tcl-path">/{picked[n.host]}/@gluster/{name || "…"}</code>}
-            </div>
+            <BrickPicker
+              key={n.host}
+              st={st}
+              node={n}
+              vol={name}
+              value={picked[n.host]}
+              onChange={(c) => {
+                const next = { ...picked };
+                if (c) next[n.host] = c;
+                else delete next[n.host];
+                setPicked(next);
+              }}
+            />
           ))}
         </div>
         {!countOk && <small className="tcl-warn">Con réplica {replica}, elegí {replica} nodos (o un múltiplo).</small>}
@@ -826,7 +765,7 @@ function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: (
         <Toggle checked={start} onChange={setStart} label="Arrancar" />
       </Row>
       <p className="tcl-note">
-        <Layers size={12} /> Cada nodo necesita un volumen de TangoOS con ese nombre montado. <Share2 size={12} /> Después podés montarlo y compartirlo por SMB.
+        <Layers size={12} /> Los volúmenes dedicados se crean en cada nodo al crear el volumen del clúster. <Share2 size={12} /> Después podés montarlo y compartirlo por SMB o NFS.
       </p>
     </Sheet>
   );

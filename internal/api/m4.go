@@ -56,6 +56,9 @@ type M4Deps struct {
 	Audit   *audit.Log
 	Notify  *notify.Service
 	Version string
+	// ClusterCtlAddr es donde escucha el canal de control del clúster (":24010"); vacío =
+	// no escucha (tests, --dev).
+	ClusterCtlAddr string
 }
 
 // svcConfig es lo que se persiste en services.json (0600: lleva secretos CHAP).
@@ -63,6 +66,8 @@ type svcConfig struct {
 	NFS struct {
 		Enabled bool                              `json:"enabled"`
 		Exports map[string][]agentproto.NFSClient `json:"exports"` // Share.ID → clientes
+		// Cluster: volúmenes del clúster montados en /cluster/<vol> (docs/17) → clientes.
+		Cluster map[string][]agentproto.NFSClient `json:"cluster,omitempty"`
 	} `json:"nfs"`
 	SFTP struct {
 		Enabled bool `json:"enabled"`
@@ -79,17 +84,19 @@ type svcConfig struct {
 
 type iscsiConfig struct {
 	Name       string `json:"name"`
-	Volume     string `json:"volume"` // Volume.ID (UUID del Btrfs)
+	Volume     string `json:"volume"` // Volume.ID (UUID del Btrfs); "zfs:<pool>" si es un zvol
+	Zvol       string `json:"zvol,omitempty"`
 	SizeBytes  int64  `json:"sizeBytes"`
 	CHAPUser   string `json:"chapUser,omitempty"`
 	CHAPSecret string `json:"chapSecret,omitempty"`
 }
 
 type m4API struct {
-	a    *API
-	d    M4Deps
-	sftp *sftpServer
-	ups  *upsAPI // UPS por NUT (ups.go, protocol/README.md §13)
+	a       *API
+	d       M4Deps
+	cluster *clusterAPI // clúster GlusterFS (cluster.go); nil sin agente
+	sftp    *sftpServer
+	ups     *upsAPI // UPS por NUT (ups.go, protocol/README.md §13)
 
 	mu  sync.Mutex
 	cfg svcConfig
@@ -595,6 +602,7 @@ type IscsiTarget struct {
 	SizeBytes int64  `json:"sizeBytes"`
 	CHAP      bool   `json:"chap"`
 	Sessions  int    `json:"sessions"`
+	Zvol      string `json:"zvol,omitempty"` // LUN sobre un volumen de bloque ZFS
 }
 
 func intp(n int) *int { return &n }
@@ -785,7 +793,7 @@ func (m *m4API) registerServices(r *rtcrpc.Router) {
 			if ist != nil {
 				n = ist.Sessions[services.IQN(t.Name)]
 			}
-			out = append(out, IscsiTarget{Name: t.Name, IQN: services.IQN(t.Name), Volume: t.Volume, SizeBytes: t.SizeBytes, CHAP: t.CHAPUser != "", Sessions: n})
+			out = append(out, IscsiTarget{Name: t.Name, IQN: services.IQN(t.Name), Volume: t.Volume, SizeBytes: t.SizeBytes, CHAP: t.CHAPUser != "", Sessions: n, Zvol: t.Zvol})
 		}
 		return out, nil
 	})
@@ -798,6 +806,7 @@ func (m *m4API) registerServices(r *rtcrpc.Router) {
 		Volume    string `json:"volume"`
 		SizeBytes int64  `json:"sizeBytes"`
 		CHAP      *chapP `json:"chap,omitempty"`
+		Zvol      string `json:"zvol,omitempty"` // /dev/zvol/<pool>/zvol/<nombre>: en vez de archivo
 	}
 	r.Handle("iscsi.targets.create", rtcrpc.Typed(func(ctx context.Context, s *rtcrpc.Session, p createP) (map[string]string, error) {
 		if err := admin(s); err != nil {
@@ -813,23 +822,37 @@ func (m *m4API) registerServices(r *rtcrpc.Router) {
 			}
 			c.CHAPUser, c.CHAPSecret = p.CHAP.User, p.CHAP.Secret
 		}
-		var vol *storage.Volume
-		for _, v := range m.volumes(ctx) {
-			if v.ID == p.Volume || v.Name == p.Volume {
-				v := v
-				vol = &v
+		if p.Zvol != "" { // LUN sobre un volumen de bloque ZFS (ADR 0013)
+			zv, ok := m.a.zvolByDevice(ctx, p.Zvol)
+			if !ok {
+				return nil, rtcrpc.Errorf("VOLUME_NOT_FOUND", "no existe el volumen de bloque %s", p.Zvol)
 			}
-		}
-		if vol == nil || vol.Mount == "" {
-			return nil, rtcrpc.Errorf("VOLUME_NOT_FOUND", "elegí un volumen montado")
-		}
-		c.Volume = vol.ID
-		free := int64(vol.Size) - int64(vol.Used)
-		if p.SizeBytes > free {
-			return nil, rtcrpc.Errorf("NO_SPACE", "no entra en %s: quedan %d bytes libres", vol.Name, free)
-		}
-		if err := services.ValidateTarget(agentproto.ISCSITarget{Name: c.Name, IQN: services.IQN(c.Name), File: services.LUNFile(vol.Mount, c.Name), SizeBytes: c.SizeBytes, CHAPUser: c.CHAPUser, CHAPSecret: c.CHAPSecret}); err != nil {
-			return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "%v", err)
+			if m.zvolInUse(p.Zvol) {
+				return nil, rtcrpc.Errorf("VOLUME_BUSY", "otro destino ya usa %s", p.Zvol)
+			}
+			c.Volume, c.Zvol, c.SizeBytes = zv.pool, p.Zvol, int64(zv.size)
+			if err := services.ValidateTarget(agentproto.ISCSITarget{Name: c.Name, IQN: services.IQN(c.Name), Zvol: c.Zvol, SizeBytes: c.SizeBytes, CHAPUser: c.CHAPUser, CHAPSecret: c.CHAPSecret}); err != nil {
+				return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "%v", err)
+			}
+		} else {
+			var vol *storage.Volume
+			for _, v := range m.volumes(ctx) {
+				if v.ID == p.Volume || v.Name == p.Volume {
+					v := v
+					vol = &v
+				}
+			}
+			if vol == nil || vol.Mount == "" {
+				return nil, rtcrpc.Errorf("VOLUME_NOT_FOUND", "elegí un volumen montado")
+			}
+			c.Volume = vol.ID
+			free := int64(vol.Size) - int64(vol.Used)
+			if p.SizeBytes > free {
+				return nil, rtcrpc.Errorf("NO_SPACE", "no entra en %s: quedan %d bytes libres", vol.Name, free)
+			}
+			if err := services.ValidateTarget(agentproto.ISCSITarget{Name: c.Name, IQN: services.IQN(c.Name), File: services.LUNFile(vol.Mount, c.Name), SizeBytes: c.SizeBytes, CHAPUser: c.CHAPUser, CHAPSecret: c.CHAPSecret}); err != nil {
+				return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "%v", err)
+			}
 		}
 		m.mu.Lock()
 		for _, t := range m.cfg.ISCSI.Targets {
@@ -890,7 +913,8 @@ func (m *m4API) registerServices(r *rtcrpc.Router) {
 		j := a.d.Jobs.Start("iscsi.delete", "Eliminando el destino iSCSI "+p.Name, "", func(ctx context.Context, h *jobs.Handle) error {
 			defer a.d.Hub.Publish("services.changed", map[string]string{"id": "iscsi"})
 			del := []string{}
-			if mount != "" {
+			if mount != "" && gone.Zvol == "" { // un zvol no se borra con el destino
+
 				del = append(del, services.LUNFile(mount, gone.Name))
 			}
 			_, err := m.applyISCSIWith(ctx, h, del)
@@ -924,6 +948,15 @@ func (m *m4API) applyNFSNow(ctx context.Context, h *jobs.Handle) error {
 			args.Exports = append(args.Exports, agentproto.NFSExport{Path: sh.Path, Clients: clients})
 		}
 	}
+	if m.cluster != nil {
+		m.mu.Lock()
+		cl := map[string][]agentproto.NFSClient{}
+		for k, v := range m.cfg.NFS.Cluster {
+			cl[k] = v
+		}
+		m.mu.Unlock()
+		args.Exports = append(args.Exports, m.cluster.clusterNFSExports(ctx, cl)...)
+	}
 	if err := m.d.Agent.NFSApply(ctx, args); err != nil {
 		return agentErr(err)
 	}
@@ -951,6 +984,10 @@ func (m *m4API) applyISCSINow(ctx context.Context, h *jobs.Handle, del []string)
 	vols := m.volumes(ctx)
 	targets := []agentproto.ISCSITarget{}
 	for _, t := range cfg {
+		if t.Zvol != "" {
+			targets = append(targets, agentproto.ISCSITarget{Name: t.Name, IQN: services.IQN(t.Name), Zvol: t.Zvol, SizeBytes: t.SizeBytes, CHAPUser: t.CHAPUser, CHAPSecret: t.CHAPSecret})
+			continue
+		}
 		for _, v := range vols {
 			if v.ID == t.Volume && v.Mount != "" {
 				targets = append(targets, agentproto.ISCSITarget{Name: t.Name, IQN: services.IQN(t.Name), File: services.LUNFile(v.Mount, t.Name), SizeBytes: t.SizeBytes, CHAPUser: t.CHAPUser, CHAPSecret: t.CHAPSecret})

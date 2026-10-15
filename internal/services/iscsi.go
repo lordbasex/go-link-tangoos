@@ -19,6 +19,9 @@ const IQNPrefix = "iqn.2026-10.local.tango"
 var targetNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,30}[a-z0-9]$`)
 var chapUserRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
+// zvolRe: /dev/zvol/<pool>/zvol/<nombre> (internal/zfs.ZvolDevice).
+var zvolRe = regexp.MustCompile(`^/dev/zvol/[a-z][a-z0-9_]{0,31}/zvol/[a-z][a-z0-9_-]{0,31}$`)
+
 // ValidTargetName: minúsculas, números y guiones, 2–32 (entra en el IQN y en el archivo).
 func ValidTargetName(n string) error {
 	if !targetNameRe.MatchString(n) {
@@ -59,6 +62,12 @@ func ValidateTarget(t agentproto.ISCSITarget) error {
 	if t.SizeBytes < 64<<20 || t.SizeBytes > 64<<40 {
 		return errors.New("el tamaño debe estar entre 64 MB y 64 TB")
 	}
+	if t.Zvol != "" { // LUN sobre un volumen de bloque ZFS (ADR 0013)
+		if t.File != "" || !zvolRe.MatchString(t.Zvol) || path.Clean(t.Zvol) != t.Zvol {
+			return fmt.Errorf("volumen de bloque inválido %q", t.Zvol)
+		}
+		return ValidCHAP(t.CHAPUser, t.CHAPSecret)
+	}
 	f := path.Clean(t.File)
 	parts := strings.Split(strings.TrimPrefix(f, "/"), "/")
 	if f != t.File || len(parts) != 3 || parts[1] != "@iscsi" || parts[2] != t.Name+".img" {
@@ -83,9 +92,19 @@ func Plan(t agentproto.ISCSITarget) []Step {
 	bs := path.Join(ConfigFS, "core", "fileio_0", t.Name)
 	tgt := path.Join(ConfigFS, "iscsi", t.IQN)
 	tpg := path.Join(tgt, "tpgt_1")
+	control := fmt.Sprintf("fd_dev_name=%s,fd_dev_size=%d", t.File, t.SizeBytes)
+	if t.Zvol != "" { // dispositivo de bloque: backstore iblock
+		bs = path.Join(ConfigFS, "core", "iblock_0", t.Name)
+		control = "udev_path=" + t.Zvol
+	}
 	steps := []Step{
 		{Mkdir: true, Path: bs},
-		{Path: path.Join(bs, "control"), Value: fmt.Sprintf("fd_dev_name=%s,fd_dev_size=%d", t.File, t.SizeBytes)},
+		{Path: path.Join(bs, "control"), Value: control},
+	}
+	if t.Zvol != "" { // udev_path también como atributo (lo muestran targetcli y el estado)
+		steps = append(steps, Step{Path: path.Join(bs, "udev_path"), Value: t.Zvol})
+	}
+	steps = append(steps, []Step{
 		{Path: path.Join(bs, "wwn", "vpd_unit_serial"), Value: "tango-" + t.Name},
 		{Path: path.Join(bs, "enable"), Value: "1"},
 		{Mkdir: true, Path: tgt},
@@ -96,7 +115,7 @@ func Plan(t agentproto.ISCSITarget) []Step {
 		{Path: path.Join(tpg, "attrib", "generate_node_acls"), Value: "1"},
 		{Path: path.Join(tpg, "attrib", "demo_mode_write_protect"), Value: "0"},
 		{Path: path.Join(tpg, "attrib", "cache_dynamic_acls"), Value: "1"},
-	}
+	}...)
 	if t.CHAPUser != "" {
 		steps = append(steps,
 			Step{Path: path.Join(tpg, "attrib", "authentication"), Value: "1"},
@@ -122,5 +141,6 @@ func TeardownPaths(t agentproto.ISCSITarget) []string {
 		tpg,
 		tgt,
 		bs,
+		path.Join(ConfigFS, "core", "iblock_0", t.Name), // LUN sobre zvol (el que no exista se ignora)
 	}
 }

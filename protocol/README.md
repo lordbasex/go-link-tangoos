@@ -733,18 +733,27 @@ Every method is admin-only. Long operations return `{job}` and report through `j
 |---|---|---|
 | `cluster.status` | — | `ClusterStatus` |
 | `cluster.install` | — | `{job}`: nftables + firewall first, then `glusterfs-server`; also starts a stopped glusterd |
-| `cluster.invite` | `{host}` | `{host, addrs[], expires}`: this node accepts `host` for 15 minutes |
+| `cluster.invite` | `{host}` | `{host, addrs[], expires, code, fingerprint}`: this node accepts `host` for 15 minutes; `code` is the join code to type on `host`, `fingerprint` this node's key fingerprint to compare |
 | `cluster.invite.cancel` | `{host}` | `{}` |
-| `cluster.peer.add` | `{host}` | `{}`: opens this side and runs `peer probe`; `PEER_UNREACHABLE` if the other side did not invite |
-| `cluster.peer.remove` | `{host}` | `{}`: `peer detach` (fails while the node has bricks) |
-| `cluster.volume.create` | `{name, replica, arbiter?, preset?, options?, bricks:[{host, tangoVolume}], start}` | `{job}` |
+| `cluster.peer.prepare` | `{host, code}` | `{id, host, cn, fingerprint}`: join step 1 over the control channel (code MAC bound to the TLS certificate seen). `PEER_UNREACHABLE` without an invitation, `JOIN_CODE` wrong code (5 → the invitation closes), `JOIN_TAMPERED` channel mismatch |
+| `cluster.peer.confirm` | `{id, certify?}` | `{}`: step 2 after the user compared the fingerprint: signs `host`'s certificate with the cluster CA (created the first time), delivers it with the CA and runs `peer probe` (not with `certify`: the node is already a member). Adds its CN to `auth.ssl-allow` of TLS volumes. `JOIN_EXPIRED` after 10 min |
+| `cluster.tls.set` | `{enabled}` | `{job}`: controlled stop on every node (unmount, stop, `secure-access` + glusterd restart, `client.ssl`/`server.ssl`/`auth.ssl-allow`, start, remount). Every node must have its certificate |
+| `cluster.peer.remove` | `{host}` | `{}`: `peer detach` (fails while the node has bricks); its CN leaves every `auth.ssl-allow` |
+| `cluster.volume.create` | `{name, replica, arbiter?, preset?, options?, bricks: BrickSpec[], start}` | `{job}`: dedicated bricks are created on their nodes first (removed again if anything fails); with TLS on, the volume gets TLS before it starts. `PEER_JOINING` while a node is not "Peer in Cluster" |
 | `cluster.volume.action` | `{name, action: start\|stop\|delete}` | `{}` (`BUSY` if mounted on this node) |
 | `cluster.volume.options` | `{name, set: {key: value}, reset: [key]}` | `{}` |
 | `cluster.volume.heal` | `{name, full?}` | `{}` |
-| `cluster.volume.bricks` | `{name, op: add\|remove\|replace, replica?, bricks?, phase?, from?, to?}` | `{}` |
+| `cluster.volume.bricks` | `{name, op: add\|remove\|replace, replica?, bricks?, phase?, from?, to?}` | `{}` (raw paths; the UI uses the three methods below) |
+| `cluster.volume.bricks.add` | `{name, replica?, bricks: BrickSpec[]}` | `{job}`: one more replica set, or `replica` = current + 1 |
+| `cluster.volume.bricks.remove` | `{name, replica?, bricks: [{host, path}], phase: start\|status\|commit}` | `{task: Task\|null}`: data migrates on `start`; `status` reports progress; `commit` takes them out |
+| `cluster.volume.bricks.replace` | `{name, from: {host, path}, to: BrickSpec}` | `{job}`: `replace-brick … commit force`; the new copy fills by healing |
+| `cluster.volume.rebalance` | `{name, action: start\|status\|stop}` | `{task: Task\|null}` |
+| `cluster.volume.quota` | `{name, op: enable\|disable\|limit\|remove\|list, path?, limit?}` | `{quotas: Quota[]}` (the list after the change) |
+| `cluster.volume.snapshot` | `{name, op: create\|delete\|restore\|info, snap?, desc?}` | `{snapshots: Snapshot[]}`; `SNAPSHOT_UNSUPPORTED` unless every brick is a thin LV; `VOLUME_STARTED` on restore of a started volume |
+| `cluster.volume.nfs` | `{name, clients: [{host, access: rw\|ro}]}` | `{job}`: exports `/cluster/<name>` (mounted on this node) with `fsid` = volume UUID; `[]` removes it. `NOT_MOUNTED` |
 | `cluster.volume.info` | `{name}` | `{text}`: same text as `gluster volume info <name>` |
 | `cluster.volume.mount` | `{name, enabled, share?, comment?, rw?, ro?}` | `{job}`: `/cluster/<name>` (+ SMB share) |
-| `cluster.brick.cleanup` | `{tangoVolume, name}` | `{}`: deletes `/<tangoVolume>/@gluster/<name>` if that volume no longer exists |
+| `cluster.brick.cleanup` | `{kind?, tangoVolume, name}` | `{}`: deletes `/<tangoVolume>/@gluster/<name>` if that volume no longer exists; with `kind: "lv"` (`tangoVolume` = pool) removes the dedicated LV when no brick of this node uses it, plus the snapshot LVs left from it once the volume is gone |
 
 Topic `cluster.changed` carries a full `ClusterStatus` when anything changes (polled every 20 s by tangod).
 
@@ -760,17 +769,95 @@ interface ClusterStatus {
   tangoVolumes: { name; mount; free }[];   // where this node can hold a brick
   presets: { id; name; desc; replica?; options }[];
   options: { key; type: "bool"|"int"|"enum"|"percent"; min?; max?; enum?; global?; desc }[];
+  tls: { ca; caFingerprint; signed; fingerprint; files; secure };   // this node
+  nodeInfo: Record<host, { cn; fingerprint; names; secure; tangoVolumes; pools: { name; free }[] }>;
+  nfs: Record<volume, { host; access }[]>;
+  lvBricks: { vol; pool; size; thin; mounted; snaps }[];
+  pools: { name; free }[];                 // this node's storage pools (free = data PVs)
 }
+type BrickSpec = { host; kind: "dir"; tangoVolume } | { host; kind: "lv"; pool; size; thin? };
+interface Task { id; status /* in progress|completed|stopped|failed */; done; failed;
+  total: TaskNode; nodes: TaskNode[] }  // TaskNode: { node, files, size, lookups, failures, skipped, status, runtime }
+interface Quota { path; limit; softPercent; used; avail; softOver; hardOver }
+interface Snapshot { name; uuid; desc?; created; status }
 interface ClusterVolume {
   name; id; status /* Created|Started|Stopped */; type /* Replicate|Distributed-Replicate|Distribute */;
   replica; arbiter; sets; options: Record<string,string>; optOrder: string[];
   bricks: { host; path; hostUuid; arbiter?; online; port?; pid?; sizeTotal?; sizeFree?; fsName?;
-            healPending /* -1 = brick did not answer */; splitBrain; healStatus? }[];
+            healPending /* -1 = brick did not answer */; splitBrain; healStatus?;
+            kind? /* dir | lv | snap (restored from a snapshot) */ }[];
   sizeTotal; sizeFree; healPending; splitBrain; online;
+  tls /* client.ssl and server.ssl on */; quota /* features.quota on */;
 }
 ```
 
 Agent ops (`gluster.*`, pkg/agentproto/gluster.go) take typed arguments and build the
 `gluster --mode=script --xml` argv with internal/gluster: option keys come from an allow-list with typed values,
-hosts are IPs or lowercase DNS names, brick paths are `/volumeN/@gluster/<volume>`, and `force` is never sent on
+hosts are IPs or lowercase DNS names, brick paths are one of the brick forms (`/volumeN/@gluster/<volume>`,
+`/srv/gluster/<volume>/brick`, or a GlusterFS snapshot mount after a restore), and `force` is never sent on
 create. The agent has no network: tangod resolves names before `gluster.firewall`.
+
+Second-stage agent ops (pkg/agentproto/gluster2.go): `gluster.tls` (node certificate files, `secure-access`,
+glusterd restart; the key is redacted in the journal), `gluster.volume.tls` (only `client.ssl`, `server.ssl`,
+`auth.ssl-allow`, outside the user allow-list), `gluster.brick.lv` (create/delete a dedicated LV brick),
+`gluster.quota`, `gluster.rebalance`, `gluster.snapshot`; `gluster.mount` also takes `action: stop|start`
+(controlled stop, keeps the SMB share).
+
+**Control channel** (TCP 24010, HTTPS between tangod instances, behind the GlusterFS firewall):
+`POST /join/hello` and `POST /join/finish` (join, authenticated by the code MAC), and, with a client
+certificate from the cluster CA and a source address in the pool, `GET /v1/info`, `POST /v1/brick`,
+`POST /v1/tls`, `POST /v1/mounts`. Details in docs/17 §3.2.
+## 18. ZFS (ADR 0013)
+
+Optional: OpenZFS is installed on demand (contrib + DKMS). Every method except `storage.zfs.status` and
+`storage.zfs.scrubSchedule.get` is admin-only. Long operations return `{job}` and report through `jobs.*`.
+Destructive ones use the plan → `confirm_token` → typed name flow of §7 (`PLAN_EXPIRED`, `CONFIRMATION_MISMATCH`,
+`DEVICE_CHANGED`, `DEVICE_NOT_ELIGIBLE`).
+
+```jsonc
+storage.zfs.status            null → {enabled, installed, version?, enabling?: jobId, pools: ZfsPool[]}
+storage.zfs.importable        null → [{name, guid, state, status?, disks: [Disk.id]}]   // reads every disk
+storage.zfs.enable            null → {job}                                // ZFS_UNAVAILABLE elsewhere until done
+storage.zfs.plan              {name, layout: "stripe"|"mirror"|"raidz1"|"raidz2"|"raidz3", disks} → ZfsPlan
+storage.zfs.create            {plan_id, confirm_token, typed_name} → {job}
+storage.zfs.addPlan           {pool, kind: "data"|"cache"|"log", disks} → ZfsPlan   // data = same shape as the pool
+storage.zfs.add               {plan_id, confirm_token, typed_name} → {job}
+storage.zfs.auxRemove         {pool, kind: "cache"|"log", vdev} → {job}
+storage.zfs.replacePlan       {pool, old: vdev name | GUID | Disk.id, replacement: Disk.id} → ZfsPlan
+storage.zfs.replace           {plan_id, confirm_token, typed_name} → {job}          // follows the resilver
+storage.zfs.scrub             {pool, stop?} → {job}
+storage.zfs.scrubSchedule.get {pool} → {enabled, days, last?}                       // default every 30 days
+storage.zfs.scrubSchedule.set {pool, enabled, days: 1..365} → same
+storage.zfs.import            {pool: name|guid, readonly} → {job}    // readonly: altroot /import/<pool>, nothing written
+storage.zfs.export            {pool} → {job}                         // VOLUME_BUSY with apps or a zvol used by iSCSI
+storage.zfs.destroyPlan       {pool} → DeletePlan                    // same VOLUME_BUSY rules
+storage.zfs.destroy           {plan_id, confirm_token, typed_name} → {job}   // labels cleared, disks free
+storage.zfs.volumes.create    {pool, name, quota?, reservation?, encryption: {passphrase} | null} → {job}
+storage.zfs.volumes.set       {volume, quota, reservation} → {}     // 0 = none
+storage.zfs.volumes.deletePlan {volume} → DeletePlan
+storage.zfs.volumes.delete    {plan_id, confirm_token, typed_name} → {job}
+storage.zfs.zvols.create      {pool, name, size, sparse} → {}       // /dev/zvol/<pool>/zvol/<name>
+storage.zfs.zvols.delete      {pool, name} → {}                     // VOLUME_BUSY while an iSCSI target uses it
+
+ZfsPool = {id: "zfs:<name>", name, guid, health: "ONLINE"|"DEGRADED"|…, state: "healthy"|"degraded"|"faulted"|"readonly",
+  readonly, layout: ZfsLayout|"mixed", size, allocated, free, raw, frag, vdevs: ZfsVdev[], logs: ZfsVdev[], cache: ZfsLeaf[],
+  scan: {function: "scrub"|"resilver", state: "scanning"|"finished"|"canceled", progress, start?, end?, errors} | null,
+  errors?, volumes: [Volume.id], zvols: [{name, size, used, device}], encrypted: [Volume.id], disks: [Disk.id],
+  other: [{name, mountpoint, mounted, used}]}                           // datasets outside the TangoOS layout
+ZfsVdev = {name, type: "disk"|ZfsLayout, state, read, write, cksum, size, disks: ZfsLeaf[]}
+ZfsLeaf = {id: Disk.id | "", name, guid, state, read, write, cksum, resilvering?}
+ZfsPlan = {plan_id, expires, confirm_token, summary: {name, kind, layout, usable, raw, wasted, tolerance, disks, notes}}
+```
+
+- A ZFS volume is a `Volume` with `kind: "zfs"`, `fs: "zfs"`, `pool: "zfs:<name>"`, `profile` = the pool layout and
+  `id: "zfs-<dataset guid>"`. Its folders, snapshots, Files versions, Previous Versions, permissions and apps work through
+  the existing methods (§7, §8, §10, §11). `storage.scrub.start` on a ZFS volume scrubs its pool.
+- Encrypted ZFS volumes use `storage.volumes.unlock|lock|passphrase` (§16); `useKeyDevice` → `NOT_SUPPORTED`.
+- Disks: members of a ZFS pool come in `storage.disks.list` with `use: "member"`, `pool: "zfs:<name>"` and
+  `role: "data"|"cache"|"log"`. A disk held open by the kernel (an imported pool) is never eligible.
+- iSCSI (§12): `iscsi.targets.create` accepts `zvol: "/dev/zvol/<pool>/zvol/<name>"` instead of `volume`/`sizeBytes`
+  (backstore `iblock`); `iscsi.targets.list` returns `zvol` for those targets.
+- Agent ops (`pkg/agentproto/zfs.go`): `zfs.report {importable}`, `zfs.enable`, `zfs.pool.create|add|aux|replace|scrub|
+  import|export|destroy`, `zfs.volume.create|set|delete|unlock|lock|passphrase`, `zfs.zvol.create|delete`. Reads use
+  `zpool status -j -p`, `zpool list -j -p`, `zfs list -j -p` (OpenZFS 2.3 JSON; `zpool import` has no `-j` and is parsed
+  as text). Everything that mounts runs in the transient unit; passphrases only go through stdin inside the agent.

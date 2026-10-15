@@ -71,7 +71,27 @@ func TestISCSIPlan(t *testing.T) {
 	if ValidTargetName("Mal Nombre") == nil {
 		t.Fatal("bad name accepted")
 	}
-	if td := TeardownPaths(tg); !strings.HasSuffix(td[len(td)-1], "fileio_0/vm-disk") {
+	if td := TeardownPaths(tg); !strings.HasSuffix(td[len(td)-2], "fileio_0/vm-disk") || !strings.HasSuffix(td[len(td)-1], "iblock_0/vm-disk") {
 		t.Fatal("teardown order")
+	}
+	// LUN sobre un zvol (ADR 0013): backstore iblock, sin archivo.
+	zv := tg
+	zv.File, zv.Zvol = "", "/dev/zvol/tank/zvol/vm-disk"
+	if err := ValidateTarget(zv); err != nil {
+		t.Fatal(err)
+	}
+	steps = Plan(zv)
+	if !strings.HasSuffix(steps[0].Path, "core/iblock_0/vm-disk") || steps[1].Value != "udev_path=/dev/zvol/tank/zvol/vm-disk" {
+		t.Fatalf("iblock %+v", steps[:2])
+	}
+	for _, bad := range []string{"/dev/sda", "/dev/zvol/tank/../../sda", "/dev/zvol/tank/vm-disk"} {
+		zv.Zvol = bad
+		if ValidateTarget(zv) == nil {
+			t.Fatalf("zvol %q aceptado", bad)
+		}
+	}
+	zv.Zvol, zv.File = "/dev/zvol/tank/zvol/vm-disk", "/volume1/@iscsi/vm-disk.img"
+	if ValidateTarget(zv) == nil {
+		t.Fatal("archivo y zvol a la vez")
 	}
 }

@@ -159,6 +159,9 @@ func (e Env) Eligible(disk string) (bool, string) {
 	if e.HasHolders(disk) {
 		return false, "ya es miembro de un RAID o de otro dispositivo"
 	}
+	if e.busy(disk) {
+		return false, "lo está usando el sistema (por ejemplo, un pool ZFS importado)"
+	}
 	if ro := strings.TrimSpace(readFile(filepath.Join(base, "ro"))); ro == "1" {
 		return false, "es de solo lectura"
 	}

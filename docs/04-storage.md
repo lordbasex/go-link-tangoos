@@ -41,8 +41,8 @@ there is no scheduled scrub yet, and native Btrfs RAID1 is not implemented.
 | Hybrid RAID, disks of different sizes (`hybrid1` / `hybrid2`) | | ✅ done: GPT partitions in equal-size tiers, one md per tier, joined with LVM; grows one disk at a time |
 | SSD cache | | ✅ done: lvmcache (`dm-cache`) per volume, read (writethrough, 1–2 SSDs) or read/write (writeback, 2 SSDs in RAID 1) |
 | Volume encryption (LUKS2) | | ✅ done: per volume in a pool, passphrase or key file on a removable device, unlocked by itself at boot when the key is plugged in |
-| iSCSI (LUN on a Btrfs file with `nodatacow`, or LV) | | M4. ✅ LUN on a Btrfs file (LIO over configfs) |
-| ZFS (pool as an alternative to md+Btrfs) | | M6, optional `tangoos-zfs` package |
+| iSCSI (LUN on a Btrfs file with `nodatacow`, or a block volume) | | M4. ✅ LUN on a Btrfs file (LIO over configfs); ✅ LUN on a ZFS block volume (zvol, `iblock`) |
+| ZFS (pool as an alternative to md+LVM+Btrfs) | | ✅ done (ADR 0013): enabled on demand from Storage (contrib + DKMS, CDDL explained); stripe/mirror/RAIDZ1–3, volumes as datasets with quotas and native encryption, L2ARC/SLOG, scheduled scrub, replace with resilver, add vdev, import (read-only first)/export/destroy, zvols for iSCSI |
 
 ## Disk lifecycle
 
@@ -167,8 +167,8 @@ matrix runs against the lab VM with `make e2e-storage` (`tests/e2e/storage_matri
 
 ## Not implemented yet
 
-Quotas, volume encryption (LUKS2), native Btrfs RAID1 (ADR 0004), scheduled scrub, SHR-style hybrid,
-SSD cache, ZFS and replication.
+Quotas on Btrfs volumes, native Btrfs RAID1 (ADR 0004), scheduled scrub of md/Btrfs volumes and replication
+(`btrfs send` / `zfs send`). Hybrid RAID, SSD cache and LUKS2 are in "Storage pools"; ZFS in "ZFS" below.
 
 ## Storage pools (ADR 0011): what the code does (implemented and tested in VM 108)
 
@@ -212,3 +212,30 @@ SSD cache, ZFS and replication.
 - **Limits today:** an LV-backed iSCSI LUN is not offered (LUNs are still files on Btrfs); hybrid growth requires the new
   disk to be at least as large as the largest one; one SSD cache per volume; the key file stays on the device when the key
   slot is removed (it no longer opens anything).
+
+## ZFS (ADR 0013): what the code does (implemented and tested in VM 108)
+
+- **Enable:** Storage → Pools ZFS → "Enable ZFS" (`storage.zfs.enable`). The agent adds a `contrib` source derived from
+  the Debian sources, installs `linux-headers-$(uname -r)` + the flavor meta-package, `zfs-dkms zfsutils-linux zfs-zed`,
+  loads the module and writes `/etc/modules-load.d/tangoos-zfs.conf`. Lab VM (4 vCPU): 47 s of headers + 228 s of
+  install/DKMS. OpenZFS 2.3.9 (Debian 13).
+- **Layout:** pool root `compression=lz4 atime=off xattr=sa acltype=posixacl dnodesize=auto`, not mounted; volume =
+  `<pool>/<vol>` at `/<vol>`; folders = `<pool>/<vol>/shares/<Folder>` at `/<vol>/@shares/<Folder>`; apps under
+  `<vol>/apps`; block volumes `<pool>/zvol/<name>` (`/dev/zvol/<pool>/zvol/<name>`).
+- **Pools:** stripe, mirror (≥ 2), RAIDZ1 (≥ 3), RAIDZ2 (≥ 4), RAIDZ3 (≥ 5); same plan → token → typed-name flow; disks
+  are wiped including the first and last 17 MiB (an old md superblock at 1 MiB reappeared in `sdX1` and udev
+  assembled it: found in the lab). Add a vdev with the same shape; L2ARC cache (1–2 SSD) and SLOG (1 or 2 mirrored);
+  replace a disk (by name or GUID when it is gone) with resilver progress; scrub now or every N days (default 30);
+  alerts for DEGRADED / FAULTED and checksum errors.
+- **Import:** `storage.zfs.importable` lists pools on the disks; "view read-only" imports with `readonly=on` under
+  `/import/<pool>` (altroot); "import" mounts the TangoOS-layout volumes. Export and destroy refuse while a volume has apps
+  or a zvol backs an iSCSI target (LIO keeps it open and `zpool destroy` would hang).
+- **Snapshots and Previous Versions:** ZFS snapshots of the folder dataset + symlinks in `/<vol>/@snapshots/<Folder>`
+  (see ADR 0013); the scheduler, retention, Files versions and `vfs_shadow_copy2` are unchanged.
+- **Encryption:** per volume, `aes-256-gcm`, passphrase through stdin in the agent; lock = unmount + `unload-key`; after a
+  reboot the volume stays locked until unlocked (tested with a real reboot); 5 wrong tries → 10 min lockout.
+- **GlusterFS bricks on ZFS:** a ZFS volume named `volumeN` qualifies as a brick origin as is (docs/17 §4): the brick
+  directory inherits `xattr=sa` and `acltype=posixacl` from the pool.
+- **Limits today:** no `zfs send` replication; no key file on a USB device for ZFS volumes (passphrase only); dRAID and
+  special/dedup vdevs are not offered; adding a vdev requires the pool's shape (mixed pools are shown but not grown).
+

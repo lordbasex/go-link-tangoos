@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cliOutput>
+  <opRet>0</opRet>
+  <opErrno>0</opErrno>
+  <opErrstr/>
+  <volRebalance>
+    <task-id>6ac40f6f-a35e-47b3-bbff-99aa26da44d4</task-id>
+    <op>3</op>
+    <nodeCount>1</nodeCount>
+    <node>
+      <nodeName>localhost</nodeName>
+      <id>f485d090-5bc2-407b-b0fe-0e96dda87b29</id>
+      <files>0</files>
+      <size>0</size>
+      <lookups>30</lookups>
+      <failures>0</failures>
+      <skipped>10</skipped>
+      <status>3</status>
+      <statusStr>completed</statusStr>
+      <runtime>0.00</runtime>
+    </node>
+    <aggregate>
+      <files>0</files>
+      <size>0</size>
+      <lookups>30</lookups>
+      <failures>0</failures>
+      <skipped>10</skipped>
+      <status>3</status>
+      <statusStr>completed</statusStr>
+      <runtime>0.00</runtime>
+    </aggregate>
+  </volRebalance>
+</cliOutput>

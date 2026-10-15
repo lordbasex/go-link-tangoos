@@ -85,3 +85,21 @@ partition, stands in for a USB key: the cloud kernel has no `usb-storage`).
 | 16b | Replace a disk of the hybrid pool (M2 → D3) | + D3 | too small SSD → `DEVICE_TOO_SMALL`, rebuild of both tiers, M2 free, file intact |
 | 17 | VM reboot with the key plugged in (`TANGO_E2E_REBOOT=1`) | — | volume unlocked and mounted by itself, file intact, pool healthy |
 | 18 | UI: wizard (Hybrid-1 with mixed disks), encrypted volume, lock/unlock, delete (`web/e2e/pools.spec.ts`) | S3+S6+M1 | screenshots `pools-*.png`; plus the demo scenarios `pools`, `hybrid`, `locked` |
+| 28 | Cluster stage 2 (`make e2e-cluster2`, VMs 112–114): join with code + fingerprint, certify an old member, replica 3 on thin LV bricks, TLS on with the volume mounted, encryption checked with tcpdump/openssl, quotas, add/rebalance/remove a set, snapshot + restore, replace, NFS, revocation, TLS off | TANGO-G<n>, TANGO-P<n> | 14/14; UI `web/e2e/cluster2.spec.ts` (`cluster2-*.png`) |
+
+## ZFS (ADR 0013) — `go test -tags e2e -run TestZfs` + Playwright
+
+Uses only free lab disks: S3, S6 (2 GB), M1, M2 (4 GB), D3, D4 (16 GB), C1 and C2 (2 GB virtual SSDs).
+
+| # | Case | Disks | Checks |
+|---|---|---|---|
+| 19 | Enable ZFS from the API (`TANGO_E2E_ZFS_REINSTALL=1` purges first) | — | `ZFS_UNAVAILABLE` before, job succeeds, version 2.x, `modules-load.d`, contrib source |
+| 20 | Mirror S3 + S6 | S3+S6 | invalid layouts/names, disk of volume1 → `DEVICE_NOT_ELIGIBLE`, tolerance 1, ≈ 2 GB, members marked, `lz4/sa/posix/atime off` |
+| 21 | Volume + SMB folder + snapshot | — | folder is a dataset, upload, snapshot listed, file versions, `.zfs/snapshot` links + `.gmt`, `allinfo` over SMB shows `@GMT-` |
+| 22 | zvol + iSCSI LUN | — | `iblock_0/<name>/udev_path`, zvol delete refused while used (`VOLUME_BUSY`), delete target then zvol |
+| 23 | Replace S6 with M1 (resilver) | + M1 | pool ONLINE with M1, data intact; delete volume and pool via the API, disks free |
+| 24 | RAIDZ1 M2 + D3 + D4 with L2ARC (C1) and SLOG (C2) | M2+D3+D4, C1, C2 | ≈ 8 GB (4 GB × 2), cache and log present |
+| 25 | Encrypted volume | — | inherited `aes-256-gcm`, lock (key unavailable, unmounted), wrong passphrase, unlock, change passphrase, **VM reboot** (`TANGO_E2E_REBOOT=1`): pool imported, volume locked, unlock with the new one; no passphrase in journald or state |
+| 26 | Scrub, export, import read-only, export, import read/write, destroy | — | scrub finished 0 errors, importable list, `readonly`, volume back locked, disks free |
+| 27 | UI (`web/e2e/zfs.spec.ts`): demo enable/pool/import/wizard/volume; real NAS mirror S3 + S6 from the wizard, volume, destroy | S3+S6 | screenshots `zfs-*.png` |
+

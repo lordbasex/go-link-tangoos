@@ -138,6 +138,16 @@ func validateGlusterMount(a *agentproto.GlusterMountArgs) *agentproto.Error {
 	if err := gluster.ValidVolumeName(a.Name); err != nil {
 		return badArgs(err)
 	}
+	switch a.Action {
+	case "":
+	case "stop", "start":
+		if a.Share != "" || len(a.Backups)+len(a.RW)+len(a.RO) > 0 {
+			return agentproto.Errf(agentproto.CodeInvalidArgs, "stop/start no cambian la configuración")
+		}
+		return nil
+	default:
+		return agentproto.Errf(agentproto.CodeInvalidArgs, "acción inválida: %q", a.Action)
+	}
 	if len(a.Backups) > 16 {
 		return agentproto.Errf(agentproto.CodeInvalidArgs, "demasiados servidores de respaldo")
 	}

@@ -129,6 +129,7 @@ type ServiceSetArgs struct {
 type NFSExport struct {
 	Path    string      `json:"path"`
 	Clients []NFSClient `json:"clients"`
+	FSID    string      `json:"fsid,omitempty"` // solo /cluster/<vol>: el UUID del volumen
 }
 
 // NFSClient es un host o red con su acceso.
@@ -149,7 +150,8 @@ type NFSApplyArgs struct {
 type ISCSITarget struct {
 	Name       string `json:"name"`
 	IQN        string `json:"iqn"`
-	File       string `json:"file"` // /<vol>/@iscsi/<name>.img
+	File       string `json:"file"`           // /<vol>/@iscsi/<name>.img
+	Zvol       string `json:"zvol,omitempty"` // o /dev/zvol/<pool>/zvol/<name> (ZFS, ADR 0013)
 	SizeBytes  int64  `json:"size_bytes"`
 	CHAPUser   string `json:"chap_user,omitempty"`
 	CHAPSecret string `json:"chap_secret,omitempty"`

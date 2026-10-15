@@ -76,6 +76,20 @@ export function disks(s: Scenario): Disk[] {
         { ...systemDisk, id: "nvme-eui.0025385c31507a11", dev: "nvme1n1", model: "Samsung 990 EVO 1TB", serial: "S7GCNX0X118822", size: 1e12, use: "member", pool: "p1", role: "cache", tempC: 44 },
       ];
     }
+    case "zfs": {
+      // Un pool ZFS RAIDZ1 de 4×8 TB con una NVMe de caché L2ARC y dos discos libres de 12 TB (§18).
+      const z = { use: "member" as const, pool: "zfs:tanque", role: "data" as const };
+      return [
+        systemDisk,
+        { ...d1, ...z },
+        { ...d2, ...z },
+        bayDisk(3, "WD Red Plus 8TB", "WD-CA4M7T1P", 8 * TB, 5640, z),
+        bayDisk(4, "Seagate IronWolf 8TB", "ZA1G8R2C", 8 * TB, 7200, z),
+        bayDisk(5, "WD Red Pro 12TB", "WD-8KJ2P0QN", 12 * TB, 7200),
+        bayDisk(6, "WD Red Pro 12TB", "WD-8KJ7X3LM", 12 * TB, 7200),
+        { ...systemDisk, id: "nvme-eui.0025385c31507a11", dev: "nvme1n1", model: "Samsung 990 EVO 1TB", serial: "S7GCNX0X118822", size: 1e12, use: "member", pool: "zfs:tanque", role: "cache", tempC: 44 },
+      ];
+    }
     case "hybrid":
       // Discos de distinto tamaño, sin grupos: el asistente muestra el RAID híbrido.
       return [
@@ -122,6 +136,16 @@ export function volumes(s: Scenario, ds: Disk[]): Volume[] {
         id: "vol2", name: "privado", mount: locked ? "" : "/privado", kind: "pool", pool: "p1", profile: "hybrid1", fs: "btrfs", size: 2.7 * TiB, used: locked ? 0 : 0.42 * TiB,
         state: locked ? "locked" : "healthy", disks, lastScrub: locked ? null : iso(9 * D), growth30d: [], encrypted: true, locked, keyDevice: "5E2A-91C4",
       },
+    ];
+  }
+  if (s === "zfs") {
+    const disks = ds.filter((d) => d.pool === "zfs:tanque" && d.role === "data").map((d) => d.id);
+    const growth = Array.from({ length: 30 }, (_, i) => 0.41 + i * 0.0021 + Math.sin(i / 4) * 0.003);
+    return [
+      { id: "vol1", name: "volume1", mount: "/volume1", kind: "zfs", pool: "zfs:tanque", profile: "raidz1", fs: "zfs", size: 19.6 * TiB, used: 8.1 * TiB,
+        state: "healthy", disks, lastScrub: iso(6 * D), growth30d: growth },
+      { id: "vol2", name: "privado", mount: "/privado", kind: "zfs", pool: "zfs:tanque", profile: "raidz1", fs: "zfs", size: 2 * TiB, used: 0.31 * TiB,
+        state: "healthy", disks, lastScrub: iso(6 * D), growth30d: [], encrypted: true },
     ];
   }
   if (s === "lab")

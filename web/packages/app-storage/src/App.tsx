@@ -1,6 +1,6 @@
 import "./storage.css";
 import { useEffect, useState } from "react";
-import { Camera, Database, HardDrive, Layers, LayoutDashboard, Network, Plus } from "lucide-react";
+import { Boxes, Camera, Database, HardDrive, Layers, LayoutDashboard, Network, Plus } from "lucide-react";
 import { useLive, useTransport, useIsReal } from "@tango/client";
 import type { Disk, Pool, Volume } from "@tango/client";
 import { Button, DemoBadge, SidebarItem } from "@tango/ui";
@@ -16,12 +16,14 @@ import { Iscsi } from "./Iscsi";
 import { Pools } from "./Pools";
 import { CreatePool } from "./CreatePool";
 import { CreatePoolVolume } from "./PoolVolume";
+import { ZfsSection } from "./Zfs";
 
 const SIDE = 210;
 
 const titles: Record<Section, { title: string; sub: string }> = {
   overview: { title: "Resumen", sub: "Estado del almacenamiento" },
   pools: { title: "Grupos de almacenamiento", sub: "Discos y su protección (RAID o híbrido)" },
+  zfs: { title: "Pools ZFS", sub: "Espejos y RAIDZ con checksums, caché SSD y cifrado nativo" },
   volumes: { title: "Volúmenes", sub: "Donde viven los datos: Btrfs, cifrado opcional" },
   disks: { title: "Discos", sub: "Identidad, SMART y temperatura" },
   snapshots: { title: "Instantáneas", sub: "Puntos de restauración por carpeta" },
@@ -34,6 +36,7 @@ export default function StorageApp({ win }: AppProps) {
   const disks = useLive("storage.disks.list", undefined, ["storage.changed"]).data ?? [];
   const vols = useLive("storage.volumes.list", undefined, ["storage.changed"]).data ?? [];
   const poolsOn = useAvailable("storage.pools.list");
+  const zfsOn = useAvailable("storage.zfs.status"); // pools ZFS (§18)
   const pools = useLive(poolsOn ? "storage.pools.list" : "storage.volumes.list", undefined, ["storage.changed"]).data ?? [];
   // Sin grupos en el servidor se pide otra lista (los hooks no pueden ser condicionales): se descarta.
   const poolList = poolsOn && (pools.length === 0 || "tiers" in pools[0]) ? (pools as Pool[]) : [];
@@ -54,6 +57,7 @@ export default function StorageApp({ win }: AppProps) {
   useEffect(() => {
     if (win.args.action === "create") createVolume();
     if (win.args.section === "iscsi") setSection("iscsi");
+    if (win.args.section === "zfs") setSection("zfs");
   }, [win.args]);
 
   const v1 = vols[0];
@@ -94,6 +98,7 @@ export default function StorageApp({ win }: AppProps) {
         <h4>Almacenamiento</h4>
         <SidebarItem icon={LayoutDashboard} label="Resumen" current={section === "overview"} onClick={() => setSection("overview")} />
         {poolsOn && <SidebarItem icon={Layers} label="Grupos" current={section === "pools"} meta={poolList.length || undefined} onClick={() => setSection("pools")} />}
+        {zfsOn && <SidebarItem icon={Boxes} label="Pools ZFS" current={section === "zfs"} onClick={() => setSection("zfs")} />}
         <SidebarItem icon={Database} label="Volúmenes" current={section === "volumes"} meta={vols.length || undefined} onClick={() => setSection("volumes")} />
         <SidebarItem icon={HardDrive} label="Discos" current={section === "disks"} meta={failed ? <span className="ts-side-alert">1</span> : disks.length} onClick={() => setSection("disks")} />
         <SidebarItem icon={Camera} label="Instantáneas" current={section === "snapshots"} onClick={() => setSection("snapshots")} />
@@ -120,6 +125,7 @@ export default function StorageApp({ win }: AppProps) {
         <div className="tg-app-content">
           <div className="tg-app-pad">
             {section === "overview" && <Overview disks={disks} vols={vols} onDisk={openDisk} onCreate={() => createVolume()} onReplace={setReplacing} />}
+            {section === "zfs" && <ZfsSection disks={disks} vols={vols} />}
             {section === "pools" && <Pools pools={poolList} disks={disks} vols={vols} onCreatePool={() => setCreatingPool(true)} onCreateVolume={(p) => createVolume(p)} />}
             {section === "volumes" && <Volumes disks={disks} vols={vols} pools={poolList} onCreate={() => createVolume()} onReplace={setReplacing} onExpand={setExpanding} />}
             {section === "disks" && <Disks disks={disks} vols={vols} pools={poolList} selected={selected} onSelect={setSelected} />}

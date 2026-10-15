@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cliOutput>
+  <opRet>-1</opRet>
+  <opErrno>30800</opErrno>
+  <opErrstr>Volume gt is not a distribute volume or contains only 1 brick.
+Not performing rebalance</opErrstr>
+  <cliOp>volRebalance</cliOp>
+  <output>Volume gt is not a distribute volume or contains only 1 brick.
+Not performing rebalance</output>
+</cliOutput>

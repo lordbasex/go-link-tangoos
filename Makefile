@@ -193,4 +193,15 @@ CLUSTER_VMIDS ?=
 e2e-cluster:
 	@test -n "$(CLUSTER)" || { echo "definí CLUSTER=ip1,ip2,ip3"; exit 1; }
 	TANGO_SSH_KEY=$(SSH_KEY) TANGO_E2E_DESTRUCTIVE=1 TANGO_E2E_CLUSTER=$(CLUSTER) TANGO_E2E_CLUSTER_VMIDS=$(CLUSTER_VMIDS) \
-	TANGO_E2E_PVE=$(PVE) go test -tags e2e ./tests/e2e -run TestCluster -v -count=1 -timeout 60m
+	TANGO_E2E_PVE=$(PVE) go test -tags e2e ./tests/e2e -run 'TestCluster$$' -v -count=1 -timeout 60m
+
+## e2e-cluster2: segunda etapa del clúster (docs/17): unión con código y huella, TLS, bricks en LV thin,
+##   cuotas, instantáneas, agregar/quitar/reemplazar bricks, rebalance, NFS y revocación. Además de lo de
+##   e2e-cluster, cada nodo necesita un disco libre TANGO-P<n> (grupo gpool). Empieza reseteando los nodos
+##   (tests/cluster-reset.sh: solo para el laboratorio de 3 VMs del clúster).
+.PHONY: e2e-cluster2
+e2e-cluster2:
+	@test -n "$(CLUSTER)" || { echo "definí CLUSTER=ip1,ip2,ip3"; exit 1; }
+	SSH_KEY=$(SSH_KEY) tests/cluster-reset.sh
+	TANGO_SSH_KEY=$(SSH_KEY) TANGO_E2E_DESTRUCTIVE=1 TANGO_E2E_CLUSTER=$(CLUSTER) \
+	go test -tags e2e ./tests/e2e -run 'TestCluster2$$' -v -count=1 -timeout 60m

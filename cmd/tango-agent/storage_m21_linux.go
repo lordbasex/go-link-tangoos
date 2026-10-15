@@ -35,6 +35,20 @@ func registerM21(r *agentproto.Registry, paths smart.Paths, env diskops.Env, job
 	})
 
 	agentproto.Register(r, agentproto.OpShareDelete, validateShareDelete, func(ctx context.Context, a *agentproto.ShareDeleteArgs) (any, *agentproto.Error) {
+		if _, ok := zfsVolumeOf(env, a.Mount); ok { // dataset de la carpeta y sus instantáneas (ADR 0013)
+			res := agentproto.ShareDeleteResult{}
+			res.Reloaded, _ = diskops.RemoveSambaShare(ctx, a.Share)
+			ents, _ := os.ReadDir(filepath.Join(a.Mount, "@snapshots", a.Share))
+			for _, e := range ents {
+				if diskops.ValidSnapshotName(e.Name()) == nil {
+					res.Snapshots++
+				}
+			}
+			if err := zfsHelper(ctx, "zfs-sharedel", a); err != nil {
+				return nil, zerr(err)
+			}
+			return res, nil
+		}
 		if e := mountedBtrfs(env, a.Mount); e != nil {
 			return nil, e
 		}
@@ -69,8 +83,10 @@ func registerM21(r *agentproto.Registry, paths smart.Paths, env diskops.Env, job
 	})
 
 	agentproto.Register(r, agentproto.OpSharePerms, validateSharePerms, func(ctx context.Context, a *agentproto.SharePermsArgs) (any, *agentproto.Error) {
-		if e := mountedBtrfs(env, a.Mount); e != nil {
-			return nil, e
+		if _, zfsVol := zfsVolumeOf(env, a.Mount); !zfsVol { // en ZFS los permisos son iguales (acltype=posixacl)
+			if e := mountedBtrfs(env, a.Mount); e != nil {
+				return nil, e
+			}
 		}
 		path := filepath.Join(a.Mount, "@shares", a.Share)
 		if fi, err := os.Stat(path); err != nil || !fi.IsDir() {

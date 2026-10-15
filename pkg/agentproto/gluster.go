@@ -47,8 +47,10 @@ type GlusterStatusArgs struct {
 	Self string `json:"self"`
 }
 
-// GlusterOrphan es un brick de este nodo cuyo volumen ya no existe.
+// GlusterOrphan es un brick de este nodo cuyo volumen ya no existe. Kind "lv": un LV
+// dedicado (TangoVolume es el grupo); si no, una carpeta en un volumen de TangoOS.
 type GlusterOrphan struct {
+	Kind        string `json:"kind,omitempty"`
 	TangoVolume string `json:"tango_volume"`
 	Name        string `json:"name"`
 	Path        string `json:"path"`
@@ -74,6 +76,8 @@ type GlusterStatusResult struct {
 	Orphans   []GlusterOrphan    `json:"orphans"`
 	Mounts    []GlusterMountInfo `json:"mounts"`
 	Allowed   []string           `json:"allowed"`
+	TLS       GlusterTLSState    `json:"tls"`
+	LVBricks  []GlusterLVBrick   `json:"lv_bricks"`
 }
 
 // GlusterPeerArgs une (probe) o saca (detach) un nodo.
@@ -126,6 +130,9 @@ type GlusterBricksArgs struct {
 // GlusterMountArgs monta (o desmonta) un volumen en /cluster/<Name> y, con Share,
 // lo publica por SMB con los permisos de TangoOS (grupos tg-<carpeta>-rw/-ro).
 type GlusterMountArgs struct {
+	// Action "stop" o "start" solo detiene o arranca el montaje ya configurado (sin tocar
+	// la carpeta SMB): lo usa la parada controlada al prender o apagar TLS.
+	Action  string   `json:"action,omitempty"`
 	Name    string   `json:"name"`
 	Enabled bool     `json:"enabled"`
 	Backups []string `json:"backups"`

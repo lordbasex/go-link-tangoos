@@ -27,6 +27,7 @@ import (
 // y caché SSD. Cada escritura revalida los discos con la huella del plan, como §7.
 func registerPools(r *agentproto.Registry, paths smart.Paths, env diskops.Env, jobs *asyncJobs, log *slog.Logger) {
 	p := &pools{paths: paths, env: env, log: log}
+	poolsInst = p
 
 	agentproto.Register(r, agentproto.OpPoolReport, nil, func(ctx context.Context, _ *agentproto.NoArgs) (any, *agentproto.Error) {
 		rep, err := p.report(ctx)
@@ -197,6 +198,9 @@ func registerPools(r *agentproto.Registry, paths smart.Paths, env diskops.Env, j
 		return agentproto.OpRef{OpID: a.OpID}, nil
 	})
 }
+
+// poolsInst es la instancia de los grupos (el clúster crea bricks en LV dedicados).
+var poolsInst *pools
 
 type pools struct {
 	paths smart.Paths

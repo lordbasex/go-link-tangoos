@@ -34,6 +34,9 @@ func runM4Helper(task string, args []string) error {
 		return err
 	}
 	ctx := context.Background()
+	if strings.HasPrefix(task, "zfs-") {
+		return runZfsHelper(ctx, task, args) // pools ZFS (zfs_helper_linux.go)
+	}
 	switch task {
 	case "updates-simulate":
 		_ = runCmd(ctx, "/usr/bin/apt-get", "-q", "update")
@@ -342,7 +345,7 @@ func helperISCSI(ctx context.Context, a *agentproto.ISCSIApplyArgs) error {
 	}
 	if a.Enabled || dirExists(services.ConfigFS) {
 		stage(0.1, "Cargando los módulos de LIO")
-		for _, m := range []string{"target_core_mod", "target_core_file", "iscsi_target_mod"} {
+		for _, m := range []string{"target_core_mod", "target_core_file", "target_core_iblock", "iscsi_target_mod"} {
 			if err := runCmd(ctx, "/usr/sbin/modprobe", m); err != nil && a.Enabled {
 				return fmt.Errorf("modprobe %s: %w", m, err)
 			}
@@ -383,7 +386,11 @@ func helperISCSI(ctx context.Context, a *agentproto.ISCSIApplyArgs) error {
 	for _, t := range want {
 		i++
 		stage(0.4+0.5*float64(i)/float64(len(want)+1), "Configurando "+t.Name)
-		if err := ensureLUNFile(t); err != nil {
+		if t.Zvol != "" { // LUN sobre zvol: el dispositivo lo crea ZFS (storage.zfs.zvols.create)
+			if !fileExists(t.Zvol) {
+				return fmt.Errorf("%s: no existe el volumen de bloque %s", t.Name, t.Zvol)
+			}
+		} else if err := ensureLUNFile(t); err != nil {
 			return err
 		}
 		if err := applyPlan(services.Plan(t)); err != nil {

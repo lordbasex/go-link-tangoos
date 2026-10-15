@@ -245,3 +245,84 @@ Product bugs found and fixed by this battery:
   polls it every 20 s (cluster.status answers from cache while it runs).
 - Deleting orphan bricks needs DAC override (`.glusterfs` has mode-000 files): done in a transient unit that re-validates
   the path.
+
+## ZFS (ADR 0013) — VM 108, 2026-10-15
+
+OpenZFS 2.3.9 (Debian 13 contrib, `zfs-dkms`) on kernel `6.12.111+deb13-cloud-amd64`, 4 vCPU / 4 GB. Only free lab disks
+(S3, S6, M1, M2, D3, D4, C1, C2); `volume1` and `volume2` untouched (checked after the reboot).
+
+| Case (docs/14 rows 19–27) | Result |
+|---|---|
+| Enable ZFS (contrib + headers + DKMS) | ok — first install by hand: headers 47 s + install/DKMS 228 s; then purged and enabled **through the API** (`storage.zfs.enable`, `TANGO_E2E_ZFS_REINSTALL=1`): 3 min 59 s |
+| UI (Playwright): demo + real mirror S3 + S6 from the wizard, volume, destroy | ok — 6.8 s demo, 13.2 s real |
+| Mirror S3 + S6, validations (raidz1 with 2, name `mirror`, volume1's disk) | ok — `INVALID_PARAMS` ×2, `DEVICE_NOT_ELIGIBLE` |
+| Volume + SMB folder (dataset) + snapshot + file versions + Previous Versions (`smbclient allinfo` → `@GMT-`) | ok |
+| zvol 256 MiB + iSCSI target (`iblock`), zvol delete refused while used | ok |
+| Replace S6 → M1 with resilver, delete volume and pool through the API | ok — 20.6 s for rows 20–23 |
+| RAIDZ1 M2 + D3 + D4 + L2ARC (C1) + SLOG (C2) | ok — ≈ 8 GB |
+| Encrypted volume: lock, wrong passphrase, unlock, change passphrase, no passphrase in journald/state | ok |
+| Same with a **real VM reboot**: pool imported at boot, volume locked, unlocked with the new passphrase | ok — 147.6 s |
+| Scrub, export, importable list, import read-only (`/import/<pool>`), export, import read/write, destroy, disks free | ok — 32.1 s without reboot |
+| Fixture pools (non-TangoOS layout): import read-only and destroy through the API | ok |
+
+Unit tests: `internal/zfs` (names, layouts, capacity, argv, and the JSON/text parsers against real `zpool status/list -j`,
+`zfs list -j` and `zpool import` output captured on the VM: mirror + log + cache, raidz1 with an offline disk, scrub
+finished), `internal/services` (LUN on zvol), vitest (`zfs.test.ts`: rules and mock).
+
+Product bugs found and fixed by this battery:
+
+- Partitioning by `zpool create` exposed an old md superblock at 1 MiB in `sdX1` and udev assembled it ("Device or resource
+  busy"): disks are now zeroed in the first and last 17 MiB before ZFS uses them.
+- Disks of an imported pool looked "free" (ZFS creates no holders): eligibility now tries `O_EXCL`, and the inventory marks
+  pool members with their role.
+- `filepath.Join(…, "..")` is lexical: the vdev → disk resolver returned "block" for every disk.
+- Share permissions refused ZFS volumes (`mountedBtrfs`), and the snapshot root (a symlink) could not be opened by the
+  file worker (`O_NOFOLLOW`) nor resolved by tangod (no access to the folder): resolved with `readlink`.
+- LIO only fills `udev_path` when it is written as an attribute; `zpool destroy` hangs while LIO holds a zvol → the API
+  refuses export/destroy until the iSCSI target is gone.
+- Importing a pool with a locked encrypted volume created `/<vol>/@snapshots` on the system disk under the empty
+  mountpoint, which then made a new volume with that name "in use" (found by the reboot run).
+- OpenZFS ≥ 2.2 reports `xattr=sa` as `on` (alias).
+
+## Cluster, second stage: TLS, dedicated bricks, brick operations, quotas, snapshots, NFS (2026-10-15)
+
+`make e2e-cluster2 CLUSTER=172.17.0.48,172.17.0.49,172.17.0.50` (resets the three lab VMs 112–114 first; each has
+`volume1` on TANGO-G<n> and the storage pool `gpool` on an 8 GB disk TANGO-P<n> with `volume2`). **14/14 subtests pass
+(281 s)**:
+
+| Step | Result |
+|---|---|
+| Join without invitation / wrong code / code + fingerprint | `PEER_UNREACHABLE`, `JOIN_CODE`, then joined; the fingerprint A shows equals B's; B has A's CA and its invitation shows it |
+| Node joined the old way (`peer probe`), then certified | no certificate → certified with code + fingerprint (`certify`) |
+| Replica 3 on dedicated thin LV bricks (production preset) | bricks `/srv/gluster/gv_lv/brick`, XFS `isize=512`, LV `gb_gv_lv` thin in `gb_thin`; not listed as TangoOS volumes |
+| Mount on two nodes with an SMB share | the `tg-clustertls-rw` GID is the same on both nodes (fixed, ≥ 60000) |
+| Turn TLS on (controlled stop) with the volume mounted and in use | 21 s; `secure-access` and certificates on all nodes, `client.ssl`/`server.ssl` on, `auth.ssl-allow` = 3 CNs, remounted where it was, 40 files intact |
+| Traffic encrypted, no certificate no entry | tcpdump of ~440 KB of brick traffic while writing a marker: no plaintext; `openssl s_client` to 24007 shows the cluster CA; a client without certificate is cut at the brick handshake |
+| Quotas | enable, limit `/datos` 20 MB, list, remove, disable: ok. **Enforcement: not on this TLS + XFS volume** (GlusterFS reports 0 used); on a folder brick without TLS it stops writes at the limit (manual) — pending, docs/17 §6 |
+| Add a replica set (folder bricks), rebalance, remove the set (start → status → commit) | 1×3 → 2×3 → 1×3, rebalance and migration reach "completed", file count unchanged |
+| Snapshot, delete data, restore | restore refused while started (`VOLUME_STARTED`); after stop + restore + start the 40 files are back; bricks become `snap` |
+| Replace a brick (restored brick on node 3 → folder on `volume2`) | healed: 40 files in the new brick |
+| NFS export of the mounted volume | `fsid=<volume UUID>`; node 2 mounts NFS 4.2 and reads as a user of the share group (root_squash) |
+| Revocation: remove node 3 | its CN leaves `auth.ssl-allow` of the TLS volume (3 → 2), and node 1's firewall closes to it |
+| TLS off, delete, clean orphans (folders, LVs and the snapshot LVs left by the restore), detach | every node alone, no TLS, no volumes, no orphans |
+
+Unit tests: `internal/clusterpki` (CA, sign/verify, fingerprints, code MAC with channel binding), `internal/api`
+(`TestClusterJoinFlow`: two tangod over real TLS on localhost — wrong code counts, fingerprint matches, B gets A's CA,
+mTLS refuses a non-member; `TestClusterJoinLockout`: 5 wrong codes close the invitation), `internal/gluster` (brick
+forms, managed TLS options, quota/rebalance/remove-brick/snapshot parsers on XML captured on these VMs),
+`internal/services` (cluster NFS export with fsid), vitest of the mock (join with code, quotas, add + rebalance).
+UI: `web/e2e/cluster2.spec.ts` — demo walk-through and the real cluster (read-only); screenshots
+`tests/e2e-ui/artifacts/cluster2-*.png` (`demo-*` and `real-*`).
+
+Product bugs found and fixed by this battery:
+
+- The agent cannot load kernel modules: `dm_thin_pool` is now in `modules-load.d` and loaded by postinst.
+- The brick mount unit was `RequiredBy=glusterd`: stopping it (cleaning an orphan) **stopped glusterd**. Now `WantedBy`.
+- After restoring a snapshot GlusterFS runs the volume on `/run/gluster/snaps/<id>/brickN/brick`: accepted as a brick
+  form; the unused LV is an orphan and its snapshot LVs are cleaned with it.
+- GlusterFS 11 quotas only account by default: TangoOS sets `feature.simple-quota-pass-through=false`.
+- `Another transaction is in progress` while other nodes poll the status: management operations retry.
+- A just-joined node stays "Accepted peer request" for seconds: volume creation answers `PEER_JOINING` instead of failing.
+- A FUSE mount that exists but does not answer is redone; mounting waits until the new mount answers.
+- The firewall ruleset is regenerated when the agent starts (new port 24010 after an update).
+

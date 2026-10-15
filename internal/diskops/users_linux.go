@@ -39,6 +39,62 @@ func EnsureGroup(ctx context.Context, name string) (uint32, error) {
 	return uint32(gid), nil
 }
 
+// Grupos de las carpetas compartidas de un volumen del clúster: GID fijo y calculado del
+// nombre (ClusterGID), para que las ACL guardadas en GlusterFS valgan igual en cada nodo.
+const (
+	ClusterGIDMin  = 60000
+	ClusterGIDSpan = 5000
+)
+
+// ClusterGID es el GID de un grupo de carpeta del clúster: FNV-1a del nombre en
+// 60000–64999. Si dos nombres chocan, EnsureClusterGroup prueba el siguiente libre (el
+// mismo en todos los nodos mientras se creen en el mismo orden).
+func ClusterGID(name string) uint32 {
+	h := uint32(2166136261)
+	for i := 0; i < len(name); i++ {
+		h ^= uint32(name[i])
+		h *= 16777619
+	}
+	return ClusterGIDMin + h%ClusterGIDSpan
+}
+
+// EnsureClusterGroup crea (o corrige) un grupo con el GID de ClusterGID. Si ya existía con
+// otro GID, lo cambia (las ACL del volumen del clúster se vuelven a aplicar después).
+func EnsureClusterGroup(ctx context.Context, name string) (uint32, error) {
+	want := ClusterGID(name)
+	if g, err := osuser.LookupGroup(name); err == nil {
+		gid, _ := strconv.Atoi(g.Gid)
+		if gid < MinUID {
+			return 0, fmt.Errorf("%w: %s", ErrSystemUser, name)
+		}
+		if gid >= ClusterGIDMin && gid < ClusterGIDMin+ClusterGIDSpan {
+			return uint32(gid), nil
+		}
+		for i := uint32(0); i < 32; i++ {
+			try := ClusterGIDMin + (want-ClusterGIDMin+i)%ClusterGIDSpan
+			if _, err := osuser.LookupGroupId(strconv.Itoa(int(try))); err == nil {
+				continue
+			}
+			if _, err := run(ctx, "groupmod", "-g", strconv.Itoa(int(try)), name); err != nil {
+				return 0, err
+			}
+			return try, nil
+		}
+		return 0, fmt.Errorf("no hay GID libre para %s", name)
+	}
+	for i := uint32(0); i < 32; i++ {
+		try := ClusterGIDMin + (want-ClusterGIDMin+i)%ClusterGIDSpan
+		if _, err := osuser.LookupGroupId(strconv.Itoa(int(try))); err == nil {
+			continue
+		}
+		if _, err := run(ctx, "groupadd", "-g", strconv.Itoa(int(try)), name); err != nil {
+			return 0, err
+		}
+		return try, nil
+	}
+	return 0, fmt.Errorf("no hay GID libre para %s", name)
+}
+
 // EnsureUser crea el usuario Unix de un usuario de TangoOS: sin home, sin login,
 // grupo primario tango-users. Si ya existe tiene que ser uno de TangoOS (UID ≥ 2000).
 func EnsureUser(ctx context.Context, name, full string) (uint32, error) {

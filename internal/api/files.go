@@ -738,7 +738,7 @@ func (fa *filesAPI) snapshotRoot(ctx context.Context, loc location, snapID strin
 		if sn.ID == snapID {
 			_, name, _ := strings.Cut(sn.ID, "@")
 			mount := strings.TrimSuffix(loc.root, "/@shares/"+loc.share.Name)
-			return filepath.Join(mount, "@snapshots", loc.share.Name, name), true
+			return snapshotDir(filepath.Join(mount, "@snapshots", loc.share.Name, name)), true
 		}
 	}
 	return "", false
@@ -756,7 +756,7 @@ func (fa *filesAPI) versions(ctx context.Context, s *rtcrpc.Session, vp string) 
 	mount := strings.TrimSuffix(loc.root, "/@shares/"+loc.share.Name)
 	for _, sn := range fa.a.storage.snapshots(ctx, loc.share.ID) {
 		_, name, _ := strings.Cut(sn.ID, "@")
-		root := filepath.Join(mount, "@snapshots", loc.share.Name, name)
+		root := snapshotDir(filepath.Join(mount, "@snapshots", loc.share.Name, name))
 		var e fileworker.Entry
 		if err := fa.call(ctx, s, fileworker.Request{Op: fileworker.OpStat, Root: root, Rel: loc.rel}, &e); err != nil {
 			continue // en esa instantánea el archivo no existía (o no hay permiso)
@@ -1164,4 +1164,19 @@ func byteRange(size int64, offset, length *int64) (int64, int64, error) {
 		}
 	}
 	return from, to, nil
+}
+
+// snapshotDir resuelve la raíz de una instantánea: en Btrfs es el subvolumen mismo; en
+// ZFS, /vol/@snapshots/<Carpeta>/<nombre> es un enlace (del agente, root) a
+// /vol/@shares/<Carpeta>/.zfs/snapshot/<nombre> y el worker abre la raíz sin seguir
+// enlaces.
+func snapshotDir(p string) string {
+	// Readlink y no EvalSymlinks: tangod no tiene permiso de recorrer la carpeta (es de
+	// sus usuarios); el worker la abre con el UID de quien pide.
+	if fi, err := os.Lstat(p); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if target, err := os.Readlink(p); err == nil && !filepath.IsAbs(target) {
+			return filepath.Join(filepath.Dir(p), target)
+		}
+	}
+	return p
 }

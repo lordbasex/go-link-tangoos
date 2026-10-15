@@ -200,8 +200,9 @@ func CleanRel(rel string) (string, *Error) {
 
 // rootRe acepta solo raíces de carpetas compartidas (/volumen/@shares/Carpeta) y de
 // sus instantáneas (/volumen/@snapshots/Carpeta/<instantánea>). tangod es de
-// confianza, pero el worker no abre nada fuera de los volúmenes.
-var rootRe = regexp.MustCompile(`^/[A-Za-z0-9._-]+/@(shares/[^/\x00]+|snapshots/[^/\x00]+/[^/\x00]+)$`)
+// confianza, pero el worker no abre nada fuera de los volúmenes. En un volumen ZFS la
+// instantánea vive en /volumen/@shares/Carpeta/.zfs/snapshot/<instantánea> (ADR 0013).
+var rootRe = regexp.MustCompile(`^/[A-Za-z0-9._-]+/@(shares/[^/\x00]+|snapshots/[^/\x00]+/[^/\x00]+|shares/[^/\x00]+/\.zfs/snapshot/[^/\x00]+)$`)
 
 // ValidRoot valida la raíz de una operación.
 func ValidRoot(root string) *Error {

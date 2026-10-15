@@ -31,7 +31,8 @@ func SyncShadowLinks(snapDir string) error {
 	want := map[string]string{} // hora → instantánea
 	var names []string
 	for _, e := range ents {
-		if !e.IsDir() || ValidSnapshotName(e.Name()) != nil {
+		// En ZFS cada instantánea es un enlace a .zfs/snapshot/<nombre> (ADR 0013).
+		if (!e.IsDir() && e.Type()&os.ModeSymlink == 0) || ValidSnapshotName(e.Name()) != nil {
 			continue
 		}
 		names = append(names, e.Name())
