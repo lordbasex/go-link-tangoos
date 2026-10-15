@@ -656,3 +656,54 @@ development: a local instance with no restriction. No accounts: codes + device t
   bundle file; `connectLinkProof()` and `parseShareURL()` in `protocol-connect.ts`.
 - **Production:** signalhub needs `ALLOWED_APPS=go-link,tangoos` and `ALLOWED_ORIGINS` with `https://tangoos.go-link.org`.
   There is no need to raise `MAX_ROOMS_PER_SESSION` (rooms are not used).
+
+## 16. Cluster (GlusterFS)
+
+Several TangoOS joined with GlusterFS ([docs/17](../docs/17-cluster.md), [ADR 0011](../docs/adr/0011-glusterfs-cluster.md)).
+Every method is admin-only. Long operations return `{job}` and report through `jobs.*`.
+
+| Method | Params | Result |
+|---|---|---|
+| `cluster.status` | — | `ClusterStatus` |
+| `cluster.install` | — | `{job}`: nftables + firewall first, then `glusterfs-server`; also starts a stopped glusterd |
+| `cluster.invite` | `{host}` | `{host, addrs[], expires}`: this node accepts `host` for 15 minutes |
+| `cluster.invite.cancel` | `{host}` | `{}` |
+| `cluster.peer.add` | `{host}` | `{}`: opens this side and runs `peer probe`; `PEER_UNREACHABLE` if the other side did not invite |
+| `cluster.peer.remove` | `{host}` | `{}`: `peer detach` (fails while the node has bricks) |
+| `cluster.volume.create` | `{name, replica, arbiter?, preset?, options?, bricks:[{host, tangoVolume}], start}` | `{job}` |
+| `cluster.volume.action` | `{name, action: start\|stop\|delete}` | `{}` (`BUSY` if mounted on this node) |
+| `cluster.volume.options` | `{name, set: {key: value}, reset: [key]}` | `{}` |
+| `cluster.volume.heal` | `{name, full?}` | `{}` |
+| `cluster.volume.bricks` | `{name, op: add\|remove\|replace, replica?, bricks?, phase?, from?, to?}` | `{}` |
+| `cluster.volume.info` | `{name}` | `{text}`: same text as `gluster volume info <name>` |
+| `cluster.volume.mount` | `{name, enabled, share?, comment?, rw?, ro?}` | `{job}`: `/cluster/<name>` (+ SMB share) |
+| `cluster.brick.cleanup` | `{tangoVolume, name}` | `{}`: deletes `/<tangoVolume>/@gluster/<name>` if that volume no longer exists |
+
+Topic `cluster.changed` carries a full `ClusterStatus` when anything changes (polled every 20 s by tangod).
+
+```ts
+interface ClusterStatus {
+  installed: boolean; running: boolean; version?: string; error?: string;
+  self: string; selfAddrs: string[];
+  nodes: { uuid; host; hostnames?; connected; state; self; latencyMs /* -1 = no answer */ }[];
+  volumes: ClusterVolume[]; orphans: { tango_volume; name; path }[];
+  mounts: { name; path; mounted; share? }[];
+  allowed: string[];                       // IPs the firewall lets reach GlusterFS
+  invites: { host; addrs; expires }[];
+  tangoVolumes: { name; mount; free }[];   // where this node can hold a brick
+  presets: { id; name; desc; replica?; options }[];
+  options: { key; type: "bool"|"int"|"enum"|"percent"; min?; max?; enum?; global?; desc }[];
+}
+interface ClusterVolume {
+  name; id; status /* Created|Started|Stopped */; type /* Replicate|Distributed-Replicate|Distribute */;
+  replica; arbiter; sets; options: Record<string,string>; optOrder: string[];
+  bricks: { host; path; hostUuid; arbiter?; online; port?; pid?; sizeTotal?; sizeFree?; fsName?;
+            healPending /* -1 = brick did not answer */; splitBrain; healStatus? }[];
+  sizeTotal; sizeFree; healPending; splitBrain; online;
+}
+```
+
+Agent ops (`gluster.*`, pkg/agentproto/gluster.go) take typed arguments and build the
+`gluster --mode=script --xml` argv with internal/gluster: option keys come from an allow-list with typed values,
+hosts are IPs or lowercase DNS names, brick paths are `/volumeN/@gluster/<volume>`, and `force` is never sent on
+create. The agent has no network: tangod resolves names before `gluster.firewall`.

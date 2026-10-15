@@ -26,6 +26,7 @@ and what is pending is in [09 → Next](09-roadmap.md#next-post-v10).
 | 13 | [Desktop prototype](13-desktop-prototype.md) | Full spec: screens, shell, tokens, motion, apps, mock, acceptance |
 | 14 | [Test plan](14-test-plan.md) | Unit, API and UI end-to-end, storage matrix, installer |
 | 16 | [TangoConnect](16-tangoconnect.md) | Remote access and share links through signalhub |
+| 17 | [Cluster (GlusterFS)](17-cluster.md) | Several TangoOS joined with GlusterFS: invitations, firewall, replica 3 presets |
 | ADR | [adr/](adr/) | Recorded decisions |
 
 ## Key decisions (summary)
