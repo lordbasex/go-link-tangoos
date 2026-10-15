@@ -1,0 +1,1 @@
+{ "name": "@tango/app-cluster", "private": true, "version": "0.1.0", "type": "module", "exports": { ".": "./src/index.ts", "./Icon": "./src/Icon.tsx", "./*": "./src/*" } }

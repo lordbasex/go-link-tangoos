@@ -14,7 +14,7 @@ interface Layout {
 }
 
 const KEY = "tango.widgets.v1";
-const defaults: Layout = { order: catalog.map((w) => w.id), removed: [] };
+const defaults: Layout = { order: catalog.filter((w) => !w.optional).map((w) => w.id), removed: catalog.filter((w) => w.optional).map((w) => w.id) };
 const byId = new Map(catalog.map((w) => [w.id, w]));
 
 function loadLayout(): Layout {
@@ -24,7 +24,7 @@ function loadLayout(): Layout {
     const removed = (raw.removed ?? []).filter((id) => byId.has(id));
     const order = raw.order.filter((id) => byId.has(id) && !removed.includes(id));
     // widgets nuevos del catálogo que el layout guardado no conoce
-    for (const w of catalog) if (!order.includes(w.id) && !removed.includes(w.id)) order.push(w.id);
+    for (const w of catalog) if (!order.includes(w.id) && !removed.includes(w.id)) (w.optional ? removed : order).push(w.id);
     return { order, removed };
   } catch {
     return defaults;

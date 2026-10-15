@@ -84,9 +84,10 @@ func run(c config, log *slog.Logger) error {
 	registerStorage(reg, smart.DefaultPaths, diskops.DefaultEnv, newAsyncJobs(j, log), log)
 	registerApps(reg, newAsyncJobs(j, log), log) // Centro de apps: su propia cola (no bloquea al almacenamiento)
 	m4jobs := newAsyncJobs(j, log)
-	registerM4(reg, m4jobs, log) // M4: sistema, servicios, actualizaciones (m4_linux.go)
-	registerUPS(reg, m4jobs)     // UPS por USB con NUT (ups_linux.go), misma cola que M4
-	prevHook := fdHook           // term.spawn también responde con un fd (el PTY)
+	registerM4(reg, m4jobs, log)      // M4: sistema, servicios, actualizaciones (m4_linux.go)
+	registerUPS(reg, m4jobs)          // UPS por USB con NUT (ups_linux.go), misma cola que M4
+	registerGluster(reg, m4jobs, log) // clúster GlusterFS (gluster_linux.go, protocol/README.md §17)
+	prevHook := fdHook                // term.spawn también responde con un fd (el PTY)
 	fdHook = func(ctx context.Context, c *net.UnixConn, req *agentproto.Request, l *slog.Logger) bool {
 		return termHook(ctx, c, req, l) || (prevHook != nil && prevHook(ctx, c, req, l))
 	}

@@ -9,6 +9,7 @@ import {
   AppsIcon, DownloadsIcon, FilesIcon, LauncherIcon, LogIcon, MonitorIcon, SettingsIcon, SnapshotsIcon, StorageIcon, TangoLogo, TerminalIcon, TrashIcon, wallpaperURL,
 } from "@tango/theme-milonga";
 import { Widgets } from "@tango/widgets";
+import { ClusterIcon } from "@tango/app-cluster/Icon";
 
 const params = new URLSearchParams(location.search);
 const scenario = (params.get("scenario") ?? "healthy") as Scenario;
@@ -38,6 +39,7 @@ const apps: AppManifest[] = [
   { id: "tango.log", name: "Registro", icon: LogIcon, pinned: true, singleInstance: true, keywords: ["auditoría", "logs", "journal", "eventos"], window: { width: 980, height: 620, minWidth: 680, minHeight: 400 }, component: lazy(() => import("@tango/app-log")) },
   { id: "tango.terminal", name: "Terminal", icon: TerminalIcon, pinned: true, keywords: ["shell", "ssh", "consola", "bash"], window: { width: 820, height: 520, minWidth: 480, minHeight: 300 }, component: lazy(() => import("@tango/app-terminal")) },
   { id: "tango.apps", name: "Centro de apps", icon: AppsIcon, pinned: true, singleInstance: true, keywords: ["docker", "contenedores", "paquetes", "jellyfin", "immich", "aplicaciones"], window: { width: 980, height: 660, minWidth: 720, minHeight: 460 }, component: lazy(() => import("@tango/app-apps")) },
+  { id: "tango.cluster", name: "Clúster", icon: ClusterIcon, pinned: false, singleInstance: true, keywords: ["gluster", "glusterfs", "réplica", "nodos", "alta disponibilidad", "cluster"], window: { width: 1020, height: 660, minWidth: 760, minHeight: 460 }, component: lazy(() => import("@tango/app-cluster")) },
   { id: "tango.appview", name: "App", icon: AppsIcon, pinned: false, hidden: true, window: { width: 1100, height: 720, minWidth: 480, minHeight: 320 }, component: lazy(() => import("@tango/app-apps").then((m) => ({ default: m.AppView }))) },
 ];
 registerApps(apps);

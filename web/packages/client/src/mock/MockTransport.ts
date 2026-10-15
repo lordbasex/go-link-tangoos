@@ -4,6 +4,7 @@ import type { Disk, Evt, VolumeProfile, Job, MetricsFrame, Method, Notice, Param
 import { profileInfo, profileLabel } from "../raid";
 import * as data from "./data";
 import { appsHandlers } from "./apps";
+import { clusterHandlers } from "./cluster";
 import { m22Handlers } from "./m22";
 import { poolsHandlers } from "./pools";
 import { m4Handlers } from "./m4";
@@ -126,6 +127,7 @@ export class MockTransport implements Transport {
     ...usersHandlers({ me: () => this.currentUser ?? "federico" }),
     ...connectHandlers({ me: () => this.currentUser ?? "federico", emit: (t, d) => this.emit(t, d) }),
     ...appsHandlers({ scenario: () => this.scenario, emit: (t, d) => this.emit(t, d), startJob: (...a) => this.startJob(...a), notify: (...a) => this.notify(...a), volumes: () => this.vols }),
+    ...clusterHandlers({ scenario: () => this.scenario, emit: (t, d) => this.emit(t, d), startJob: (...a) => this.startJob(...a), notify: (...a) => this.notify(...a), volumes: () => this.vols }),
     "auth.users": () => data.users().filter((u) => u.name !== "tv-living").map(({ name, full, color }) => ({ name, full, color })),
     "auth.resume": () => {
       throw new RpcError("UNAUTHENTICATED", "El mock no guarda sesiones");
