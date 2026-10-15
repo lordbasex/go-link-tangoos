@@ -173,3 +173,38 @@ In addition, `DownloadRange` (range downloads and downloads from snapshots) was 
 ## Lab state at the end
 
 `volume1` RAID 1 (D1+D2) and `volume2` RAID 5 (S1, S2, S4, S5) healthy · folders Familia, Fotos and TimeMachine · users `admin` and `sofia` (`e2etester` deleted with `users.delete`) · apps Jellyfin and Uptime Kuma running · no iSCSI targets · Familia's trash empty · free disks S3, S6, M1, M2, D3, D4 with no signatures. `open-iscsi` was left installed on the VM (used by the iSCSI suite). The NFS export of Familia to 172.17.0.46 predates this run (M4 test with VM 109).
+
+## Cluster (GlusterFS) — 3 TangoOS nodes (2026-10-15)
+
+`make e2e-cluster CLUSTER=172.17.0.48,172.17.0.49,172.17.0.50 CLUSTER_VMIDS=112,113,114` against three fresh Debian 13
+VMs (Proxmox 112–114, TangoOS installed with `install.sh`, then the branch `.deb`; one 10 GB data disk each as `volume1`).
+GlusterFS 11.1 is uninstalled before each run, so the install path runs every time. **12/12 subtests pass (165 s)**:
+
+| Step | Result |
+|---|---|
+| Install GlusterFS from the app (nftables first, then glusterfs-server, glusterd ping-timeout 10) | 47–60 s per node |
+| `peer probe` without an invitation | rejected at once (`PEER_UNREACHABLE`, TCP reset from the other node's firewall) |
+| Invite on both sides, join 3 nodes | 13–23 s; nodes 2 and 3 open to each other on their own (pool members join the allow-list) |
+| Bad option / two bricks on one node in a replica set | `INVALID_PARAMS` |
+| Replica 3 with the "Production replica 3" preset, started | `1 x 3 = 3`, the 17 options (including `cluster.server-quorum-ratio: 51%`) match `gluster volume info` |
+| Mount at `/cluster/gv_e2e` on two nodes, SMB share with a TangoOS user | `fuse.glusterfs`; `smbclient put` from node 3 lands on node 2 |
+| Write on node 1, read on node 2, file present in node 3's brick | ok |
+| Hard power-off of node 3 (`qm stop`) | detected in ~10 s, 2/3 bricks, writes keep working (quorum), 22 entries pending heal |
+| Power on node 3, heal | healed in < 30 s, the 10 files are in node 3's brick; node 2's mount never dropped |
+| Unmount, stop, delete, clean orphan bricks on every node, detach | allow-lists shrink back on the next sync |
+
+Unit tests: `internal/gluster` parses real XML captured on these VMs (pool, info, status with a node down, heal summary,
+errors) and `InfoText` is byte-equal to the CLI's `gluster volume info`; `cmd/tango-agent` and `internal/api` cover
+validation, the firewall allow-list, the status cache and the heal merge. Screenshots: `tests/e2e-ui/artifacts/cluster-*.png`.
+
+Product bugs found and fixed by this battery:
+
+- Debian's `glusterd.vol` has `ping-timeout 0`: after a hard power-off the peer stays "Connected" and `volume status` waits
+  120 s. Install sets 10 s; status reads use the CLI `--timeout=8`.
+- Restarting the firewall unit restarted glusterd (it is `RequiredBy=glusterd`): updates now `reload`.
+- `glusterd` creates a brick directory but not its parents: bricks are `/volumeN/@gluster/<volume>` and every node keeps
+  `/volumeN/@gluster`.
+- `heal info` spawns `glfsheal`, which needs TCP and the agent has `PrivateNetwork`: it runs in a transient unit and tangod
+  polls it every 20 s (cluster.status answers from cache while it runs).
+- Deleting orphan bricks needs DAC override (`.glusterfs` has mode-000 files): done in a transient unit that re-validates
+  the path.

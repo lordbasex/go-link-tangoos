@@ -171,6 +171,7 @@ func TestCluster(t *testing.T) {
 		}
 	}
 	n1, n2, n3 := nodes[0], nodes[1], nodes[2]
+	top := t
 	const vol = "gv_e2e"
 	const smbUser = "clsmb" // usuario de TangoOS con cuenta Samba (la contraseña inicial de admin no la tiene)
 	smbPW := randomSecret(8)
@@ -373,6 +374,7 @@ func TestCluster(t *testing.T) {
 			time.Sleep(5 * time.Second)
 		}
 		n1.c.waitCluster("n3 de vuelta", 4*time.Minute, func(s clStatus) bool { return connectedPeers(s) == 3 && s.Volumes[0].Online == 3 })
+		n3.c = nodeAdmin(top, n3.ip) // n3 se reinició: la sesión WebRTC vieja murió con él (vive lo que el test padre)
 		// El demonio de curación de n3 tarda unos segundos en arrancar: HEAL_NOT_READY hasta entonces.
 		for i := 0; ; i++ {
 			_, err := n1.c.Call(ctxT(t, 30*time.Second), "cluster.volume.heal", map[string]any{"name": vol})
