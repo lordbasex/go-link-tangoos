@@ -5,7 +5,7 @@ import type { Disk, Volume } from "@tango/client";
 import { AreaChart, Badge, Button, Progress, Ring, Status } from "@tango/ui";
 import { openApp, toast } from "@tango/shell";
 import { Chassis } from "./Chassis";
-import { profileName, scrubAgo, useAvailable } from "./util";
+import { fsName, profileName, scrubAgo, useAvailable } from "./util";
 import { taskLine } from "./Maintenance";
 
 export function stateInfo(v: Volume): { tone: "ok" | "warn" | "crit" | "info"; text: string } {
@@ -21,6 +21,8 @@ export function stateInfo(v: Volume): { tone: "ok" | "warn" | "crit" | "info"; t
       return { tone: "info", text: "Verificando" };
     case "building":
       return { tone: "info", text: "Sincronizando el array" };
+    case "locked":
+      return { tone: "warn", text: "Bloqueado: está cifrado y cerrado" };
     default:
       return { tone: "warn", text: "Solo lectura" };
   }
@@ -42,7 +44,9 @@ export function VolumeCard({ v, disks }: { v: Volume; disks: Disk[] }) {
         <div className="ts-vol-head">
           <h3>{v.name}</h3>
           <Badge>{profileName[v.profile]}</Badge>
-          <Badge>Btrfs</Badge>
+          <Badge>{fsName[v.fs] ?? v.fs}</Badge>
+          {v.encrypted && <Badge tone={v.locked ? "warn" : undefined}>{v.locked ? "Bloqueado" : "Cifrado"}</Badge>}
+          {v.cache && <Badge>Caché SSD{v.cache.hitRatio != null ? ` · ${Math.round(v.cache.hitRatio * 100)} %` : ""}</Badge>}
         </div>
         <small className="ts-vol-tolerance" data-none={v.profile === "basic" || undefined}>
           {profileInfo(v.profile).tolerance}
@@ -59,7 +63,8 @@ export function VolumeCard({ v, disks }: { v: Volume; disks: Disk[] }) {
         )}
         {v.task && <small className="ts-vol-task tg-num">{taskLine(v)}</small>}
         <div className="ts-vol-meta tg-muted">
-          {members.length} {members.length === 1 ? "disco" : "discos"} · {v.mount}
+          {v.kind === "pool" ? "En un grupo de " : ""}
+          {members.length} {members.length === 1 ? "disco" : "discos"} · {v.mount || "sin montar"}
         </div>
       </div>
       {v.growth30d.some((g) => g > 0) && (

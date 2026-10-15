@@ -44,15 +44,17 @@ export interface Disk {
   foreign?: { label: string; profile: string };
 }
 
-export type VolumeProfile = "basic" | "raid1" | "raid5" | "raid6" | "raid10";
-export type VolumeState = "healthy" | "degraded" | "building" | "scrubbing" | "readonly";
+/** hybrid1/hybrid2 solo existen en volúmenes de un grupo (RAID híbrido, §16). */
+export type VolumeProfile = "basic" | "raid1" | "raid5" | "raid6" | "raid10" | "hybrid1" | "hybrid2";
+export type VolumeState = "healthy" | "degraded" | "building" | "scrubbing" | "readonly" | "locked";
 
 export interface Volume {
   id: string;
   name: string;
   mount: string;
   profile: VolumeProfile;
-  fs: "btrfs";
+  /** Los volúmenes de un grupo pueden ser XFS o ext4 (§16); los clásicos, siempre Btrfs. */
+  fs: "btrfs" | "xfs" | "ext4";
   size: Bytes;
   used: Bytes;
   state: VolumeState;
@@ -219,7 +221,7 @@ export interface RtcStats {
   channels: RtcChannelStats[];
 }
 
-export type Scenario = "healthy" | "degraded" | "busy" | "empty" | "migrate" | "lab";
+export type Scenario = "healthy" | "degraded" | "busy" | "empty" | "migrate" | "lab" | "pools" | "hybrid" | "locked" | "cluster";
 
 export interface VolumePlan {
   plan_id: string;
@@ -304,7 +306,7 @@ export type Result<M extends Method> = Methods[M]["result"];
 export interface Topics {
   metrics: MetricsFrame;
   "jobs.changed": Job;
-  "storage.changed": { what: "disks" | "volumes" };
+  "storage.changed": { what: "disks" | "volumes" | "pools" };
   "shares.changed": { id?: string };
   "snapshots.changed": { share: string };
   "files.changed": { dir: string };
@@ -334,3 +336,5 @@ export * from "./protocol-m4";
 export * from "./protocol-v1";
 export * from "./protocol-users";
 export * from "./protocol-connect";
+export * from "./protocol-pools";
+export * from "./protocol-cluster";

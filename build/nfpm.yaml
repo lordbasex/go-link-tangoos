@@ -20,7 +20,11 @@ depends:
   - btrfs-progs
   - passwd
   - adduser
+  - lvm2
+  - cryptsetup-bin
+  - thin-provisioning-tools
 recommends:
+  - xfsprogs
   - avahi-daemon
   - samba
 contents:
@@ -42,6 +46,10 @@ contents:
       mode: 0644
   - src: ./system/systemd/tango-agent.socket
     dst: /usr/lib/systemd/system/tango-agent.socket
+    file_info:
+      mode: 0644
+  - src: ./system/modules-load/tangoos.conf
+    dst: /usr/lib/modules-load.d/tangoos.conf
     file_info:
       mode: 0644
   - src: ./LICENSE

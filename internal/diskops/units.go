@@ -15,7 +15,17 @@ func MountUnitName(name string) string { return name + ".mount" }
 // arranca igual y la UI muestra el problema. Sin After=local-fs.target: systemd ya
 // ordena las .mount antes de local-fs.target y ese After armaba un ciclo que borraba
 // el montaje del arranque.
-func MountUnit(name, fsUUID string) string {
+func MountUnit(name, fsUUID string) string { return MountUnitFS(name, fsUUID, "btrfs") }
+
+// mountOptions son las opciones de montaje de cada filesystem de un volumen.
+var mountOptions = map[string]string{"btrfs": "noatime,space_cache=v2", "xfs": "noatime", "ext4": "noatime"}
+
+// MountUnitFS es MountUnit para un filesystem cualquiera de un volumen (ADR 0011).
+func MountUnitFS(name, fsUUID, fstype string) string {
+	opts := mountOptions[fstype]
+	if opts == "" {
+		opts = "noatime"
+	}
 	return fmt.Sprintf(`# Generada por TangoOS (tango-agent). No editar: se regenera.
 [Unit]
 Description=TangoOS volume %[1]s
@@ -24,13 +34,13 @@ Documentation=https://github.com/lordbasex/go-link-tangoos
 [Mount]
 What=/dev/disk/by-uuid/%[2]s
 Where=/%[1]s
-Type=btrfs
-Options=noatime,space_cache=v2
+Type=%[3]s
+Options=%[4]s
 TimeoutSec=120
 
 [Install]
 WantedBy=multi-user.target
-`, name, fsUUID)
+`, name, fsUUID, fstype, opts)
 }
 
 // MDConfLine es la línea ARRAY de mdadm.conf para un array.

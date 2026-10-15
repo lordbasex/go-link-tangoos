@@ -1,8 +1,8 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Clock3, Cpu, Fan, HardDrive, Loader2, MemoryStick, Network, Server, Thermometer, Timer, Users, XOctagon } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, Boxes, CheckCircle2, Clock3, Cpu, Database, Fan, HardDrive, Loader2, Lock, MemoryStick, Network, RefreshCw, Server, Thermometer, Timer, Users, XOctagon, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { fmtBytes, fmtDuration, fmtRate, useJobs, useLive, useMetrics, fmtCpuTemp, fmtRpm } from "@tango/client";
+import { clusterVolumeTone, fmtBytes, fmtDuration, fmtRate, useJobs, useLive, useMetrics, fmtCpuTemp, fmtRpm } from "@tango/client";
 import type { Disk, MetricsFrame, Volume } from "@tango/client";
 import { AreaChart, Ring } from "@tango/ui";
 
@@ -16,6 +16,8 @@ export interface WidgetDef {
   icon: LucideIcon;
   app?: { id: string; name: string };
   className?: string;
+  /** No aparece solo: se suma desde la galería (p. ej. el del clúster). */
+  optional?: boolean;
   Component: ComponentType;
 }
 
@@ -209,6 +211,8 @@ function volumeStatus(v: Volume): { tone: "ok" | "warn" | "crit" | "info"; label
       return { tone: "info", label: `Construyendo ${Math.round((v.progress ?? 0) * 100)} %`, icon: Loader2 };
     case "readonly":
       return { tone: "warn", label: "Solo lectura", icon: AlertTriangle };
+    case "locked":
+      return { tone: "warn", label: "Bloqueado (cifrado)", icon: Lock };
     default:
       return { tone: "ok", label: "En orden", icon: CheckCircle2 };
   }
@@ -221,7 +225,8 @@ function bayTone(d?: Disk): "ok" | "warn" | "crit" | "idle" | undefined {
   return d.use === "member" ? "ok" : "idle";
 }
 
-const profileName: Record<Volume["profile"], string> = { basic: "Básico", raid1: "RAID 1", raid5: "RAID 5", raid6: "RAID 6", raid10: "RAID 10" };
+const profileName: Record<Volume["profile"], string> = { basic: "Básico", raid1: "RAID 1", raid5: "RAID 5", raid6: "RAID 6", raid10: "RAID 10", hybrid1: "Híbrido-1", hybrid2: "Híbrido-2" };
+const fsName: Record<Volume["fs"], string> = { btrfs: "Btrfs", xfs: "XFS", ext4: "ext4" };
 
 function StorageWidget() {
   const vols = useLive("storage.volumes.list", undefined, ["storage.changed"]).data;
@@ -266,7 +271,8 @@ function StorageWidget() {
   }
 
   const st = volumeStatus(v);
-  const pct = v.used / v.size;
+  const pct = v.size ? v.used / v.size : 0;
+  const cached = vols.find((x) => x.cache);
   const busy = v.state === "scrubbing" || v.state === "building";
   return (
     <>
@@ -289,7 +295,7 @@ function StorageWidget() {
           <div className="tw-vol-name">
             <strong>{v.name}</strong>
             <span className="tw-sub">
-              {profileName[v.profile]} · Btrfs
+              {profileName[v.profile]} · {fsName[v.fs] ?? v.fs}
             </span>
           </div>
           <span className="tw-status" data-tone={st.tone}>
@@ -303,6 +309,11 @@ function StorageWidget() {
           ) : (
             <span className="tw-sub">
               {fmtBytes(v.size - v.used)} libres de {fmtBytes(v.size)}
+            </span>
+          )}
+          {cached && (
+            <span className="tw-sub tw-cache" title="Caché SSD: lecturas servidas desde la SSD sobre el total">
+              <Zap size={11} strokeWidth={2.4} /> Caché SSD{cached.cache?.hitRatio != null ? ` · ${Math.round(cached.cache.hitRatio * 100)} % aciertos` : ""}
             </span>
           )}
           {bayRow}
@@ -502,6 +513,60 @@ function SystemWidget() {
   );
 }
 
+// ---- Clúster (GlusterFS, protocol/README.md §17) -------------------------------------
+
+const CLUSTER = { id: "tango.cluster", name: "Clúster" };
+
+function ClusterWidget() {
+  const st = useLive("cluster.status", undefined, ["cluster.changed"]).data;
+  if (!st) return <Head icon={Boxes}>Clúster</Head>;
+  if (!st.installed || !st.running)
+    return (
+      <>
+        <Head icon={Boxes}>Clúster</Head>
+        <div className="tw-sys">
+          <span className="tw-sub">{st.installed ? "GlusterFS no está corriendo." : "Este NAS no está en un clúster."}</span>
+        </div>
+      </>
+    );
+  const up = st.nodes.filter((n) => n.connected).length;
+  const split = st.volumes.reduce((s, v) => s + v.splitBrain, 0);
+  const heal = st.volumes.reduce((s, v) => s + v.healPending, 0);
+  const bad = st.volumes.filter((v) => clusterVolumeTone(v) !== "ok" && clusterVolumeTone(v) !== "info").length;
+  const tone = (t: string) => (t === "crit" ? "var(--tg-crit)" : t === "warn" ? "var(--tg-warn)" : undefined);
+  return (
+    <>
+      <Head icon={Boxes} right={`${st.volumes.length} vol.`}>
+        Clúster
+      </Head>
+      <div className="tw-sys">
+        <div className="tw-sys-row">
+          <Server size={13} />
+          <span>Nodos</span>
+          <b style={{ color: tone(up < st.nodes.length ? "crit" : "ok") }}>
+            {up}/{st.nodes.length}
+          </b>
+        </div>
+        <div className="tw-sys-row">
+          <Database size={13} />
+          <span>Volúmenes</span>
+          <b style={{ color: tone(bad ? "warn" : "ok") }}>{bad ? `${bad} con avisos` : "en orden"}</b>
+        </div>
+        <div className="tw-sys-row">
+          <RefreshCw size={13} />
+          <span>Por curar</span>
+          <b style={{ color: tone(heal ? "warn" : "ok") }}>{heal}</b>
+        </div>
+        <div className="tw-sys-row">
+          <AlertTriangle size={13} />
+          <span>Split-brain</span>
+          <b style={{ color: tone(split ? "crit" : "ok") }}>{split}</b>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ---- Catálogo -----------------------------------------------------------------------
 
 export const catalog: WidgetDef[] = [
@@ -512,6 +577,7 @@ export const catalog: WidgetDef[] = [
   { id: "mem", name: "Memoria", description: "RAM en uso y caché", size: "small", icon: MemoryStick, app: MONITOR, Component: MemoryWidget },
   { id: "system", name: "Sistema", description: "Encendido, temperatura y sesiones", size: "small", icon: Server, app: MONITOR, Component: SystemWidget },
   { id: "activity", name: "Actividad", description: "Tareas en curso", size: "medium", icon: Activity, Component: ActivityWidget },
+  { id: "cluster", name: "Clúster", description: "Nodos, curación y split-brain", size: "small", icon: Boxes, app: CLUSTER, optional: true, Component: ClusterWidget },
 ];
 
 export const sizeUnits: Record<WidgetSize, number> = { small: 1, medium: 2, large: 4 };

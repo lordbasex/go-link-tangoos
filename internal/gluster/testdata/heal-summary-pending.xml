@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cliOutput>
+  <healInfo>
+    <bricks>
+      <brick hostUuid="78032939-8dba-4771-91ae-66c7da32ff63">
+        <name>tg-gluster1:/srv/fx/gv0/b</name>
+        <status>Connected</status>
+        <totalNumberOfEntries>6</totalNumberOfEntries>
+        <numberOfEntriesInHealPending>6</numberOfEntriesInHealPending>
+        <numberOfEntriesInSplitBrain>0</numberOfEntriesInSplitBrain>
+        <numberOfEntriesPossiblyHealing>0</numberOfEntriesPossiblyHealing>
+      </brick>
+      <brick hostUuid="3c86f99a-0088-4fd2-9821-65c9d6bd5e0e">
+        <name>tg-gluster2:/srv/fx/gv0/b</name>
+        <status>Connected</status>
+        <totalNumberOfEntries>6</totalNumberOfEntries>
+        <numberOfEntriesInHealPending>6</numberOfEntriesInHealPending>
+        <numberOfEntriesInSplitBrain>0</numberOfEntriesInSplitBrain>
+        <numberOfEntriesPossiblyHealing>0</numberOfEntriesPossiblyHealing>
+      </brick>
+      <brick hostUuid="-">
+        <name>tg-gluster3:/srv/fx/gv0/b</name>
+        <status>Failed to process entries completely. (Transport endpoint is not connected)totalNumberOfEntries0</status>
+      </brick>
+    </bricks>
+  </healInfo>
+  <opRet>0</opRet>
+  <opErrno>0</opErrno>
+  <opErrstr/>
+</cliOutput>

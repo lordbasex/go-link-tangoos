@@ -170,6 +170,8 @@
 .tw-big small { font-size: 15px; font-weight: 550; letter-spacing: 0; margin-left: 2px; color: var(--tg-widget-text-2); }
 .tw-mid { font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .tw-sub { font-size: 11.5px; color: var(--tg-widget-text-2); font-variant-numeric: tabular-nums; line-height: 1.35; }
+.tw-cache { display: inline-flex; align-items: center; gap: 4px; }
+.tw-cache svg { color: var(--tg-warn); }
 .tw-fill { flex: 1; min-height: 0; }
 
 /* CPU */

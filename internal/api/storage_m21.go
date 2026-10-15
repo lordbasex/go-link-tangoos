@@ -27,6 +27,9 @@ func (s *storageAPI) deletePlan(ctx context.Context, volID string) (DeletePlan, 
 	if err := diskops.ValidVolumeName(v.Name); err != nil || (v.Mount != "" && v.Mount != "/"+v.Name) {
 		return DeletePlan{}, rtcrpc.Errorf(codeNotEligible, "%s no es un volumen de TangoOS: eliminalo a mano", v.Name)
 	}
+	if v.Kind == "pool" { // volumen de un grupo (§16): no borra discos
+		return s.deletePoolVolumePlan(ctx, v)
+	}
 	if v.State == "building" || v.State == "scrubbing" {
 		return DeletePlan{}, rtcrpc.Errorf("VOLUME_BUSY", "esperá a que termine la %s", map[string]string{"building": "construcción", "scrubbing": "verificación"}[v.State])
 	}
@@ -72,6 +75,10 @@ func (s *storageAPI) deleteVolume(ctx context.Context, planID, token, typed stri
 	if !ok || v.Name != p.Name {
 		s.planner.consume(planID)
 		return "", rtcrpc.Errorf("VOLUME_NOT_FOUND", "el volumen ya no existe")
+	}
+	if v.Kind == "pool" {
+		s.planner.consume(planID)
+		return s.deletePoolVolume(p, v)
 	}
 	want := make([]string, len(p.Disks))
 	for i, d := range p.Disks {

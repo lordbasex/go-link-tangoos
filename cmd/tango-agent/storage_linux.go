@@ -133,7 +133,8 @@ func registerStorage(r *agentproto.Registry, paths smart.Paths, env diskops.Env,
 	})
 
 	registerM21(r, paths, env, jobs, log)
-	registerM22(r, paths, env, jobs, log) // mantenimiento de volúmenes (protocol/README.md §11)
+	registerM22(r, paths, env, jobs, log)   // mantenimiento de volúmenes (protocol/README.md §11)
+	registerPools(r, paths, env, jobs, log) // grupos de almacenamiento (protocol/README.md §16)
 
 	agentproto.Register(r, agentproto.OpSambaApply, validateSamba, func(ctx context.Context, a *agentproto.SambaShareArgs) (any, *agentproto.Error) {
 		if fi, err := os.Stat(a.Path); err != nil || !fi.IsDir() {

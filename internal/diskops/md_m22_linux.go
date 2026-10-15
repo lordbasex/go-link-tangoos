@@ -18,7 +18,7 @@ import (
 
 // MDOf devuelve el nombre del kernel ("md127") del array /dev/md/<name>.
 func MDOf(name string) (string, error) {
-	if err := ValidVolumeName(name); err != nil {
+	if err := ValidMDName(name); err != nil {
 		return "", err
 	}
 	t, err := filepath.EvalSymlinks("/dev/md/" + name)
@@ -74,7 +74,7 @@ func MDManage(ctx context.Context, name, action, dev string) error {
 	default:
 		return fmt.Errorf("acción de mdadm no permitida: %s", action)
 	}
-	if err := ValidVolumeName(name); err != nil {
+	if err := ValidMDName(name); err != nil {
 		return err
 	}
 	if !strings.HasPrefix(dev, "/dev/") || strings.Contains(dev, "..") {
@@ -87,7 +87,7 @@ func MDManage(ctx context.Context, name, action, dev string) error {
 // MDGrow cambia la cantidad de discos activos de un array (reshape en segundo plano).
 // backupFile se usa solo si mdadm lo exige (arrays sin espacio para mover el data offset).
 func MDGrow(ctx context.Context, name string, raidDevices int, backupFile string) error {
-	if err := ValidVolumeName(name); err != nil {
+	if err := ValidMDName(name); err != nil {
 		return err
 	}
 	if raidDevices < 2 || raidDevices > 16 {

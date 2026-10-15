@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -66,6 +67,10 @@ func TestHandler(t *testing.T) {
 }
 
 func TestEmbeddedBundleHasIndex(t *testing.T) {
+	// En un clon sin `make web` solo está dist/.keep: no hay bundle que verificar.
+	if _, err := fs.Stat(Bundle(), "index.html"); err != nil {
+		t.Skip("bundle no construido (make web)")
+	}
 	rec := get(t, Handler(Bundle()), "GET", "/")
 	if rec.Code != 200 {
 		t.Fatalf("embedded bundle: status %d", rec.Code)

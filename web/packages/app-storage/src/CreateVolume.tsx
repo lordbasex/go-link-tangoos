@@ -24,7 +24,7 @@ const errorAction: Record<string, { label: string; step: number | "replan" }> = 
   VOLUME_EXISTS: { label: "Cambiar nombre", step: 2 },
 };
 
-function useCountdown(expires: string | undefined) {
+export function useCountdown(expires: string | undefined) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!expires) return;
@@ -291,7 +291,7 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
         <>
           <p className="tg-muted ts-wiz-lead">Elegí cómo se protegen los datos. Podés cambiar a un perfil con más discos más adelante.</p>
           <div className="ts-profiles" role="radiogroup" aria-label="Perfil">
-            {PROFILES.map((info) => {
+            {PROFILES.filter((x) => !x.poolOnly).map((info) => {
               const p = info.id;
               const why = info.check(sel.length);
               return (

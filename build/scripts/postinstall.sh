@@ -24,6 +24,12 @@ enable() {
 enable tango-agent.socket
 enable tangod.service
 
+# Módulos de device-mapper de los grupos de almacenamiento (ADR 0011): el agente no
+# puede cargarlos (ProtectKernelModules); al arrancar los carga modules-load.d.
+if [ -d /run/systemd/system ]; then
+    modprobe -a dm_crypt dm_cache dm_cache_smq 2>/dev/null || true
+fi
+
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload
     systemctl restart tango-agent.socket

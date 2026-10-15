@@ -165,6 +165,7 @@ func (a *API) RegisterM4(r *rtcrpc.Router, d M4Deps) *m4API {
 	m.registerServices(r)
 	m.registerNotify(r)
 	m.ups = m.registerUPS(r)
+	m.registerCluster(r) // clúster GlusterFS (cluster.go, protocol/README.md §17)
 	m.registerTicket(r)
 	a.term = a.registerTerm(r, d.Agent)
 

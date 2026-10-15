@@ -7,7 +7,7 @@ import { join } from "node:path";
 // Recorrido E2E de UI sobre el producto real (docs/14 §E2E de UI).
 const ART = join(import.meta.dirname, "../../tests/e2e-ui/artifacts");
 mkdirSync(ART, { recursive: true });
-for (const f of readdirSync(ART)) if (f.endsWith(".png") && !f.startsWith("connect-")) rmSync(join(ART, f)); // capturas de esta corrida (las de TangoConnect son de e2e-connect)
+for (const f of readdirSync(ART)) if (f.endsWith(".png") && !f.startsWith("connect-") && !f.startsWith("pools-") && !f.startsWith("installer-")) rmSync(join(ART, f)); // capturas de esta corrida (TangoConnect, grupos e instalador tienen las suyas)
 const PASSWORD = process.env.TANGO_E2E_ADMIN_PASSWORD ?? "";
 const DESTRUCTIVE = process.env.TANGO_E2E_DESTRUCTIVE === "1";
 let shot = 0;
@@ -64,7 +64,9 @@ test("recorrido completo del escritorio", async ({ page }) => {
 
   if (DESTRUCTIVE) {
     await test.step("crear RAID 5 desde el asistente y borrarlo", async () => {
-      await page.getByRole("button", { name: "Crear volumen" }).first().click();
+      // "Crear volumen" crea dentro de un grupo (ADR 0011): el volumen clásico va por el menú.
+      await page.locator(".tg-menubar").getByRole("button", { name: "Volumen", exact: true }).click();
+      await page.getByRole("menuitem", { name: /Volumen clásico/ }).click();
       for (const s of ["TANGO-S3", "TANGO-S6", "TANGO-M1"]) {
         await page.getByRole("button", { name: new RegExp(`serie ${s}`) }).click();
       }

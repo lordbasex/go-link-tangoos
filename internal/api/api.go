@@ -95,6 +95,7 @@ type API struct {
 	storage *storageAPI
 	files   *filesAPI // Archivos real (files.go)
 	m22     *m22      // mantenimiento de volúmenes (storage_m22.go, protocol/README.md §11)
+	pools   *poolsAPI // grupos de almacenamiento (pools.go, protocol/README.md §16)
 	m4      *m4API    // producto (m4_*.go, protocol/README.md §12)
 	term    *termMgr  // consolas de administración (m4_term.go)
 	// onNotice reenvía cada aviso a los canales externos (notify, m4.go).
@@ -223,6 +224,7 @@ func Register(r *rtcrpc.Router, d Deps) *API {
 		a.registerApps(r, d) // Centro de apps (protocol/README.md §9)
 		a.registerUsers(r)
 		a.registerM22(r, d)
+		a.registerPools(r, d)
 		if sp, ok := d.Agent.(WorkerSpawner); ok {
 			a.files = a.registerFiles(r, sp) // protocol/README.md §10
 		}

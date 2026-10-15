@@ -13,6 +13,8 @@ export interface ProfileInfo {
   check: (n: number) => string | null;
   /** Capacidad útil antes de Btrfs. */
   usable: (sizes: Bytes[]) => Bytes;
+  /** Solo para grupos de almacenamiento (RAID híbrido, §16): no hay volumen clásico con este perfil. */
+  poolOnly?: true;
 }
 
 const min = (s: Bytes[]) => (s.length ? Math.min(...s) : 0);
@@ -62,6 +64,26 @@ export const PROFILES: ProfileInfo[] = [
     min: 4,
     check: (n) => (n < 4 ? "Elegí al menos 4 discos" : n % 2 ? "La cantidad de discos tiene que ser par" : null),
     usable: (s) => (s.length / 2) * min(s),
+  },
+  {
+    id: "hybrid1",
+    label: "Híbrido-1",
+    description: "Discos de distinto tamaño, aprovechados casi enteros.",
+    tolerance: "Soporta la falla de 1 disco.",
+    min: 2,
+    check: (n) => (n >= 2 ? null : "Elegí al menos 2 discos"),
+    usable: (s) => (s.length - 1) * min(s),
+    poolOnly: true,
+  },
+  {
+    id: "hybrid2",
+    label: "Híbrido-2",
+    description: "Discos de distinto tamaño, con doble protección.",
+    tolerance: "Soporta la falla de 2 discos a la vez.",
+    min: 4,
+    check: (n) => (n >= 4 ? null : "Elegí al menos 4 discos"),
+    usable: (s) => (s.length - 2) * min(s),
+    poolOnly: true,
   },
 ];
 
