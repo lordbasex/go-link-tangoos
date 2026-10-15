@@ -225,8 +225,8 @@ function bayTone(d?: Disk): "ok" | "warn" | "crit" | "idle" | undefined {
   return d.use === "member" ? "ok" : "idle";
 }
 
-const profileName: Record<Volume["profile"], string> = { basic: "Básico", raid1: "RAID 1", raid5: "RAID 5", raid6: "RAID 6", raid10: "RAID 10", hybrid1: "Híbrido-1", hybrid2: "Híbrido-2" };
-const fsName: Record<Volume["fs"], string> = { btrfs: "Btrfs", xfs: "XFS", ext4: "ext4" };
+const profileName: Record<Volume["profile"], string> = { basic: "Básico", raid1: "RAID 1", raid5: "RAID 5", raid6: "RAID 6", raid10: "RAID 10", hybrid1: "Híbrido-1", hybrid2: "Híbrido-2", stripe: "ZFS", mirror: "Espejo ZFS", raidz1: "RAIDZ1", raidz2: "RAIDZ2", raidz3: "RAIDZ3", mixed: "ZFS" };
+const fsName: Record<Volume["fs"], string> = { btrfs: "Btrfs", xfs: "XFS", ext4: "ext4", zfs: "ZFS" };
 
 function StorageWidget() {
   const vols = useLive("storage.volumes.list", undefined, ["storage.changed"]).data;

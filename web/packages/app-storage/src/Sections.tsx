@@ -10,6 +10,7 @@ import { diskUse, fsName, profileHelp, profileName, smartLabel, smartTone, scrub
 import { CacheSheet, CacheStats, KeyDeviceSheet, LockedCard, PassphraseSheet, UnlockSheet } from "./Security";
 import { ResizeVolume } from "./PoolVolume";
 import { ScheduleSheet, scheduleSummary } from "./Schedule";
+import { ZfsVolumeLayers } from "./Zfs";
 
 // ---- Discos -----------------------------------------------------------------------
 
@@ -164,6 +165,7 @@ export function Volumes({ disks, vols, pools = [], onCreate, onReplace, onExpand
       <KeyDeviceSheet vol={of("key")} onClose={() => setSheet(null)} />
       <CacheSheet vol={of("cache")} disks={disks} vols={vols} pools={pools} onClose={() => setSheet(null)} />
       {vols.map((v) => {
+        if (v.kind === "zfs") return <ZfsVolumeDetail key={v.id} v={v} disks={disks} onSheet={(kind) => setSheet({ kind, v })} />;
         if (v.kind === "pool")
           return <PoolVolumeDetail key={v.id} v={v} disks={disks} pools={pools} onSheet={(kind) => setSheet({ kind, v })} onDelete={() => setDeleting(v)} />;
         const members = disks.filter((d) => v.disks.includes(d.id) || d.volume === v.id);
@@ -233,6 +235,48 @@ export function Volumes({ disks, vols, pools = [], onCreate, onReplace, onExpand
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ---- Volumen ZFS (§18) ---------------------------------------------------------------------
+
+function ZfsVolumeDetail({ v, disks, onSheet }: { v: Volume; disks: Disk[]; onSheet: (k: "unlock" | "pass") => void }) {
+  const t = useTransport();
+  const lock = () =>
+    t.call("storage.volumes.lock", { volume: v.id }).then(
+      () => toast({ level: "ok", title: `${v.name} bloqueado`, body: "Se desmontó y se descargó la clave: hace falta la frase para volver a abrirlo." }),
+      (e: Error) => toast({ level: "warn", title: "No se pudo bloquear", body: e.message }),
+    );
+  return (
+    <div className="ts-stack">
+      {v.locked ? <LockedCard v={v} onUnlock={() => onSheet("unlock")} /> : <VolumeCard v={v} disks={disks} />}
+      <section className="tg-card">
+        <div className="ts-card-title">Cómo está armado</div>
+        <ZfsVolumeLayers v={v} />
+        <div className="ts-row-actions">
+          <Button disabled={v.locked || v.state !== "healthy"} onClick={() => t.call("storage.scrub.start", { volume: v.id }).catch((e: Error) => toast({ level: "warn", title: "No se pudo verificar", body: e.message }))}>
+            <ShieldCheck size={14} /> Verificar el pool
+          </Button>
+          {v.encrypted &&
+            (v.locked ? (
+              <Button variant="primary" onClick={() => onSheet("unlock")}>
+                <Unlock size={14} /> Desbloquear…
+              </Button>
+            ) : (
+              <Button onClick={lock}>
+                <Lock size={14} /> Bloquear
+              </Button>
+            ))}
+          {v.encrypted && (
+            <Button onClick={() => onSheet("pass")}>
+              <KeyRound size={14} /> Cambiar frase…
+            </Button>
+          )}
+          <Button onClick={() => openApp("tango.storage", { section: "zfs" })}>Ver el pool…</Button>
+          <span className="tg-muted ts-push">Última verificación {scrubAgo(v)}</span>
+        </div>
+      </section>
     </div>
   );
 }

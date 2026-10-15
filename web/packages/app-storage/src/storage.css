@@ -528,3 +528,54 @@
 .ts-profiles-pool .ts-profile { padding: 10px; }
 .ts-profiles-pool .ts-profile:nth-child(-n + 2) { grid-column: span 1; }
 @media (max-width: 900px) { .ts-profiles-pool { grid-template-columns: 1fr 1fr; } }
+
+/* ---- Pools ZFS (§18) ---------------------------------------------------------------- */
+.ts-app { --ts-zvol: #64748b; --ts-zfs-red: #8b5cf6; }
+.ts-zfs-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ts-zfs-enable { display: flex; flex-direction: column; gap: 14px; }
+.ts-zfs-enable-head { display: flex; gap: 14px; align-items: flex-start; }
+.ts-zfs-enable-head > svg { color: var(--tg-accent); flex: none; margin-top: 2px; }
+.ts-zfs-enable-head h3 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+.ts-zfs-enable-head p { margin: 0; max-width: 62ch; }
+.ts-zfs-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: var(--tg-text-2); max-width: 70ch; }
+.ts-zfs-points li { display: flex; gap: 8px; align-items: flex-start; line-height: 1.45; }
+.ts-zfs-points svg { flex: none; margin-top: 2px; color: var(--tg-text-3); }
+.ts-zfs-stage { flex-basis: 100%; font-size: 12px; }
+.ts-vdevs { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.ts-vdev { display: grid; grid-template-columns: 150px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; background: var(--tg-content-alt); border: 0.5px solid var(--tg-separator); }
+.ts-vdev[data-kind="log"], .ts-vdev[data-kind="cache"] { background: color-mix(in srgb, var(--tg-warn) 5%, var(--tg-content-alt)); }
+.ts-vdev-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ts-vdev-label strong { font-size: 12.5px; font-weight: 650; }
+.ts-vdev-label small { font-size: 11.5px; color: var(--tg-text-2); }
+.ts-vdev-disks { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.ts-vdev-disk { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--tg-separator); background: var(--tg-content-bg); font: inherit; color: inherit; text-align: left; cursor: default; }
+.ts-vdev-disk span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ts-vdev-disk b { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.ts-vdev-disk small { font-size: 11px; color: var(--tg-text-2); white-space: nowrap; }
+.ts-vdev-disk > svg { flex: none; color: var(--tg-ok); }
+.ts-vdev-disk[data-tone="warn"] { border-color: color-mix(in srgb, var(--tg-warn) 55%, transparent); cursor: pointer; }
+.ts-vdev-disk[data-tone="warn"] > svg { color: var(--tg-warn); }
+.ts-vdev-disk[data-tone="crit"] { border-color: color-mix(in srgb, var(--tg-crit) 60%, transparent); background: color-mix(in srgb, var(--tg-crit) 7%, var(--tg-content-bg)); cursor: pointer; }
+.ts-vdev-disk[data-tone="crit"] > svg { color: var(--tg-crit); }
+.ts-vdev-disk:focus-visible { outline: 2px solid var(--tg-accent); outline-offset: 2px; }
+.ts-zfs-scan { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 0.5px solid var(--tg-separator); font-size: 12.5px; color: var(--tg-text-2); }
+.ts-zfs-scan > svg { color: var(--tg-ok); flex: none; }
+.ts-zfs-sched { display: inline-flex; align-items: center; gap: 8px; }
+.ts-zfs-sched select { font: inherit; color: inherit; background: var(--tg-control-bg); border: 0.5px solid var(--tg-control-border); border-radius: var(--tg-radius-control); padding: 2px 6px; }
+.ts-zfs-import { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 0.5px solid var(--tg-separator); }
+.ts-zfs-import > div { display: flex; flex-direction: column; gap: 2px; }
+.ts-zfs-import small { font-size: 12px; }
+.ts-zfs-diagram { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
+.ts-zfs-diag-row { display: grid; grid-template-columns: 170px 1fr 70px; gap: 10px; align-items: center; font-size: 12px; color: var(--tg-text-2); }
+.ts-zfs-diag-row > small:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-zfs-diag-row > small:last-child { text-align: right; }
+.ts-zfs-diag-bar { display: flex; height: 14px; border-radius: 4px; overflow: hidden; gap: 1px; }
+.ts-zfs-diagram i[data-part="data"] { background: var(--tg-accent); }
+.ts-zfs-diagram i[data-part="red"] { background: var(--ts-zfs-red); }
+.ts-zfs-diagram i[data-part="unused"] { background: repeating-linear-gradient(-45deg, var(--tg-track) 0 4px, transparent 4px 8px); box-shadow: inset 0 0 0 1px var(--tg-separator-strong); }
+.ts-zfs-diag-legend { display: flex; gap: 16px; font-size: 12px; color: var(--tg-text-2); margin-top: 2px; }
+.ts-zfs-diag-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ts-zfs-diag-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.ts-field-inline { flex-direction: row; align-items: center; gap: 10px; }
+@media (max-width: 760px) { .ts-vdev { grid-template-columns: 1fr; } .ts-zfs-diag-row { grid-template-columns: 110px 1fr 56px; } }
+@media (prefers-reduced-motion: reduce) { .ts-vdev-disk { transition: none; } }
