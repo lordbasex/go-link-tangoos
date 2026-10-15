@@ -174,3 +174,36 @@ func ValidPassphrase(p string) error {
 	}
 	return nil
 }
+
+// ValidMDName valida el nombre de un md de TangoOS: un volumen clásico ("volume1") o un
+// md de un grupo ("pool1_md2", "pool1_cache1").
+func ValidMDName(name string) error {
+	if _, _, _, ok := ParsePoolMDName(name); ok {
+		return nil
+	}
+	return ValidVolumeName(name)
+}
+
+// FSLabelFrom lee la etiqueta de un filesystem de su superbloque.
+func FSLabelFrom(head []byte, fs string) string {
+	cut := func(off, n int) string {
+		if len(head) < off+n {
+			return ""
+		}
+		return strings.TrimRight(strings.TrimSpace(strings.TrimRight(string(head[off:off+n]), "\x00")), "\x00")
+	}
+	switch fs {
+	case "btrfs":
+		return cut(btrfsSuperOff+0x12b, 256)
+	case "xfs":
+		return cut(108, 12)
+	case "ext4":
+		return cut(1024+0x78, 16)
+	case "vfat":
+		if len(head) >= 0x5a && string(head[0x52:0x5a]) == "FAT32   " {
+			return strings.TrimSpace(cut(0x47, 11))
+		}
+		return strings.TrimSpace(cut(0x2b, 11))
+	}
+	return ""
+}

@@ -28,6 +28,14 @@ var allowedBins = map[string]string{
 	"gpasswd":   "/usr/bin/gpasswd",
 	"smbpasswd": "/usr/bin/smbpasswd",
 	"userdel":   "/usr/sbin/userdel",
+	// Grupos de almacenamiento (ADR 0011): LVM (un solo binario con subcomandos),
+	// LUKS2 y los filesystems de los volúmenes que no son Btrfs.
+	"lvm":        "/usr/sbin/lvm",
+	"cryptsetup": "/usr/sbin/cryptsetup",
+	"mkfs.xfs":   "/usr/sbin/mkfs.xfs",
+	"mkfs.ext4":  "/usr/sbin/mkfs.ext4",
+	"xfs_growfs": "/usr/sbin/xfs_growfs",
+	"resize2fs":  "/usr/sbin/resize2fs",
 }
 
 func run(ctx context.Context, bin string, args ...string) (string, error) {
@@ -36,6 +44,12 @@ func run(ctx context.Context, bin string, args ...string) (string, error) {
 
 // runStdin es run con stdin (contraseñas para smbpasswd): nunca aparece en el log.
 func runStdin(ctx context.Context, stdin, bin string, args ...string) (string, error) {
+	return runSecret(ctx, stdin, nil, bin, args...)
+}
+
+// runSecret es runStdin con un segundo secreto en un pipe heredado como fd 3
+// (/dev/fd/3): cryptsetup lo lee como "archivo de clave" sin que toque el disco.
+func runSecret(ctx context.Context, stdin string, fd3 []byte, bin string, args ...string) (string, error) {
 	path, ok := allowedBins[bin]
 	if !ok {
 		return "", fmt.Errorf("binario no permitido: %s", bin)
@@ -44,11 +58,23 @@ func runStdin(ctx context.Context, stdin, bin string, args ...string) (string, e
 		return "", fmt.Errorf("%s no está instalado", bin)
 	}
 	cmd := exec.CommandContext(ctx, path, args...)
-	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C", "LVM_SUPPRESS_FD_WARNINGS=1"}
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
+	}
+	if fd3 != nil {
+		r, w, err := os.Pipe()
+		if err != nil {
+			return "", err
+		}
+		defer r.Close()
+		cmd.ExtraFiles = []*os.File{r}
+		go func() {
+			_, _ = w.Write(fd3)
+			w.Close()
+		}()
 	}
 	if err := cmd.Run(); err != nil {
 		return out.String(), &ExecError{Bin: bin, Err: err, Output: limit(out.String(), 4096)}
@@ -74,7 +100,7 @@ func CreateMD(ctx context.Context, name, level string, devs []string) (string, e
 	if err := CheckProfileDisks(profile, len(devs)); err != nil {
 		return "", err
 	}
-	if err := ValidVolumeName(name); err != nil {
+	if err := ValidMDName(name); err != nil {
 		return "", err
 	}
 	// --homehost=any: el nombre queda "any:<name>" y el array se ensambla como
