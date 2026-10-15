@@ -339,14 +339,14 @@ type PVRow struct {
 
 type LVRow struct {
 	Name, VG, UUID, Attr, Segtype, Pool string
-	Size                                 uint64
-	Tags                                 []string
-	CacheMode                            string
-	CacheTotal, CacheUsed, CacheDirty    uint64
-	ReadHits, ReadMisses                 uint64
-	WriteHits, WriteMisses               uint64
-	ChunkSize                            uint64
-	Devices                              string
+	Size                                uint64
+	Tags                                []string
+	CacheMode                           string
+	CacheTotal, CacheUsed, CacheDirty   uint64
+	ReadHits, ReadMisses                uint64
+	WriteHits, WriteMisses              uint64
+	ChunkSize                           uint64
+	Devices                             string
 }
 
 func u64(s string) uint64 { n, _ := strconv.ParseUint(strings.TrimSpace(s), 10, 64); return n }

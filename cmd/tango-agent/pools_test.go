@@ -39,13 +39,13 @@ func TestValidatePools(t *testing.T) {
 		t.Fatal(e)
 	}
 	for name, mut := range map[string]func(a *agentproto.LVCreateArgs){
-		"fs":                     func(a *agentproto.LVCreateArgs) { a.FS = "zfs" },
-		"chico":                  func(a *agentproto.LVCreateArgs) { a.Size = 1 << 20 },
-		"frase corta":            func(a *agentproto.LVCreateArgs) { a.Passphrase = "corta" },
-		"frase con salto":        func(a *agentproto.LVCreateArgs) { a.Passphrase = "una frase\nmuy larga" },
-		"llave sin cifrado":      func(a *agentproto.LVCreateArgs) { a.Passphrase = "" },
+		"fs":                      func(a *agentproto.LVCreateArgs) { a.FS = "zfs" },
+		"chico":                   func(a *agentproto.LVCreateArgs) { a.Size = 1 << 20 },
+		"frase corta":             func(a *agentproto.LVCreateArgs) { a.Passphrase = "corta" },
+		"frase con salto":         func(a *agentproto.LVCreateArgs) { a.Passphrase = "una frase\nmuy larga" },
+		"llave sin cifrado":       func(a *agentproto.LVCreateArgs) { a.Passphrase = "" },
 		"llave con UUID inválido": func(a *agentproto.LVCreateArgs) { a.KeyDevice = "../../etc" },
-		"nombre":                 func(a *agentproto.LVCreateArgs) { a.Name = "Volume3" },
+		"nombre":                  func(a *agentproto.LVCreateArgs) { a.Name = "Volume3" },
 	} {
 		b := lv
 		mut(&b)
