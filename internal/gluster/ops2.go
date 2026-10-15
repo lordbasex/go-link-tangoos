@@ -169,6 +169,12 @@ func ArgsQuota(vol, op, path string, limit uint64) ([]string, error) {
 	return nil, fmt.Errorf("operación de cuota inválida: %q", op)
 }
 
+// ArgsQuotaEnforce hace que GlusterFS 11 aplique los límites: por defecto el traductor de
+// cuotas solo cuenta el uso (feature.simple-quota-pass-through=true).
+func ArgsQuotaEnforce(vol string) []string {
+	return []string{"volume", "set", vol, "feature.simple-quota-pass-through", "false"}
+}
+
 // Quota es el límite de un directorio.
 type Quota struct {
 	Path        string `json:"path"`

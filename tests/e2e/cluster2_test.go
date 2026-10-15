@@ -325,10 +325,12 @@ func TestCluster2(t *testing.T) {
 		// escribe de a 5 MB hasta que frena; tiene que frenar antes de los 75 MB.
 		// Como un usuario del grupo de la carpeta (GlusterFS no limita a root).
 		as := "setpriv --reuid=$(id -u admin) --regid=$(getent group tg-clustertls-rw | cut -d: -f3) --clear-groups "
-		out, _ := sshTo(n1.ip, "for i in $(seq 1 15); do "+as+"dd if=/dev/zero of=/cluster/"+vol+"/datos/q$i bs=1M count=5 2>&1 | grep -q 'quota exceeded' && { echo FRENADO-$i; break; }; sleep 2; done; rm -f /cluster/"+vol+"/datos/q*")
+		out, _ := sshTo(n1.ip, "for i in $(seq 1 15); do r=$("+as+"dd if=/dev/zero of=/cluster/"+vol+"/datos/q$i bs=1M count=5 2>&1 | tail -1); echo \"$r\" | grep -q 'quota exceeded' && { echo FRENADO-$i; break; }; echo \"$r\"; sleep 2; done; rm -f /cluster/"+vol+"/datos/q*")
 		if !strings.Contains(out, "FRENADO-") {
-			t.Fatalf("la cuota no frenó la escritura: %q", out)
+			diag, _ := sshTo(n1.ip, "gluster volume get "+vol+" all | grep -E 'quota|simple-quota'; gluster volume quota "+vol+" list")
+			t.Fatalf("la cuota no frenó la escritura:\n%s\n%s", out, diag)
 		}
+		out = out[strings.Index(out, "FRENADO-"):]
 		t.Logf("la cuota frenó en el bloque %s", strings.TrimSpace(strings.TrimPrefix(out, "FRENADO-")))
 		n1.c.call("cluster.volume.quota", map[string]any{"name": vol, "op": "remove", "path": "/datos"}, &q)
 		if len(q.Quotas) != 0 {
@@ -346,7 +348,9 @@ func TestCluster2(t *testing.T) {
 		var r jobRef
 		n1.c.call("cluster.volume.bricks.add", map[string]any{"name": vol, "bricks": bricks}, &r)
 		n1.c.waitJob(r.Job, 3*time.Minute)
-		s := n1.c.waitCluster2("2 × 3", time.Minute, func(s clStatus2) bool { return len(s.Volumes[0].Bricks) == 6 && s.Volumes[0].Type == "Distributed-Replicate" })
+		s := n1.c.waitCluster2("2 × 3", time.Minute, func(s clStatus2) bool {
+			return len(s.Volumes[0].Bricks) == 6 && s.Volumes[0].Type == "Distributed-Replicate"
+		})
 		_ = s
 		var task struct {
 			Task *struct {

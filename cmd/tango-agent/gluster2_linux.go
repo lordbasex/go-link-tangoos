@@ -130,6 +130,13 @@ func registerGluster2(r *agentproto.Registry, log *slog.Logger) {
 		if err := gluster.ParseResult(out, 0); err != nil {
 			return nil, glusterAgentErr(err)
 		}
+		// GlusterFS 11 cuenta el uso pero deja pasar las escrituras
+		// (feature.simple-quota-pass-through=true por defecto): sin esto, la cuota no frena.
+		if a.Op == "enable" {
+			if err := glusterDo(ctx, gluster.ArgsQuotaEnforce(a.Name)); err != nil {
+				return nil, glusterAgentErr(err)
+			}
+		}
 		return struct{}{}, nil
 	})
 

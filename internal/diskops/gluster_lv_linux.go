@@ -158,7 +158,9 @@ TimeoutSec=120
 
 [Install]
 WantedBy=multi-user.target
-RequiredBy=glusterd.service
+# Wants y no Requires: con Requires, detener este montaje (al limpiar un brick huérfano)
+# detendría glusterd entero.
+WantedBy=glusterd.service
 `, vol, fsUUID)
 }
 
