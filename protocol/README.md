@@ -774,3 +774,58 @@ Agent ops (`gluster.*`, pkg/agentproto/gluster.go) take typed arguments and buil
 `gluster --mode=script --xml` argv with internal/gluster: option keys come from an allow-list with typed values,
 hosts are IPs or lowercase DNS names, brick paths are `/volumeN/@gluster/<volume>`, and `force` is never sent on
 create. The agent has no network: tangod resolves names before `gluster.firewall`.
+
+## 18. ZFS (ADR 0013)
+
+Optional: OpenZFS is installed on demand (contrib + DKMS). Every method except `storage.zfs.status` and
+`storage.zfs.scrubSchedule.get` is admin-only. Long operations return `{job}` and report through `jobs.*`.
+Destructive ones use the plan → `confirm_token` → typed name flow of §7 (`PLAN_EXPIRED`, `CONFIRMATION_MISMATCH`,
+`DEVICE_CHANGED`, `DEVICE_NOT_ELIGIBLE`).
+
+```jsonc
+storage.zfs.status            null → {enabled, installed, version?, enabling?: jobId, pools: ZfsPool[]}
+storage.zfs.importable        null → [{name, guid, state, status?, disks: [Disk.id]}]   // reads every disk
+storage.zfs.enable            null → {job}                                // ZFS_UNAVAILABLE elsewhere until done
+storage.zfs.plan              {name, layout: "stripe"|"mirror"|"raidz1"|"raidz2"|"raidz3", disks} → ZfsPlan
+storage.zfs.create            {plan_id, confirm_token, typed_name} → {job}
+storage.zfs.addPlan           {pool, kind: "data"|"cache"|"log", disks} → ZfsPlan   // data = same shape as the pool
+storage.zfs.add               {plan_id, confirm_token, typed_name} → {job}
+storage.zfs.auxRemove         {pool, kind: "cache"|"log", vdev} → {job}
+storage.zfs.replacePlan       {pool, old: vdev name | GUID | Disk.id, replacement: Disk.id} → ZfsPlan
+storage.zfs.replace           {plan_id, confirm_token, typed_name} → {job}          // follows the resilver
+storage.zfs.scrub             {pool, stop?} → {job}
+storage.zfs.scrubSchedule.get {pool} → {enabled, days, last?}                       // default every 30 days
+storage.zfs.scrubSchedule.set {pool, enabled, days: 1..365} → same
+storage.zfs.import            {pool: name|guid, readonly} → {job}    // readonly: altroot /import/<pool>, nothing written
+storage.zfs.export            {pool} → {job}                         // VOLUME_BUSY with apps or a zvol used by iSCSI
+storage.zfs.destroyPlan       {pool} → DeletePlan                    // same VOLUME_BUSY rules
+storage.zfs.destroy           {plan_id, confirm_token, typed_name} → {job}   // labels cleared, disks free
+storage.zfs.volumes.create    {pool, name, quota?, reservation?, encryption: {passphrase} | null} → {job}
+storage.zfs.volumes.set       {volume, quota, reservation} → {}     // 0 = none
+storage.zfs.volumes.deletePlan {volume} → DeletePlan
+storage.zfs.volumes.delete    {plan_id, confirm_token, typed_name} → {job}
+storage.zfs.zvols.create      {pool, name, size, sparse} → {}       // /dev/zvol/<pool>/zvol/<name>
+storage.zfs.zvols.delete      {pool, name} → {}                     // VOLUME_BUSY while an iSCSI target uses it
+
+ZfsPool = {id: "zfs:<name>", name, guid, health: "ONLINE"|"DEGRADED"|…, state: "healthy"|"degraded"|"faulted"|"readonly",
+  readonly, layout: ZfsLayout|"mixed", size, allocated, free, raw, frag, vdevs: ZfsVdev[], logs: ZfsVdev[], cache: ZfsLeaf[],
+  scan: {function: "scrub"|"resilver", state: "scanning"|"finished"|"canceled", progress, start?, end?, errors} | null,
+  errors?, volumes: [Volume.id], zvols: [{name, size, used, device}], encrypted: [Volume.id], disks: [Disk.id],
+  other: [{name, mountpoint, mounted, used}]}                           // datasets outside the TangoOS layout
+ZfsVdev = {name, type: "disk"|ZfsLayout, state, read, write, cksum, size, disks: ZfsLeaf[]}
+ZfsLeaf = {id: Disk.id | "", name, guid, state, read, write, cksum, resilvering?}
+ZfsPlan = {plan_id, expires, confirm_token, summary: {name, kind, layout, usable, raw, wasted, tolerance, disks, notes}}
+```
+
+- A ZFS volume is a `Volume` with `kind: "zfs"`, `fs: "zfs"`, `pool: "zfs:<name>"`, `profile` = the pool layout and
+  `id: "zfs-<dataset guid>"`. Its folders, snapshots, Files versions, Previous Versions, permissions and apps work through
+  the existing methods (§7, §8, §10, §11). `storage.scrub.start` on a ZFS volume scrubs its pool.
+- Encrypted ZFS volumes use `storage.volumes.unlock|lock|passphrase` (§16); `useKeyDevice` → `NOT_SUPPORTED`.
+- Disks: members of a ZFS pool come in `storage.disks.list` with `use: "member"`, `pool: "zfs:<name>"` and
+  `role: "data"|"cache"|"log"`. A disk held open by the kernel (an imported pool) is never eligible.
+- iSCSI (§12): `iscsi.targets.create` accepts `zvol: "/dev/zvol/<pool>/zvol/<name>"` instead of `volume`/`sizeBytes`
+  (backstore `iblock`); `iscsi.targets.list` returns `zvol` for those targets.
+- Agent ops (`pkg/agentproto/zfs.go`): `zfs.report {importable}`, `zfs.enable`, `zfs.pool.create|add|aux|replace|scrub|
+  import|export|destroy`, `zfs.volume.create|set|delete|unlock|lock|passphrase`, `zfs.zvol.create|delete`. Reads use
+  `zpool status -j -p`, `zpool list -j -p`, `zfs list -j -p` (OpenZFS 2.3 JSON; `zpool import` has no `-j` and is parsed
+  as text). Everything that mounts runs in the transient unit; passphrases only go through stdin inside the agent.

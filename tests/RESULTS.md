@@ -245,3 +245,40 @@ Product bugs found and fixed by this battery:
   polls it every 20 s (cluster.status answers from cache while it runs).
 - Deleting orphan bricks needs DAC override (`.glusterfs` has mode-000 files): done in a transient unit that re-validates
   the path.
+
+## ZFS (ADR 0013) — VM 108, 2026-10-15
+
+OpenZFS 2.3.9 (Debian 13 contrib, `zfs-dkms`) on kernel `6.12.111+deb13-cloud-amd64`, 4 vCPU / 4 GB. Only free lab disks
+(S3, S6, M1, M2, D3, D4, C1, C2); `volume1` and `volume2` untouched (checked after the reboot).
+
+| Case (docs/14 rows 19–27) | Result |
+|---|---|
+| Enable ZFS (contrib + headers + DKMS) | ok — headers 47 s + install/DKMS 228 s (first install, measured by hand with the same steps the op runs) |
+| Mirror S3 + S6, validations (raidz1 with 2, name `mirror`, volume1's disk) | ok — `INVALID_PARAMS` ×2, `DEVICE_NOT_ELIGIBLE` |
+| Volume + SMB folder (dataset) + snapshot + file versions + Previous Versions (`smbclient allinfo` → `@GMT-`) | ok |
+| zvol 256 MiB + iSCSI target (`iblock`), zvol delete refused while used | ok |
+| Replace S6 → M1 with resilver, delete volume and pool through the API | ok — 20.6 s for rows 20–23 |
+| RAIDZ1 M2 + D3 + D4 + L2ARC (C1) + SLOG (C2) | ok — ≈ 8 GB |
+| Encrypted volume: lock, wrong passphrase, unlock, change passphrase, no passphrase in journald/state | ok |
+| Same with a **real VM reboot**: pool imported at boot, volume locked, unlocked with the new passphrase | ok — 147.6 s |
+| Scrub, export, importable list, import read-only (`/import/<pool>`), export, import read/write, destroy, disks free | ok — 32.1 s without reboot |
+| Fixture pools (non-TangoOS layout): import read-only and destroy through the API | ok |
+
+Unit tests: `internal/zfs` (names, layouts, capacity, argv, and the JSON/text parsers against real `zpool status/list -j`,
+`zfs list -j` and `zpool import` output captured on the VM: mirror + log + cache, raidz1 with an offline disk, scrub
+finished), `internal/services` (LUN on zvol), vitest (`zfs.test.ts`: rules and mock).
+
+Product bugs found and fixed by this battery:
+
+- Partitioning by `zpool create` exposed an old md superblock at 1 MiB in `sdX1` and udev assembled it ("Device or resource
+  busy"): disks are now zeroed in the first and last 17 MiB before ZFS uses them.
+- Disks of an imported pool looked "free" (ZFS creates no holders): eligibility now tries `O_EXCL`, and the inventory marks
+  pool members with their role.
+- `filepath.Join(…, "..")` is lexical: the vdev → disk resolver returned "block" for every disk.
+- Share permissions refused ZFS volumes (`mountedBtrfs`), and the snapshot root (a symlink) could not be opened by the
+  file worker (`O_NOFOLLOW`) nor resolved by tangod (no access to the folder): resolved with `readlink`.
+- LIO only fills `udev_path` when it is written as an attribute; `zpool destroy` hangs while LIO holds a zvol → the API
+  refuses export/destroy until the iSCSI target is gone.
+- Importing a pool with a locked encrypted volume created `/<vol>/@snapshots` on the system disk under the empty
+  mountpoint, which then made a new volume with that name "in use" (found by the reboot run).
+- OpenZFS ≥ 2.2 reports `xattr=sa` as `on` (alias).

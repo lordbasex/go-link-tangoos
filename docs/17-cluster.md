@@ -68,6 +68,11 @@ When the LVM pool exists, production-style bricks will be a dedicated LV with XF
 `/srv/gluster/<volume>`: extend `gluster.BrickPath`/`ValidBrick` (internal/gluster) and the brick picker; the
 rest of the flow (create, status, heal, orphans) does not change.
 
+**ZFS (ADR 0013):** a ZFS volume named `volumeN` is already a valid brick origin: it is mounted at `/volumeN`, the
+agent creates `/volumeN/@gluster` the same way, and the brick directory inherits the GlusterFS-recommended
+`xattr=sa` and `acltype=posixacl` from the pool root. No change to `ValidBrick` was needed; the brick picker lists
+ZFS volumes like any other mounted volume.
+
 ## 5. Operational notes
 
 - Debian's `glusterd.vol` ships `ping-timeout 0`: after a hard power-off the peer stays "Connected" and
