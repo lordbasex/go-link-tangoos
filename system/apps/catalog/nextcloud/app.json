@@ -1,0 +1,14 @@
+{
+  "id": "nextcloud",
+  "name": "Nextcloud",
+  "description": "Tu nube privada: archivos, calendario, contactos y documentos compartidos.",
+  "category": "Productividad",
+  "version": "35.0.1",
+  "webPort": 8082,
+  "options": [
+    {"key": "ADMIN_USER", "label": "Usuario administrador", "type": "string", "default": "admin", "required": true},
+    {"key": "ADMIN_PASSWORD", "label": "Contraseña del administrador", "type": "password", "required": true, "generate": true}
+  ],
+  "notes": "Usa SQLite para arrancar simple. Para muchos usuarios conviene migrar a una base de datos aparte.",
+  "sizeHint": 1300000000
+}

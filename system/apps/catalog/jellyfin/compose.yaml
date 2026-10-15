@@ -1,0 +1,17 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:12.2
+    restart: unless-stopped
+    ports:
+      - "${PORT}:8096"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${DATA}/config:/config
+      - ${DATA}/cache:/cache
+      - ${DATA}/media:/media
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8096/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

@@ -1,0 +1,7 @@
+{
+  "name": "@tango/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "dev": "vite --host", "build": "tsc -p tsconfig.json --noEmit && vite build", "preview": "vite preview --host" }
+}

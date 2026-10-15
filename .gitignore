@@ -1,0 +1,25 @@
+tests/e2e-logs/
+tests/e2e-ui/test-results/
+web/e2e/node_modules/
+build/keys/dev-ed25519
+# Build del portal embebido por cmd/connect-web (make connect-web lo regenera); se versiona solo .keep.
+cmd/connect-web/dist/*
+!cmd/connect-web/dist/.keep
+
+# Builds y binarios (se regeneran con make)
+/dist/
+/tango-agent
+/tangoctl
+node_modules/
+web/apps/*/dist/
+web/packages/*/dist/
+*.tsbuildinfo
+# Escritorio embebido en tangod: lo genera `make web`; se versiona solo .keep (go:embed necesita el directorio)
+internal/webui/dist/*
+!internal/webui/dist/.keep
+# Material de trabajo, no forma parte del producto
+/research_notes/
+/reports/
+.DS_Store
+/local.mk
+tests/e2e-ui/results.json

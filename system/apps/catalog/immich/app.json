@@ -1,0 +1,13 @@
+{
+  "id": "immich",
+  "name": "Immich",
+  "description": "Fotos y videos de toda la familia, con respaldo automático desde el celular.",
+  "category": "Fotos",
+  "version": "v3.3.3",
+  "webPort": 2283,
+  "options": [
+    {"key": "DB_PASSWORD", "label": "Contraseña de la base de datos", "type": "password", "required": true, "generate": true}
+  ],
+  "notes": "Instala servidor, base de datos y caché. El reconocimiento de caras (machine learning) queda apagado para ahorrar memoria.",
+  "sizeHint": 2600000000
+}

@@ -1,0 +1,11 @@
+{
+  "id": "syncthing",
+  "name": "Syncthing",
+  "description": "Sincroniza carpetas entre tus computadoras y el NAS, sin nube de por medio.",
+  "category": "Utilidades",
+  "version": "2.1.6",
+  "webPort": 8385,
+  "options": [],
+  "notes": "Abre los puertos 22000 (TCP/UDP) y 21027 (UDP) para encontrar otros equipos en la red.",
+  "sizeHint": 60000000
+}

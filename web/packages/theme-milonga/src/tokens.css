@@ -1,0 +1,197 @@
+/* Tema "Milonga": estética macOS con paleta propia (docs/13 §5). */
+:root {
+  --tg-font: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --tg-font-features: "cv05" 1, "cv08" 1, "ss03" 1, "tnum" 0;
+
+  --tg-accent: #2f7cf6;
+  --tg-accent-rgb: 47 124 246;
+  --tg-on-accent: #fff;
+
+  --tg-radius-window: 12px;
+  --tg-radius-popover: 10px;
+  --tg-radius-control: 6px;
+  --tg-radius-card: 10px;
+  --tg-radius-widget: 22px;
+  --tg-radius-dock: 20px;
+
+  --tg-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --tg-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --tg-dur-fast: 120ms;
+  --tg-dur: 200ms;
+  --tg-dur-slow: 320ms;
+
+  --tg-blur: 30px;
+  --tg-menubar-h: 28px;
+
+  --tg-red: #ff5f57;
+  --tg-yellow: #febc2e;
+  --tg-green: #28c840;
+
+  color-scheme: light;
+  --tg-text-1: #1c1c1f;
+  --tg-text-2: rgb(28 28 31 / 0.62);
+  --tg-text-3: rgb(28 28 31 / 0.38);
+  --tg-window-bg: rgb(250 250 252 / 0.86);
+  --tg-sidebar-bg: rgb(234 234 240 / 0.62);
+  --tg-content-bg: #ffffff;
+  --tg-content-alt: #f6f6f8;
+  --tg-menubar-bg: rgb(246 246 248 / 0.5);
+  --tg-menubar-text: #1c1c1f;
+  --tg-dock-bg: rgb(250 250 252 / 0.32);
+  --tg-dock-border: rgb(255 255 255 / 0.5);
+  --tg-popover-bg: rgb(246 246 248 / 0.8);
+  --tg-widget-bg: rgb(250 250 252 / 0.62);
+  --tg-widget-text-2: rgb(28 28 31 / 0.55);
+  --tg-separator: rgb(0 0 0 / 0.09);
+  --tg-separator-strong: rgb(0 0 0 / 0.16);
+  --tg-window-ring: rgb(0 0 0 / 0.18);
+  --tg-control-bg: #ffffff;
+  --tg-control-border: rgb(0 0 0 / 0.12);
+  --tg-control-inactive: #d0d0d4;
+  --tg-hover: rgb(0 0 0 / 0.05);
+  --tg-selected: rgb(var(--tg-accent-rgb) / 0.14);
+  --tg-track: rgb(0 0 0 / 0.08);
+  --tg-shadow-window: 0 0 0 0.5px var(--tg-window-ring), 0 22px 60px rgb(0 0 0 / 0.28), 0 6px 16px rgb(0 0 0 / 0.08);
+  --tg-shadow-window-inactive: 0 0 0 0.5px var(--tg-window-ring), 0 10px 28px rgb(0 0 0 / 0.16);
+  --tg-shadow-popover: 0 0 0 0.5px rgb(0 0 0 / 0.14), 0 12px 36px rgb(0 0 0 / 0.2);
+
+  --tg-ok: #1fa463;
+  --tg-warn: #d98a00;
+  --tg-crit: #e5484d;
+  --tg-info: #2f7cf6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --tg-text-1: #f4f4f6;
+    --tg-text-2: rgb(244 244 246 / 0.62);
+    --tg-text-3: rgb(244 244 246 / 0.36);
+    --tg-window-bg: rgb(34 34 38 / 0.82);
+    --tg-sidebar-bg: rgb(48 48 54 / 0.5);
+    --tg-content-bg: #1e1e22;
+    --tg-content-alt: #242429;
+    --tg-menubar-bg: rgb(20 20 24 / 0.36);
+    --tg-menubar-text: #f4f4f6;
+    --tg-dock-bg: rgb(40 40 46 / 0.36);
+    --tg-dock-border: rgb(255 255 255 / 0.16);
+    --tg-popover-bg: rgb(40 40 46 / 0.78);
+    --tg-widget-bg: rgb(36 36 42 / 0.55);
+    --tg-widget-text-2: rgb(244 244 246 / 0.55);
+    --tg-separator: rgb(255 255 255 / 0.08);
+    --tg-separator-strong: rgb(255 255 255 / 0.16);
+    --tg-window-ring: rgb(255 255 255 / 0.13);
+    --tg-control-bg: rgb(255 255 255 / 0.08);
+    --tg-control-border: rgb(255 255 255 / 0.1);
+    --tg-control-inactive: #4a4a50;
+    --tg-hover: rgb(255 255 255 / 0.06);
+    --tg-selected: rgb(var(--tg-accent-rgb) / 0.3);
+    --tg-track: rgb(255 255 255 / 0.1);
+    --tg-shadow-window: 0 0 0 0.5px rgb(0 0 0 / 0.6), inset 0 0 0 0.5px var(--tg-window-ring), 0 24px 70px rgb(0 0 0 / 0.55);
+    --tg-shadow-window-inactive: 0 0 0 0.5px rgb(0 0 0 / 0.5), inset 0 0 0 0.5px var(--tg-window-ring), 0 10px 30px rgb(0 0 0 / 0.35);
+    --tg-shadow-popover: 0 0 0 0.5px rgb(0 0 0 / 0.5), inset 0 0 0 0.5px rgb(255 255 255 / 0.1), 0 14px 40px rgb(0 0 0 / 0.45);
+    --tg-ok: #3dd68c;
+    --tg-warn: #f5b43c;
+    --tg-crit: #ff6b6e;
+    --tg-info: #5b9bff;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --tg-text-1: #f4f4f6;
+  --tg-text-2: rgb(244 244 246 / 0.62);
+  --tg-text-3: rgb(244 244 246 / 0.36);
+  --tg-window-bg: rgb(34 34 38 / 0.82);
+  --tg-sidebar-bg: rgb(48 48 54 / 0.5);
+  --tg-content-bg: #1e1e22;
+  --tg-content-alt: #242429;
+  --tg-menubar-bg: rgb(20 20 24 / 0.36);
+  --tg-menubar-text: #f4f4f6;
+  --tg-dock-bg: rgb(40 40 46 / 0.36);
+  --tg-dock-border: rgb(255 255 255 / 0.16);
+  --tg-popover-bg: rgb(40 40 46 / 0.78);
+  --tg-widget-bg: rgb(36 36 42 / 0.55);
+  --tg-widget-text-2: rgb(244 244 246 / 0.55);
+  --tg-separator: rgb(255 255 255 / 0.08);
+  --tg-separator-strong: rgb(255 255 255 / 0.16);
+  --tg-window-ring: rgb(255 255 255 / 0.13);
+  --tg-control-bg: rgb(255 255 255 / 0.08);
+  --tg-control-border: rgb(255 255 255 / 0.1);
+  --tg-control-inactive: #4a4a50;
+  --tg-hover: rgb(255 255 255 / 0.06);
+  --tg-selected: rgb(var(--tg-accent-rgb) / 0.3);
+  --tg-track: rgb(255 255 255 / 0.1);
+  --tg-shadow-window: 0 0 0 0.5px rgb(0 0 0 / 0.6), inset 0 0 0 0.5px var(--tg-window-ring), 0 24px 70px rgb(0 0 0 / 0.55);
+  --tg-shadow-window-inactive: 0 0 0 0.5px rgb(0 0 0 / 0.5), inset 0 0 0 0.5px var(--tg-window-ring), 0 10px 30px rgb(0 0 0 / 0.35);
+  --tg-shadow-popover: 0 0 0 0.5px rgb(0 0 0 / 0.5), inset 0 0 0 0.5px rgb(255 255 255 / 0.1), 0 14px 40px rgb(0 0 0 / 0.45);
+  --tg-ok: #3dd68c;
+  --tg-warn: #f5b43c;
+  --tg-crit: #ff6b6e;
+  --tg-info: #5b9bff;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --tg-blur: 0px;
+    --tg-window-bg: var(--tg-content-alt);
+    --tg-menubar-bg: var(--tg-content-alt);
+    --tg-dock-bg: var(--tg-content-alt);
+    --tg-popover-bg: var(--tg-content-alt);
+    --tg-widget-bg: var(--tg-content-alt);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--tg-font);
+  font-feature-settings: var(--tg-font-features);
+  font-size: 13px;
+  line-height: 1.38;
+  color: var(--tg-text-1);
+  background: #1b1530;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--tg-accent-rgb) / 0.75);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: rgb(var(--tg-accent-rgb) / 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 100ms !important;
+    transition-duration: 100ms !important;
+  }
+}

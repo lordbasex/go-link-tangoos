@@ -1,0 +1,207 @@
+#!/bin/sh
+# tango-install — motor del instalador de TangoOS por imagen (docs/08, fase 2).
+# Corre dentro del sistema "live" que arranca la ISO: el mismo Debian 13 que se va a instalar.
+# Copia ese sistema (squashfs) al disco elegido, arma el layout Btrfs y deja el NAS listo.
+#
+# Es el único lugar con la lógica de instalación. Lo usan dos interfaces:
+#   - modo texto (whiptail, este mismo script sin --disk): tango-installer-text.service en tty1;
+#   - modo gráfico (tango-installer, Go): lo llama con parámetros y lee el progreso.
+#
+#   tango-install                          modo texto interactivo
+#   tango-install --list-disks             discos candidatos, TSV: dispositivo, bytes, modelo, serie
+#   tango-install --disk /dev/sda --yes [--hostname tango] [--keyboard latam]
+#                 [--ip A/N,GW,DNS] [--no-reboot] [--progress]
+#       --progress   agrega líneas "@@ <0-100> <texto>" para la interfaz gráfica
+#
+# Parámetros de kernel:
+#   tango.auto            no pregunta nada si hay un solo disco destino (laboratorio)
+#   tango.disk=SERIE|RUTA con tango.auto: el disco de sistema aunque haya varios (laboratorio)
+#   tango.ip=A/N,GW,DNS   IP fija en vez de DHCP (laboratorio)
+set -eu
+export LANG=C.UTF-8 TERM=${TERM:-linux}
+LOG=/run/tango-install.log
+exec 3>&1
+CMDLINE=$(cat /proc/cmdline)
+arg() { for a in $CMDLINE; do case "$a" in "$1"=*) echo "${a#*=}"; return;; "$1") echo 1; return;; esac; done; }
+AUTO=$(arg tango.auto || true)
+AUTODISK=$(arg tango.disk || true)
+IPCFG=$(arg tango.ip || true)
+MEDIUM=/run/live/medium
+SQUASH=$MEDIUM/live/filesystem.squashfs
+
+TARGET= YES= HOSTNAME_NEW=tango KEYMAP=latam REBOOT=1 PROGRESS= LIST=
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --list-disks) LIST=1; shift ;;
+        --disk) TARGET=$2; shift 2 ;;
+        --yes) YES=1; shift ;;
+        --hostname) HOSTNAME_NEW=$2; shift 2 ;;
+        --keyboard) KEYMAP=$2; shift 2 ;;
+        --ip) IPCFG=$2; shift 2 ;;
+        --no-reboot) REBOOT=; shift ;;
+        --progress) PROGRESS=1; shift ;;
+        *) echo "argumento desconocido: $1" >&2; exit 2 ;;
+    esac
+done
+
+log() { echo "[$(date +%T)] $*" | tee -a "$LOG" >&3; }
+step() { [ -n "$PROGRESS" ] && echo "@@ $1 $2" >&3; log "$2"; }
+fail() { [ -n "$PROGRESS" ] && echo "@@ERR $*" >&3; log "ERROR: $*"; exit 1; }
+
+# ---- Discos candidatos: nunca el medio de instalación ni uno de solo lectura ----
+boot_dev=$(lsblk -no PKNAME "$(findmnt -no SOURCE "$MEDIUM" 2>/dev/null || echo /dev/null)" 2>/dev/null || true)
+DISKS=$(lsblk -dnpo NAME,TYPE,RO | awk '$2=="disk" && $3=="0"{print $1}' | grep -v "^/dev/${boot_dev:-NONE}$" | grep -v '^/dev/zram' || true)
+describe() { lsblk -dno SIZE,MODEL,SERIAL "$1" | tr -s ' '; }
+
+if [ -n "$LIST" ]; then
+    for d in $DISKS; do
+        printf '%s\t%s\t%s\t%s\n' "$d" "$(lsblk -dbno SIZE "$d" | tr -d ' ')" \
+            "$(lsblk -dno MODEL "$d" | sed 's/[[:space:]]*$//')" "$(lsblk -dno SERIAL "$d" | sed 's/[[:space:]]*$//')"
+    done
+    exit 0
+fi
+
+T0=$(date +%s)
+N=$(echo "$DISKS" | grep -c . || true)
+[ "$N" -gt 0 ] || fail "No encontré ningún disco donde instalar."
+
+if [ -n "$TARGET" ]; then
+    # Modo con parámetros (interfaz gráfica): el disco tiene que ser uno de los candidatos.
+    echo "$DISKS" | grep -qx "$TARGET" || fail "$TARGET no es un disco donde se pueda instalar"
+    [ -n "$YES" ] || fail "falta --yes: instalar borra $TARGET"
+else
+    clear 2>/dev/null || true
+    cat >&3 <<'BANNER'
+
+   ▌▐▐▌  TangoOS — instalador (modo texto)
+   Tu NAS. Tu control. Open source.
+
+BANNER
+    if [ -n "$AUTO" ] && [ -n "$AUTODISK" ]; then
+        for d in $DISKS; do
+            if [ "$d" = "$AUTODISK" ] || [ "$(lsblk -dno SERIAL "$d" | tr -d ' ')" = "$AUTODISK" ]; then TARGET=$d; fi
+        done
+        [ -n "$TARGET" ] || fail "tango.disk=$AUTODISK no coincide con ningún disco"
+    elif [ "$N" -eq 1 ] && [ -n "$AUTO" ]; then
+        TARGET=$DISKS
+    else
+        set --
+        for d in $DISKS; do set -- "$@" "$d" "$(describe "$d")"; done
+        TARGET=$(whiptail --title "TangoOS" --ok-button "Continuar" --cancel-button "Cancelar" --menu "Elegí el disco de sistema.\nLos demás discos no se tocan." 18 74 8 "$@" 3>&1 1>&2 2>&3) || exit 1
+    fi
+    if [ -z "$AUTO" ]; then
+        whiptail --title "Se va a borrar el disco" --yes-button "Borrar e instalar" --no-button "Cancelar" --yesno "Todo lo que hay en\n\n  $TARGET  $(describe "$TARGET")\n\nse borra para instalar TangoOS. ¿Continuar?" 14 74 --defaultno || exit 1
+    fi
+    clear 2>/dev/null || true
+fi
+case "$HOSTNAME_NEW" in ''|-*|*[!a-zA-Z0-9-]*) fail "nombre de equipo inválido: $HOSTNAME_NEW" ;; esac
+case "$KEYMAP" in *[!a-z0-9_]*|'') fail "teclado inválido: $KEYMAP" ;; esac
+step 2 "Disco de sistema: $TARGET ($(describe "$TARGET"))"
+
+# ---- 2. Particiones: bios_grub + ESP + /boot ext4 + raíz Btrfs (docs/08) ----
+case "$TARGET" in *nvme*|*mmcblk*|*loop*) P="${TARGET}p" ;; *) P="$TARGET" ;; esac
+wipefs -aq "$TARGET"
+sgdisk -Z "$TARGET" >/dev/null 2>&1 || true
+sgdisk -n1:1M:+1M -t1:ef02 -c1:bios \
+       -n2:0:+512M -t2:ef00 -c2:esp \
+       -n3:0:+1G -t3:8300 -c3:boot \
+       -n4:0:0 -t4:8300 -c4:tangoos "$TARGET" >/dev/null
+partprobe "$TARGET" 2>/dev/null || true; udevadm settle
+mkfs.vfat -F32 -n EFI "${P}2" >/dev/null
+mkfs.ext4 -qF -L tangoos-boot "${P}3"
+mkfs.btrfs -qf -L tangoos "${P}4"
+step 8 "Particiones creadas"
+
+T=/target
+mkdir -p $T
+mount "${P}4" $T
+for sv in @rootfs @var-log @tango @snapshots; do btrfs -q subvolume create "$T/$sv"; done
+umount $T
+OPTS=compress=zstd:1,noatime
+mount -o "$OPTS,subvol=@rootfs" "${P}4" $T
+mkdir -p $T/boot $T/var/log $T/var/lib/tango $T/.snapshots
+mount -o "$OPTS,subvol=@var-log" "${P}4" $T/var/log
+mount -o "$OPTS,subvol=@tango" "${P}4" $T/var/lib/tango
+mount -o "$OPTS,subvol=@snapshots" "${P}4" $T/.snapshots
+mount "${P}3" $T/boot
+mkdir -p $T/boot/efi
+mount "${P}2" $T/boot/efi
+
+# ---- 3. Copiar el sistema (10 → 80 %) ----
+step 10 "Copiando el sistema…"
+if [ -n "$PROGRESS" ]; then
+    # unsquashfs -percentage escribe un número por línea; se escala a 10–80 %.
+    unsquashfs -percentage -f -d $T "$SQUASH" 2>/dev/null | awk '{ p = int(10 + $1 * 0.7); if (p != last) { print "@@ " p " Copiando el sistema…"; fflush(); last = p } }' >&3
+else
+    unsquashfs -q -f -d $T "$SQUASH" >/dev/null
+fi
+[ -x $T/usr/bin/tangod ] || fail "la copia del sistema falló"   # en el pipe se pierde el código de unsquashfs
+step 80 "Sistema copiado"
+
+U() { blkid -s UUID -o value "$1"; }
+cat > $T/etc/fstab <<FSTAB
+# TangoOS — generado por tango-install
+UUID=$(U "${P}4") /               btrfs subvol=@rootfs,$OPTS   0 0
+UUID=$(U "${P}4") /var/log        btrfs subvol=@var-log,$OPTS  0 0
+UUID=$(U "${P}4") /var/lib/tango  btrfs subvol=@tango,$OPTS    0 0
+UUID=$(U "${P}4") /.snapshots     btrfs subvol=@snapshots,$OPTS 0 0
+UUID=$(U "${P}3") /boot           ext4  defaults               0 2
+UUID=$(U "${P}2") /boot/efi       vfat  umask=0077             0 1
+FSTAB
+
+# Nombre del equipo y teclado.
+echo "$HOSTNAME_NEW" > $T/etc/hostname
+printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s.local %s\n::1\tlocalhost ip6-localhost ip6-loopback\n' "$HOSTNAME_NEW" "$HOSTNAME_NEW" > $T/etc/hosts
+printf 'XKBMODEL="pc105"\nXKBLAYOUT="%s"\n' "$KEYMAP" > $T/etc/default/keyboard
+
+# Red: DHCP por defecto (systemd-networkd); IP fija si se pidió.
+mkdir -p $T/etc/systemd/network
+if [ -n "$IPCFG" ]; then
+    IFS=, read -r ADDR GW DNS <<EOF2
+$IPCFG
+EOF2
+    printf '[Match]\nName=en* eth*\n\n[Network]\nAddress=%s\nGateway=%s\nDNS=%s\n' "$ADDR" "$GW" "${DNS:-8.8.8.8}" > $T/etc/systemd/network/20-wired.network
+else
+    printf '[Match]\nName=en* eth*\n\n[Network]\nDHCP=yes\nMulticastDNS=no\n' > $T/etc/systemd/network/20-wired.network
+fi
+
+# Laboratorio: llave SSH si la ISO trae authorized_keys.
+if [ -f $MEDIUM/tangoos/authorized_keys ]; then
+    install -d -m 700 $T/root/.ssh
+    install -m 600 $MEDIUM/tangoos/authorized_keys $T/root/.ssh/authorized_keys
+    SSH=1
+fi
+
+# ---- 4. Ajustes dentro del sistema instalado ----
+step 84 "Preparando el arranque"
+for m in dev dev/pts proc sys run; do mount --bind /$m $T/$m; done
+[ -d /sys/firmware/efi/efivars ] && mount --bind /sys/firmware/efi/efivars $T/sys/firmware/efi/efivars || true
+: > $T/etc/machine-id                    # se regenera en el primer arranque
+chroot $T sh -eu <<'CHROOT'
+export DEBIAN_FRONTEND=noninteractive
+dpkg --purge live-boot live-boot-initramfs-tools live-tools >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/getty@tty1.service.d/tango-installer.conf /usr/local/sbin/tango-install
+for u in tango-installer.service tango-installer-text.service; do
+    systemctl disable "$u" >/dev/null 2>&1 || true
+    rm -f "/etc/systemd/system/$u"
+done
+update-initramfs -u -k all >/dev/null 2>&1
+CHROOT
+[ -n "${SSH:-}" ] && chroot $T systemctl enable ssh.service >/dev/null 2>&1 || true
+step 92 "Instalando el cargador de arranque"
+chroot $T grub-install --target=i386-pc "$TARGET" >/dev/null 2>&1
+chroot $T grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=tangoos --no-nvram --removable >/dev/null 2>&1
+[ -d /sys/firmware/efi ] && chroot $T grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=tangoos >/dev/null 2>&1 || true
+chroot $T update-grub >/dev/null 2>&1
+
+EL=$(( $(date +%s) - T0 ))
+log "TangoOS instalado en ${EL} s. Al reiniciar: https://$HOSTNAME_NEW.local"
+cp "$LOG" $T/var/log/tango-install.log
+sync
+for m in sys/firmware/efi/efivars run dev/pts dev proc sys boot/efi boot .snapshots var/lib/tango var/log; do umount -l $T/$m 2>/dev/null || true; done
+umount -l $T
+step 100 "TangoOS instalado en ${EL} s"
+[ -n "$REBOOT" ] || exit 0
+if [ -z "$AUTO" ] && [ -z "$YES" ]; then whiptail --title "TangoOS" --ok-button "Reiniciar" --msgbox "Listo. Sacá el medio de instalación y presioná Enter.\n\nDespués abrí https://$HOSTNAME_NEW.local" 12 70; fi
+eject "$MEDIUM" 2>/dev/null || true
+systemctl reboot

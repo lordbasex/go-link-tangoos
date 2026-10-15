@@ -1,0 +1,14 @@
+services:
+  syncthing:
+    image: syncthing/syncthing:2.1.6
+    restart: unless-stopped
+    hostname: tango-syncthing
+    ports:
+      - "${PORT}:8384"
+      - "22000:22000/tcp"
+      - "22000:22000/udp"
+      - "21027:21027/udp"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${DATA}/sync:/var/syncthing

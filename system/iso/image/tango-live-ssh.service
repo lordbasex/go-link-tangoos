@@ -1,0 +1,13 @@
+[Unit]
+Description=SSH en el live del instalador (solo ISO de laboratorio)
+# La ISO de laboratorio trae tangoos/authorized_keys; la de producto no: ahí esto no corre.
+ConditionPathExists=/run/live/medium/tangoos/authorized_keys
+Before=ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/install -D -m 600 /run/live/medium/tangoos/authorized_keys /root/.ssh/authorized_keys
+ExecStart=/bin/systemctl start --no-block ssh.service
+
+[Install]
+WantedBy=multi-user.target

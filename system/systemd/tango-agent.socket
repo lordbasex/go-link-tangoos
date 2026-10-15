@@ -1,0 +1,17 @@
+# Socket del agente privilegiado (docs/02, ADR 0007). systemd lo crea antes que el
+# servicio: tangod (usuario tango, miembro de tango-agent) puede conectarse aunque el
+# agente todavía no haya arrancado; la primera conexión lo activa.
+[Unit]
+Description=TangoOS privileged agent socket
+Documentation=https://github.com/lordbasex/go-link-tangoos
+
+[Socket]
+ListenStream=/run/tango/agent.sock
+SocketUser=root
+SocketGroup=tango-agent
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

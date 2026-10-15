@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Instalar TangoOS</title>
+  <link rel="icon" href="logo.svg">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="win" role="dialog" aria-labelledby="win-title">
+    <header class="titlebar">
+      <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+      <h1 id="win-title" data-t="title">Instalar TangoOS</h1>
+    </header>
+    <div class="body">
+      <aside class="side">
+        <img class="side-logo" src="logo.svg" alt="" width="56" height="56">
+        <ol class="steps" id="steps"></ol>
+        <div class="remote" id="remote" hidden>
+          <span data-t="remoteTitle">Desde otra PC</span>
+          <strong id="remote-url"></strong>
+          <span data-t="remoteCode">código</span>
+          <strong class="pin" id="remote-pin"></strong>
+        </div>
+      </aside>
+      <main class="pane" id="pane" aria-live="polite"></main>
+    </div>
+    <footer class="bar">
+      <span class="ver" id="ver"></span>
+      <button type="button" class="btn" id="back" data-t="back">Atrás</button>
+      <button type="button" class="btn primary" id="next" data-t="continue">Continuar</button>
+    </footer>
+  </div>
+</body>
+</html>

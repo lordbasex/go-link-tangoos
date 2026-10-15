@@ -1,0 +1,15 @@
+[Unit]
+Description=Instalador gráfico de TangoOS (interfaz web en :80)
+# Por defecto (tango.installer); "Instalar en modo texto" pasa tango.installer=text y usa
+# tango-installer-text.service. Solo existe en la capa installer.squashfs del live.
+ConditionKernelCommandLine=tango.installer
+ConditionKernelCommandLine=!tango.installer=text
+After=network.target
+
+[Service]
+ExecStart=/usr/local/sbin/tango-installer
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

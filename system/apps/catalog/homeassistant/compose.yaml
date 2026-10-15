@@ -1,0 +1,12 @@
+services:
+  homeassistant:
+    image: homeassistant/home-assistant:2026.10.1
+    restart: unless-stopped
+    # host network no es compatible con userns-remap: esta app sale del remapeo (ADR 0010).
+    network_mode: host
+    userns_mode: host
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${DATA}/config:/config
+      - /etc/localtime:/etc/localtime:ro

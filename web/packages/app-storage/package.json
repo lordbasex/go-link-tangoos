@@ -1,0 +1,1 @@
+{"name": "@tango/app-storage", "private": true, "version": "0.1.0", "type": "module", "exports": {".": "./src/index.ts", "./Schedule": "./src/Schedule.tsx", "./*": "./src/*"}}

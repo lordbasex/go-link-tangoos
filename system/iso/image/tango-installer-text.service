@@ -1,0 +1,19 @@
+[Unit]
+Description=Instalador de TangoOS (modo texto)
+# Menú de arranque "Instalar en modo texto" (tango.installer=text) y la ISO de laboratorio (tango.auto).
+ConditionKernelCommandLine=tango.installer=text
+After=systemd-udev-settle.service local-fs.target
+Conflicts=getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/tango-install
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=multi-user.target

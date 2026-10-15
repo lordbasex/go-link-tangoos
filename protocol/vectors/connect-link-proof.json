@@ -1,0 +1,11 @@
+{
+  "description": "TangoConnect link proof (protocol/README.md §15): proof = base64url(HMAC-SHA256(key=SHA-256(token), \"tangoconnect link proof\\n\"+nonce)), sin padding",
+  "vectors": [
+    {
+      "nonce": "9b1c3f7a2e5d4c6b8a0f1e2d3c4b5a69",
+      "proof": "MgI5iRjxULmUxBJ2HVWYkwSqjn7Oz3WI9wi9QUFhc8A",
+      "token": "dGFuZ29vcy1kZXYtdG9rZW4tZm9yLXRlc3QtdmVjdG9ycw",
+      "tokenSha256Hex": "96637448152ef27a7d73188a9b1128cfad136a4c57d8ca5a6b17d2ae492be683"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+.tterm { display: flex; flex-direction: column; height: 100%; padding-top: 52px; }
+.tterm-admin { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 2px 8px; border-radius: 9px; font-size: 11px; font-weight: 550; color: var(--tg-warn); background: color-mix(in srgb, var(--tg-warn) 14%, transparent); white-space: nowrap; }
+.tterm-body { position: relative; flex: 1; min-height: 0; border-top: 0.5px solid var(--tg-separator); background: #16171c; }
+:root[data-theme="light"] .tterm-body { background: #fbfbfd; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .tterm-body { background: #fbfbfd; } }
+.tterm-host { position: absolute; inset: 8px 4px 4px 12px; }
+.tterm-host .xterm { height: 100%; user-select: text; -webkit-user-select: text; }
+.tterm-host .xterm-viewport { scrollbar-width: thin; }
+.tterm-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; color: var(--tg-text-2); background: var(--tg-content-bg); }
+.tterm-overlay strong { color: var(--tg-text-1); font-size: 14px; }
+.tterm-overlay p { margin: 0; max-width: 360px; }
+.tterm-reopen { position: absolute; right: 16px; bottom: 14px; }

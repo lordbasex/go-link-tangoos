@@ -1,0 +1,10 @@
+{
+  "id": "uptime-kuma",
+  "name": "Uptime Kuma",
+  "description": "Vigila que tus servicios y sitios estén arriba y te avisa cuando algo se cae.",
+  "category": "Utilidades",
+  "version": "2.5.6",
+  "webPort": 3001,
+  "options": [],
+  "sizeHint": 160000000
+}

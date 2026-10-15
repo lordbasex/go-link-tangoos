@@ -1,0 +1,54 @@
+# nFPM: TangoOS .deb (docs/08). Built by `make deb`; VERSION comes from env.
+name: tangoos
+arch: amd64
+platform: linux
+version: ${VERSION}
+version_schema: none
+section: admin
+priority: optional
+maintainer: Federico Pereira <lord.basex@gmail.com>
+description: |
+  TangoOS — NAS management layer for Debian.
+  tangod serves the TangoOS desktop, its WebRTC signaling and STUN, and the
+  real-time management protocol; tango-agent runs the privileged storage
+  operations (mdadm RAID, Btrfs volumes, snapshots, Samba shares).
+vendor: TangoOS
+homepage: https://github.com/lordbasex/go-link-tangoos
+license: MIT
+depends:
+  - mdadm
+  - btrfs-progs
+  - passwd
+  - adduser
+recommends:
+  - avahi-daemon
+  - samba
+contents:
+  - src: ./dist/tangod
+    dst: /usr/bin/tangod
+    file_info:
+      mode: 0755
+  - src: ./system/systemd/tangod.service
+    dst: /usr/lib/systemd/system/tangod.service
+    file_info:
+      mode: 0644
+  - src: ./dist/tango-agent
+    dst: /usr/bin/tango-agent
+    file_info:
+      mode: 0755
+  - src: ./system/systemd/tango-agent.service
+    dst: /usr/lib/systemd/system/tango-agent.service
+    file_info:
+      mode: 0644
+  - src: ./system/systemd/tango-agent.socket
+    dst: /usr/lib/systemd/system/tango-agent.socket
+    file_info:
+      mode: 0644
+  - src: ./LICENSE
+    dst: /usr/share/doc/tangoos/copyright
+    file_info:
+      mode: 0644
+scripts:
+  postinstall: ./build/scripts/postinstall.sh
+  preremove: ./build/scripts/preremove.sh
+  postremove: ./build/scripts/postremove.sh

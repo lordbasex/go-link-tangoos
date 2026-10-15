@@ -1,0 +1,27 @@
+[Unit]
+Description=Pantalla del instalador de TangoOS (cage + cog en tty1)
+ConditionKernelCommandLine=tango.installer
+ConditionKernelCommandLine=!tango.installer=text
+Wants=tango-installer.service
+After=tango-installer.service systemd-user-sessions.service systemd-logind.service
+Conflicts=getty@tty1.service
+
+[Service]
+# Sesión de logind en seat0 (pam_systemd): cage abre DRM y la entrada sin ser root.
+User=tango-kiosk
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=tty
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+ExecStart=/usr/local/sbin/tango-kiosk
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

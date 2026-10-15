@@ -1,0 +1,241 @@
+/* Instalador de TangoOS: la ventana del Instalador de macOS sobre el wallpaper "noche" del escritorio.
+   Tokens del tema Milonga (web/packages/theme-milonga/src/tokens.css). Pensado para 1024×768 y para
+   renderizarse por software en el kiosco (sin backdrop-filter: el wallpaper va desenfocado de fábrica). */
+@font-face {
+  font-family: "Inter Variable";
+  src: url("inter.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: block;
+}
+:root {
+  color-scheme: light;
+  --font: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --accent: #2f7cf6;
+  --accent-press: #1f66d9;
+  --text-1: #1c1c1f;
+  --text-2: rgb(28 28 31 / 0.62);
+  --text-3: rgb(28 28 31 / 0.4);
+  --window: rgb(250 250 252 / 0.96);
+  --side: #eeeef3;
+  --content: #ffffff;
+  --sep: rgb(0 0 0 / 0.09);
+  --control: #ffffff;
+  --control-border: rgb(0 0 0 / 0.14);
+  --selected: rgb(47 124 246 / 0.12);
+  --ok: #1fa463;
+  --crit: #e5484d;
+  --warn-bg: #fff4e0;
+  --warn-text: #7a4b00;
+  --track: rgb(0 0 0 / 0.08);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: var(--font);
+  font-feature-settings: "cv05" 1, "cv08" 1, "ss03" 1;
+  font-size: 13px;
+  color: var(--text-1);
+  background: #0b1030 url("wallpaper.svg") center / cover no-repeat;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+[hidden] { display: none !important; }
+body.repaint { background-color: #0b1031; }
+
+.win {
+  width: min(880px, 100%);
+  height: min(600px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: var(--window);
+  box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.3), 0 22px 60px rgb(0 0 0 / 0.45), 0 6px 16px rgb(0 0 0 / 0.15);
+  overflow: hidden;
+}
+.titlebar {
+  position: relative;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--sep);
+  flex: none;
+}
+.titlebar h1 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.lights { position: absolute; left: 14px; display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #d0d0d4; box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.12); }
+
+.body { flex: 1; display: flex; min-height: 0; }
+.side {
+  width: 230px;
+  flex: none;
+  padding: 26px 22px 18px;
+  background: var(--side);
+  border-right: 1px solid var(--sep);
+  display: flex;
+  flex-direction: column;
+}
+.side-logo { width: 56px; height: 56px; border-radius: 13px; margin: 0 0 22px 2px; box-shadow: 0 6px 18px rgb(47 124 246 / 0.3); }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.steps li { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-3); }
+.steps li::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #c9c9cf; flex: none; }
+.steps li.done { color: var(--text-2); }
+.steps li.done::before { background: var(--text-3); }
+.steps li.now { color: var(--text-1); font-weight: 600; }
+.steps li.now::before { background: var(--accent); box-shadow: 0 0 0 3px rgb(47 124 246 / 0.2); }
+
+.remote {
+  margin-top: auto;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--content);
+  border: 1px solid var(--sep);
+  display: grid;
+  gap: 2px;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.remote strong { color: var(--text-1); font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere; }
+.remote .pin { font-size: 22px; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; font-weight: 650; }
+
+.pane { flex: 1; min-width: 0; overflow: auto; padding: 30px 34px; background: var(--content); }
+.pane h2 { margin: 0 0 6px; font-size: 22px; font-weight: 680; letter-spacing: -0.02em; }
+.pane .lead { margin: 0 0 22px; color: var(--text-2); font-size: 13.5px; line-height: 1.5; max-width: 60ch; }
+.pane p { line-height: 1.5; }
+
+.field { display: grid; gap: 6px; margin-bottom: 16px; max-width: 420px; }
+.field > span { font-weight: 600; font-size: 12.5px; }
+.field small { color: var(--text-2); font-size: 11.5px; line-height: 1.4; }
+input[type=text] {
+  font: inherit;
+  font-size: 13px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--control-border);
+  background: var(--control);
+  color: var(--text-1);
+}
+input[type=text]:focus, .btn:focus-visible, .disk:focus-visible, .seg button:focus-visible {
+  outline: 3px solid rgb(47 124 246 / 0.45);
+  outline-offset: 1px;
+}
+.row { display: flex; gap: 10px; }
+.field.wide { max-width: none; }
+.opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.opt {
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--control-border);
+  background: var(--control);
+  color: var(--text-1);
+}
+.opt[aria-checked=true] { border-color: var(--accent); background: var(--selected); box-shadow: 0 0 0 1px var(--accent); font-weight: 600; }
+.opt:focus-visible { outline: 3px solid rgb(47 124 246 / 0.45); outline-offset: 1px; }
+.row > .field { flex: 1; }
+
+.seg { display: inline-flex; justify-self: start; padding: 2px; border-radius: 7px; background: var(--track); gap: 2px; }
+.seg button { font: inherit; font-size: 12.5px; border: 0; background: none; padding: 5px 14px; border-radius: 5px; color: var(--text-1); }
+.seg button[aria-pressed=true] { background: var(--control); box-shadow: 0 1px 2px rgb(0 0 0 / 0.15); font-weight: 600; }
+
+.disks { display: grid; gap: 8px; margin-bottom: 16px; }
+.disk {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--control-border);
+  background: var(--control);
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+.disk[aria-pressed=true] { border-color: var(--accent); background: var(--selected); box-shadow: 0 0 0 1px var(--accent); }
+.disk svg { flex: none; color: var(--text-2); }
+.disk b { display: block; font-size: 13.5px; }
+.disk span { color: var(--text-2); font-size: 12px; }
+.disk .size { margin-left: auto; font-weight: 650; font-size: 14px; color: var(--text-1); font-variant-numeric: tabular-nums; }
+
+.warn {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  line-height: 1.45;
+  margin-bottom: 14px;
+}
+.check { display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; }
+.check input { width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--accent); }
+
+.summary { display: grid; grid-template-columns: max-content 1fr; gap: 10px 22px; margin: 0 0 20px; }
+.summary dt { color: var(--text-2); }
+.summary dd { margin: 0; font-weight: 600; }
+
+.progress { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; margin: 26px 0 10px; }
+.progress div { height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width 600ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.progress-text { display: flex; justify-content: space-between; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.log {
+  margin-top: 22px;
+  max-height: 170px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f6f6f8;
+  font: 11.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--text-2);
+  white-space: pre-wrap;
+}
+.done-mark { width: 64px; height: 64px; border-radius: 50%; background: var(--ok); display: grid; place-items: center; margin-bottom: 18px; }
+.fail-mark { background: var(--crit); }
+.big-url { font-size: 17px; font-weight: 650; color: var(--accent); }
+.error { color: var(--crit); min-height: 18px; margin: 4px 0 0; }
+
+.pin-input { font-size: 28px !important; height: 52px !important; width: 210px; text-align: center; letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+
+.bar {
+  flex: none;
+  min-height: 53px; /* igual con o sin botones: la ventana no salta al instalar */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--sep);
+  background: var(--window);
+}
+.ver { margin-right: auto; color: var(--text-3); font-size: 11.5px; }
+.btn {
+  font: inherit;
+  font-size: 13px;
+  min-width: 92px;
+  height: 28px;
+  padding: 0 16px;
+  border-radius: 6px;
+  border: 1px solid var(--control-border);
+  background: var(--control);
+  color: var(--text-1);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 0.06);
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 550; }
+.btn.primary:active { background: var(--accent-press); }
+.btn.danger { background: var(--crit); border-color: var(--crit); color: #fff; font-weight: 550; }
+.btn:disabled { opacity: 0.45; }
+
+@media (max-width: 700px) {
+  body { padding: 0; place-items: stretch; }
+  .win { height: 100vh; width: 100%; border-radius: 0; }
+  .side { display: none; }
+  .pane { padding: 22px 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress div { transition: none; }
+}

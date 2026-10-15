@@ -1,0 +1,21 @@
+#!/bin/sh
+# tango-kiosk — muestra el instalador gráfico en la pantalla del equipo.
+# cage (compositor Wayland de una sola app) + cog (WPE WebKit) sobre http://127.0.0.1/.
+# Sin pantalla gráfica utilizable (servidor sin GPU, consola serie): cae a la consola de texto con
+# la URL y el código para instalar desde otra PC (tango-installer -banner).
+export XKB_DEFAULT_LAYOUT=${XKB_DEFAULT_LAYOUT:-latam}
+# WebKit toma el idioma del locale (navigator.language): el instalador arranca en español.
+export LANG=es_AR.UTF-8 LANGUAGE=es_AR:es
+export WLR_LIBINPUT_NO_DEVICES=1
+export COG_PLATFORM_WL_VIEW_FULLSCREEN=1
+# Sin GPU con render node (VM, placa de video básica) wlroots dibuja por software.
+ls /dev/dri/renderD* >/dev/null 2>&1 || export WLR_RENDERER=pixman
+# Esperar al servidor del instalador.
+for i in $(seq 1 50); do curl -fsS -o /dev/null http://127.0.0.1/api/state && break; sleep 0.2; done
+T0=$(date +%s)
+if ls /dev/dri/card* >/dev/null 2>&1; then
+    cage -s -d -- cog --platform=wl http://127.0.0.1/ && exit 0
+fi
+# cage no arrancó (o se cayó enseguida): consola de respaldo.
+[ $(( $(date +%s) - T0 )) -lt 20 ] || exit 1
+exec /usr/local/sbin/tango-installer -banner

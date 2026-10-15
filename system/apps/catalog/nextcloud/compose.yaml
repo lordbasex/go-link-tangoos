@@ -1,0 +1,15 @@
+services:
+  nextcloud:
+    image: nextcloud:35.0.1-apache
+    restart: unless-stopped
+    ports:
+      - "${PORT}:80"
+    environment:
+      TZ: ${TZ}
+      SQLITE_DATABASE: nextcloud
+      NEXTCLOUD_ADMIN_USER: ${ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      NEXTCLOUD_TRUSTED_DOMAINS: "${HOST} localhost"
+      OVERWRITEPROTOCOL: https
+    volumes:
+      - ${DATA}/html:/var/www/html

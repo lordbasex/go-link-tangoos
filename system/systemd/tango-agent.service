@@ -1,0 +1,61 @@
+# tango-agent: único proceso root de TangoOS (docs/07 §5, ADR 0007, ADR 0009).
+# Solo acepta operaciones tipadas de una allow-list y solo de tangod (SO_PEERCRED).
+[Unit]
+Description=TangoOS privileged agent
+Documentation=https://github.com/lordbasex/go-link-tangoos
+Requires=tango-agent.socket
+After=tango-agent.socket
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/tango-agent
+Restart=on-failure
+RestartSec=2s
+StateDirectory=tango-agent
+StateDirectoryMode=0700
+Environment=TANGO_AGENT_JOURNAL=/var/lib/tango-agent/journal
+
+# Capacidades:
+#   CAP_SYS_RAWIO  SG_IO con ATA PASS-THROUGH a discos SATA
+#   CAP_SYS_ADMIN  NVMe admin, ioctls de md (mdadm) y de Btrfs (scrub, instantáneas)
+#   CAP_DAC_READ_SEARCH  abrir nodos de /dev y recorrer /dev/disk/by-id sin depender de permisos
+#   CAP_CHOWN      solo si arranca sin activación por socket y crea el socket él mismo
+#   CAP_MKNOD      mdadm puede crear el nodo /dev/mdNNN si udev todavía no lo hizo
+#   CAP_FOWNER     chmod y ACL (xattr) de archivos de una carpeta que son de sus usuarios
+#   CAP_FSETID     conservar el setgid de las carpetas compartidas al cambiar su modo
+#   CAP_SETUID CAP_SETGID  lanzar los file-workers con el UID/GIDs de cada usuario
+#                  (fase M3, docs/07 §5). Al cambiar de UID el worker pierde todas
+#                  las capacidades; si no, se niega a arrancar (fileworker.SelfCheck).
+CapabilityBoundingSet=CAP_SYS_RAWIO CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_CHOWN CAP_MKNOD CAP_FOWNER CAP_FSETID CAP_SETUID CAP_SETGID
+NoNewPrivileges=yes
+# /usr y /boot quedan de solo lectura (ProtectSystem=yes). /etc es escribible: además de las unidades .mount,
+# mdadm.conf y Samba, el agente crea los usuarios Unix de TangoOS con useradd/gpasswd
+# (fase M2.1), que reescriben /etc/passwd, shadow, group y gshadow con archivos
+# temporales y backups en /etc mismo. No es "strict" a
+# propósito: strict remonta en solo lectura los volúmenes ya montados (/volumeN) al
+# arrancar el agente, y ahí crea subvolúmenes e instantáneas. Los volúmenes los monta
+# systemd (PID 1) por D-Bus, no el agente: un mount(2) desde este namespace no
+# llegaría al host.
+# ProtectSystem=yes y no full: con full, /etc queda de solo lectura aunque esté en
+# ReadWritePaths (misma ruta: gana el remontado de solo lectura).
+ProtectSystem=yes
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# PrivateDevices queda en "no": el agente necesita los discos reales.
+
+[Install]
+WantedBy=multi-user.target

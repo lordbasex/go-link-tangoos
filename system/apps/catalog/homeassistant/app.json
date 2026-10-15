@@ -1,0 +1,12 @@
+{
+  "id": "homeassistant",
+  "name": "Home Assistant",
+  "description": "Domótica local: luces, sensores, cámaras y automatizaciones sin depender de la nube.",
+  "category": "Hogar",
+  "version": "2026.10.1",
+  "webPort": 8123,
+  "options": [],
+  "notes": "Usa la red del NAS directamente (host network) para descubrir dispositivos; el puerto 8123 es fijo.",
+  "requiresHostNetwork": true,
+  "sizeHint": 1800000000
+}

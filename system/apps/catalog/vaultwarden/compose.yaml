@@ -1,0 +1,11 @@
+services:
+  vaultwarden:
+    image: vaultwarden/server:1.37.4
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORT}:80"
+    environment:
+      TZ: ${TZ}
+      SIGNUPS_ALLOWED: ${SIGNUPS_ALLOWED}
+    volumes:
+      - ${DATA}/data:/data

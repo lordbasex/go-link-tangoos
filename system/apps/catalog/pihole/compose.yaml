@@ -1,0 +1,14 @@
+services:
+  pihole:
+    image: pihole/pihole:2026.09.0
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "${PORT}:80/tcp"
+    environment:
+      TZ: ${TZ}
+      FTLCONF_webserver_api_password: ${WEB_PASSWORD}
+      FTLCONF_dns_listeningMode: all
+    volumes:
+      - ${DATA}/etc-pihole:/etc/pihole

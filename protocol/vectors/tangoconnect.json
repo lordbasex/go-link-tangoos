@@ -1,0 +1,29 @@
+{
+  "_doc": "Vectores compartidos TangoConnect (docs/16), generados con el código real de tangod: internal/connect.BuildManifest/Sign/LinkProof.",
+  "bundle": {
+    "files": [
+      {
+        "path": "assets/index-abc.js",
+        "sha256": "0a286891c11c056e1ab5bfc25bf5d6b2f5b06d38eac10944f678fd8a2e70c393",
+        "size": 14
+      },
+      {
+        "path": "index.html",
+        "sha256": "fe26c59e91ac8de694b2531dc3bdc1b7faf471d3d7e4e00870af60f5f22897cb",
+        "size": 15
+      }
+    ],
+    "keyId": "65b60673d6ed884b",
+    "publicKeyB64": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+    "seedHex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+    "signatureB64": "Bht2nJWdgaoIul4l9qv9ZclFku35JL5TFFygrsaW/fvRaZXOzpZEBF+vfXApOp2SyqeauQVpo12FO/iwnH/vCQ==",
+    "signed": "{\"v\":1,\"version\":\"0.1.0-dev\",\"files\":[{\"path\":\"assets/index-abc.js\",\"sha256\":\"0a286891c11c056e1ab5bfc25bf5d6b2f5b06d38eac10944f678fd8a2e70c393\",\"size\":14},{\"path\":\"index.html\",\"sha256\":\"fe26c59e91ac8de694b2531dc3bdc1b7faf471d3d7e4e00870af60f5f22897cb\",\"size\":15}]}",
+    "version": "0.1.0-dev"
+  },
+  "linkProof": {
+    "deviceToken": "dGFuZ29vcy1kZXZpY2UtdG9rZW4tZm9yLXRlc3RzLTEyMzQ",
+    "nonce": "000102030405060708090a0b0c0d0e0f1011121314151617",
+    "proof": "wMknRx4oKMxxOmpTcoqyTMODXutomxAQzVo7BAwPlNw",
+    "tokenHashHex": "c13e887fe139b94d34f6e4b5faa33c508038dfabd0a7e43e937a6d44ec04a806"
+  }
+}

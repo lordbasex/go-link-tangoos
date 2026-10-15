@@ -1,0 +1,11 @@
+{
+  "id": "jellyfin",
+  "name": "Jellyfin",
+  "description": "Servidor de películas, series y música. Mirá tu biblioteca desde el navegador, el celular o la tele.",
+  "category": "Multimedia",
+  "version": "12.2",
+  "webPort": 8096,
+  "options": [],
+  "notes": "Poné tus películas en la carpeta media de la app o agregá otra carpeta compartida desde la configuración de Jellyfin.",
+  "sizeHint": 900000000
+}

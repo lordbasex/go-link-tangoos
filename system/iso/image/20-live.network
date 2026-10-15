@@ -1,0 +1,7 @@
+# Red del live del instalador (capa installer.squashfs): DHCP para llegar desde otra PC.
+[Match]
+Name=en* eth*
+
+[Network]
+DHCP=yes
+MulticastDNS=no

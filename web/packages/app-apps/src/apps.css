@@ -1,0 +1,223 @@
+/* Centro de apps. Prefijo tapp-; solo tokens --tg-*. */
+
+.tapp { position: relative; }
+.tapp-stack { display: flex; flex-direction: column; gap: 26px; }
+.tapp-search { width: 210px; }
+.tapp-heading { margin: 0 0 12px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+
+/* ---- Destacada ---- */
+.tapp-featured {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-height: 168px;
+  padding: 26px 28px;
+  border-radius: 16px;
+  overflow: hidden;
+  color: #fff;
+  background: linear-gradient(120deg, #1c1638 0%, #2b2368 55%, #3a2f8a 100%);
+  box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.12);
+  cursor: default;
+}
+.tapp-featured-glow {
+  position: absolute;
+  inset: -40%;
+  background-size: 60% auto;
+  background-position: 85% 50%;
+  background-repeat: no-repeat;
+  filter: blur(60px) saturate(1.6);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.tapp-featured-icon { position: relative; width: 96px; height: 96px; flex: none; filter: drop-shadow(0 8px 18px rgb(0 0 0 / 0.35)); }
+.tapp-featured-text { position: relative; flex: 1; min-width: 0; }
+.tapp-featured-kicker { font-size: 11.5px; font-weight: 600; opacity: 0.75; }
+.tapp-featured h2 { margin: 4px 0 6px; font-size: 26px; font-weight: 750; letter-spacing: -0.02em; }
+.tapp-featured p { margin: 0; max-width: 56ch; font-size: 13.5px; line-height: 1.5; opacity: 0.86; }
+.tapp-featured .tapp-get { position: relative; background: rgb(255 255 255 / 0.92); color: #1d1d3a; }
+
+/* ---- Grilla ---- */
+.tapp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.tapp-card {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 4px 14px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--tg-content-alt);
+  border: 0.5px solid var(--tg-separator);
+  transition: background var(--tg-dur-fast);
+  outline-offset: 2px;
+}
+.tapp-card:hover { background: var(--tg-hover); }
+.tapp-card-icon { width: 56px; height: 56px; filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.18)); }
+.tapp-card-text { min-width: 0; }
+.tapp-card-text strong { display: block; font-size: 14px; font-weight: 650; }
+.tapp-card-cat { font-size: 11.5px; color: var(--tg-text-2); }
+.tapp-card-text p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.42;
+  color: var(--tg-text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tapp-card-foot { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 11.5px; }
+
+.tapp-get {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--tg-accent);
+  background: rgb(var(--tg-accent-rgb) / 0.12);
+  white-space: nowrap;
+}
+.tapp-get:active { filter: brightness(0.92); }
+.tapp-get-big { height: 30px; padding: 0 20px; border-radius: 15px; font-size: 13.5px; }
+.tapp-get-busy { color: var(--tg-text-2); background: var(--tg-track); font-variant-numeric: tabular-nums; }
+
+/* ---- Detalle ---- */
+.tapp-detail { max-width: 760px; }
+.tapp-detail-head { display: flex; gap: 20px; align-items: center; margin-bottom: 18px; }
+.tapp-detail-icon { width: 112px; height: 112px; flex: none; filter: drop-shadow(0 6px 14px rgb(0 0 0 / 0.22)); }
+.tapp-detail-title { display: flex; flex-direction: column; gap: 2px; }
+.tapp-detail-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.tapp-detail-desc { margin: 0 0 14px; font-size: 14px; line-height: 1.6; max-width: 66ch; }
+.tapp-note {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--tg-text-1);
+  background: rgb(var(--tg-accent-rgb) / 0.08);
+}
+.tapp-note svg { flex: none; color: var(--tg-accent); margin-top: 1px; }
+.tapp-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 4px 0 20px; border-block: 0.5px solid var(--tg-separator); }
+.tapp-facts > div { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; text-align: center; }
+.tapp-facts > div + div { border-left: 0.5px solid var(--tg-separator); }
+.tapp-facts span { font-size: 11px; color: var(--tg-text-2); }
+.tapp-facts strong { font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tapp-install-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; font-size: 12px; }
+.tapp-select { height: 24px; min-width: 220px; }
+.tapp-err { color: var(--tg-crit); }
+.tapp-warn { display: inline-flex; align-items: center; gap: 6px; color: var(--tg-warn); font-weight: 600; }
+
+/* ---- Job + terminal ---- */
+.tapp-job { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 18px; }
+.tapp-job-head { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.tapp-job-head strong { flex: 1; font-weight: 600; }
+.tapp-term {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #0d0f13;
+  color: #d6dbe4;
+  font: 12px/1.55 ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+  box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.08);
+}
+.tapp-term-prompt { color: #6ee7a8; }
+.tapp-job[data-state="failed"] .tapp-term, .tapp-job[data-state="interrupted"] .tapp-term { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tg-crit) 60%, transparent); }
+.tapp-logs { max-height: 52vh; min-height: 260px; }
+
+/* ---- Instaladas ---- */
+.tapp-list { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; border: 0.5px solid var(--tg-separator); }
+.tapp-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; background: var(--tg-content-bg); }
+.tapp-row + .tapp-row { border-top: 0.5px solid var(--tg-separator); }
+.tapp-row-icon { width: 44px; height: 44px; flex: none; }
+.tapp-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.tapp-row-main strong { font-size: 13.5px; font-weight: 650; }
+.tapp-row-main .tg-muted { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tapp-row-usage { display: flex; flex-direction: column; font-size: 11px; color: var(--tg-text-2); width: 92px; }
+.tapp-row-actions { display: flex; align-items: center; gap: 2px; }
+.tapp-row-actions .tg-btn { margin-left: 6px; }
+
+.tapp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 9px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--tg-track);
+  color: var(--tg-text-2);
+}
+.tapp-pill i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.tapp-pill[data-state="running"] { color: var(--tg-ok); background: color-mix(in srgb, var(--tg-ok) 14%, transparent); }
+.tapp-pill[data-state="installing"], .tapp-pill[data-state="updating"] { color: var(--tg-info); background: color-mix(in srgb, var(--tg-info) 14%, transparent); }
+.tapp-pill[data-state="installing"] i, .tapp-pill[data-state="updating"] i { animation: tapp-pulse 1.1s ease-in-out infinite; }
+.tapp-pill[data-state="error"] { color: var(--tg-crit); background: color-mix(in srgb, var(--tg-crit) 14%, transparent); }
+@keyframes tapp-pulse { 50% { opacity: 0.3; } }
+
+/* ---- Hojas ---- */
+.tapp-sheet-host { position: fixed; inset: 52px 0 0 0; z-index: 40; pointer-events: none; }
+.tapp-sheet-host > * { pointer-events: auto; }
+.tapp-sheet-host:empty { display: none; }
+.tapp-sheet-head { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+.tapp-sheet-head p { margin: 2px 0 0; font-size: 12.5px; }
+.tapp-check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; font-size: 13px; }
+.tapp-check input { margin-top: 3px; accent-color: var(--tg-accent); }
+.tapp-check small { display: block; color: var(--tg-text-2); font-size: 11.5px; margin-top: 2px; }
+.tapp-typed { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; font-size: 12.5px; }
+.tapp-typed code { font-size: 12px; padding: 1px 5px; border-radius: 4px; background: var(--tg-track); }
+
+/* ---- Héroe sin Docker ---- */
+.tapp-hero { display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 560px; margin: 0 auto; padding-top: 48px; }
+.tapp-hero-art {
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  margin-bottom: 18px;
+  border-radius: 24px;
+  color: #fff;
+  background: linear-gradient(160deg, #3fa8ff, #1d63ed);
+  box-shadow: 0 10px 30px rgb(29 99 237 / 0.35);
+}
+.tapp-hero-lead { margin: 6px 0 18px; font-size: 14px; line-height: 1.55; color: var(--tg-text-2); }
+.tapp-hero-points { list-style: none; padding: 0; margin: 0 0 24px; display: flex; flex-direction: column; gap: 10px; text-align: left; font-size: 13px; }
+.tapp-hero-points li { display: flex; gap: 10px; align-items: flex-start; }
+.tapp-hero-points svg { flex: none; color: var(--tg-accent); margin-top: 1px; }
+.tapp-hero-job { width: 100%; text-align: left; }
+.tapp-docker { max-width: 640px; }
+
+/* ---- Ventana de app ---- */
+.tapp-view { position: relative; overflow: hidden; background: var(--tg-content-bg); }
+.tapp-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+.tapp-frame[data-state="failed"] { visibility: hidden; }
+.tapp-view-icon { border-radius: 5px; flex: none; }
+.tapp-view-url { font-size: 11.5px; color: var(--tg-text-3); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tapp-view-loading { position: absolute; inset: 0 0 auto 0; height: 2px; background: linear-gradient(90deg, transparent, var(--tg-accent), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: tapp-bar 1.1s linear infinite; }
+@keyframes tapp-bar { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+.tapp-view-fail { position: absolute; inset: 0; background: var(--tg-content-bg); }
+.tapp-view-fail-actions { display: flex; gap: 8px; }
+
+@media (max-width: 900px) {
+  .tapp-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tapp-row-usage { display: none; }
+  .tapp-featured { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tapp-view-loading, .tapp-pill i { animation: none; }
+}

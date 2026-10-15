@@ -1,0 +1,54 @@
+/* Agregados de TangoOS Connect sobre los estilos de go-link (tokens, lp-*, ios-*). */
+
+/* Captura faltante: un espacio rotulado en vez de una imagen rota. */
+.tc-shot-missing { display: grid; place-content: center; gap: 8px; width: 100%; aspect-ratio: 16 / 10; padding: 16px; text-align: center; border: 2px dashed var(--color-border-dashed); border-radius: 12px; background: var(--color-surface-sunken); color: var(--color-text-muted); font-size: 14px; }
+.tc-shot-missing code { font: 500 12px/1.3 var(--font-mono); color: var(--color-accent-text); }
+.lp-screen .tc-shot-missing { height: 100%; aspect-ratio: auto; border-radius: 6px; }
+
+/* El hero: botones bajo el código. */
+.tc-hero-ctas { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+/* Galería: carrusel con scroll-snap. */
+.tc-gallery { display: grid; gap: 14px; }
+.tc-gallery-track { display: grid; grid-auto-flow: column; grid-auto-columns: min(86%, 900px); gap: 18px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 2px; padding-bottom: 6px; scrollbar-width: thin; }
+.tc-gallery-track:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; border-radius: 18px; }
+.tc-slide { margin: 0; scroll-snap-align: start; display: grid; gap: 10px; }
+.tc-slide img, .tc-slide .tc-shot-missing { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 18px; border: 6px solid var(--color-video); box-shadow: 0 24px 60px var(--shadow-strong); display: block; }
+.tc-slide figcaption { font-size: 15px; color: var(--color-text-2); }
+.tc-gallery-bar { display: flex; align-items: center; gap: 14px; justify-content: center; }
+
+/* Código de vinculación en nueve casillas (como el de la app de iPhone de go-link). */
+.tc-digits { display: flex; gap: 6px; justify-content: center; }
+.tc-digit { width: 100%; min-width: 0; max-width: 46px; aspect-ratio: 3 / 4; font: 600 26px/1 ui-monospace, SFMono-Regular, Menlo, var(--font-mono); text-align: center; color: var(--ios-text); background: var(--ios-field); border: 0; border-radius: 12px; caret-color: var(--ios-accent); }
+.tc-digit:focus { outline: 2px solid var(--ios-accent); outline-offset: 1px; }
+.tc-digit[data-gap] { margin-right: 10px; }
+.tc-digit:disabled { opacity: 0.6; }
+@media (max-width: 420px) { .tc-digits { gap: 4px; } .tc-digit { font-size: 20px; border-radius: 9px; } .tc-digit[data-gap] { margin-right: 6px; } }
+
+/* Pasos de conexión al NAS. */
+.tc-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.tc-steps li { display: flex; align-items: center; gap: 12px; color: var(--ios-2); font-size: 15px; }
+.tc-step-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ios-card-2); flex: none; }
+.tc-steps li[data-state="done"] { color: var(--ios-text); }
+.tc-steps li[data-state="done"] .tc-step-dot { background: var(--ios-green); }
+.tc-steps li[data-state="now"] { color: var(--ios-text); font-weight: 600; }
+.tc-steps li[data-state="now"] .tc-step-dot { background: var(--ios-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ios-accent) 30%, transparent); animation: tc-pulse 1.4s ease-in-out infinite; }
+.tc-steps li[data-state="error"] .tc-step-dot { background: var(--ios-danger); }
+@keyframes tc-pulse { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--ios-accent) 0%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .tc-steps li[data-state="now"] .tc-step-dot { animation: none; } }
+.tc-progress { width: 100%; height: 6px; accent-color: var(--ios-accent); }
+
+/* Escritorio a pantalla completa (demo y modo desarrollo). */
+.tc-desktop-host { position: fixed; inset: 0; }
+.tc-banner { position: fixed; z-index: 10000; left: 50%; bottom: 96px; transform: translateX(-50%); max-width: calc(100% - 32px); margin: 0; padding: 8px 14px; border-radius: 999px; background: var(--tint-accent-bg); border: 1px solid var(--tint-accent-border); color: var(--color-text-2); font: 500 13px/1.3 var(--font-text); }
+/* La demo: una píldora en el centro de la barra de menú (que ahí está vacía). */
+.tc-demo-pill { position: fixed; z-index: 10000; top: 3px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; height: 22px; padding: 0 4px 0 12px; border-radius: 999px; background: rgb(242 163 58 / 0.95); color: #1a1206; font: 600 12px/1 "IBM Plex Sans", system-ui, sans-serif; white-space: nowrap; box-shadow: 0 4px 14px rgb(0 0 0 / 0.25); }
+.tc-demo-pill a { color: #1a1206; background: rgb(255 255 255 / 0.55); border-radius: 999px; padding: 4px 9px; text-decoration: none; }
+.tc-demo-pill a:hover { background: #fff; }
+@media (max-width: 760px) { .tc-demo-pill { top: auto; bottom: 92px; } }
+
+/* Las páginas de la web app (Mis NAS, vincular, escritorio remoto, enlaces) ocupan toda la altura. */
+.ios {
+  min-height: 100dvh;
+  box-sizing: border-box;
+}

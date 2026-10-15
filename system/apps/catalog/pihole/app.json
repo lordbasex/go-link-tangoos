@@ -1,0 +1,13 @@
+{
+  "id": "pihole",
+  "name": "Pi-hole",
+  "description": "Bloquea publicidad y rastreadores en toda la red, para todos los dispositivos.",
+  "category": "Red",
+  "version": "2026.09.0",
+  "webPort": 8083,
+  "options": [
+    {"key": "WEB_PASSWORD", "label": "Contraseña del panel", "type": "password", "required": true, "generate": true}
+  ],
+  "notes": "Atiende DNS en el puerto 53 del NAS. Después configurá el router para que entregue la IP del NAS como DNS.",
+  "sizeHint": 120000000
+}

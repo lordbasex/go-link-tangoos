@@ -1,0 +1,115 @@
+/* Copyright (c) 2026 Federico Pereira <lord.basex@gmail.com> */
+/* Copiado de go-link-desk (MIT, mismo autor) para que TangoOS Connect sea de la familia go-link. */
+/* Design tokens. Use these variables; never repeat the raw values. */
+:root,
+:root[data-theme="light"] .video-stage,
+:root[data-theme="light"] .stage-tokens {
+  color-scheme: dark;
+  --color-bg: #0e1016;
+  --color-video: #05060a;
+  --color-surface: #161a23;
+  --color-surface-2: #1b2030;
+  --color-surface-selected: #1e2330;
+  --color-border: #262c3a;
+  --color-border-input: #2a3040;
+  --color-border-strong: #3a4256;
+  --color-border-dashed: #4a5368;
+  --color-divider: #232937;
+
+  --color-text: #e9ecf2;
+  --color-text-2: #c4cad6;
+  --color-text-muted: #a3abbd;
+  --color-text-faint: #8c95a8;
+  --color-placeholder: #7f889c;
+
+  --color-accent: #f2a33a;
+  --color-accent-hover: #ffc06b;
+  /* The accent as text (links, eyebrows): readable on the page's background. */
+  --color-accent-text: #f2a33a;
+  --color-accent-text-hover: #ffc06b;
+  --color-on-accent: #1a1206;
+  --color-voice: #4fc3d9;
+  --color-ok: #7ee2a8;
+  --color-ok-text: #7ee2a8; /* green text on any surface */
+
+  --color-danger-bg: #2a1519;
+  --color-danger-border: #5a2a33;
+  --color-danger-text: #f4a9b6;
+
+  --tint-voice-bg: #10262b;
+  --tint-voice-border: #2b6573;
+  --tint-accent-bg: #2a1d0c;
+  --tint-accent-border: #6b4a1c;
+  --tint-violet-bg: #1f1b33;
+  --tint-ok-bg: #16352a;
+  --tint-ok-border: #2f7d5a;
+  --tint-you-bg: #3a2c16;
+  --tint-you-border: #5a4424;
+  --color-surface-sunken: #131720;
+  --color-text-dim: #5d667a;
+  --color-dots: #2c3448;
+  --skeleton-shine: #252b3b;
+  --shadow-strong: rgb(0 0 0 / 0.45);
+  --backdrop: rgb(5 6 10 / 0.75);
+
+}
+
+:root {
+  --font-title: "Chakra Petch", system-ui, sans-serif;
+  --font-text: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-control: 10px;
+  --radius-card: 14px;
+  --touch-min: 44px;
+}
+
+/* Light theme (the header's sun/moon button; dark is the default). The
+   video stage keeps the dark tokens: the remote screen is always shown on
+   black and the toolbar floats over it. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #f3f4f7;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef0f4;
+  --color-surface-selected: #e7eaf0;
+  --color-border: #dde1e8;
+  --color-border-input: #cdd2dc;
+  --color-border-strong: #b7becb;
+  --color-border-dashed: #98a0b0;
+  --color-divider: #e5e8ee;
+
+  --color-text: #141821;
+  --color-text-2: #2c3240;
+  --color-text-muted: #4d5566;
+  --color-text-faint: #5a6374;
+  --color-placeholder: #7b8395;
+
+  --color-accent: #e8901c;
+  --color-accent-hover: #c97510;
+  --color-accent-text: #8f5200;
+  --color-accent-text-hover: #6f3f00;
+  --color-on-accent: #1a1206;
+  --color-voice: #0f6b7f;
+  --color-ok: #1f8a4c;
+  --color-ok-text: #176b3a;
+  --color-danger-bg: #fdecef;
+  --color-danger-border: #f1b5c1;
+  --color-danger-text: #b3233d;
+
+  --tint-voice-bg: #e2f3f7;
+  --tint-voice-border: #9ccfdc;
+  --tint-accent-bg: #fdf0dc;
+  --tint-accent-border: #eec689;
+  --tint-violet-bg: #eceafb;
+  --tint-ok-bg: #e1f3e9;
+  --tint-ok-border: #88c8a4;
+  --tint-you-bg: #fbe8cb;
+  --tint-you-border: #efcf98;
+  --color-surface-sunken: #f0f2f6;
+  --color-text-dim: #8a92a4;
+  --color-dots: #d3d8e1;
+  --skeleton-shine: #f8f9fb;
+  --shadow-strong: rgb(20 24 33 / 0.16);
+  --backdrop: rgb(20 24 33 / 0.45);
+}

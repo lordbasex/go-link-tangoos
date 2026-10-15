@@ -1,0 +1,13 @@
+{
+  "id": "vaultwarden",
+  "name": "Vaultwarden",
+  "description": "Gestor de contraseñas compatible con las apps de Bitwarden, alojado en tu NAS.",
+  "category": "Seguridad",
+  "version": "1.37.4",
+  "webPort": 8084,
+  "options": [
+    {"key": "SIGNUPS_ALLOWED", "label": "Permitir que se registren usuarios nuevos", "type": "bool", "default": true}
+  ],
+  "notes": "Abrila siempre por HTTPS (la ventana de TangoOS ya lo hace). Desactivá los registros cuando la familia tenga su cuenta.",
+  "sizeHint": 90000000
+}
