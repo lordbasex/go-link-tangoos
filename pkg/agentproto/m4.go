@@ -129,6 +129,7 @@ type ServiceSetArgs struct {
 type NFSExport struct {
 	Path    string      `json:"path"`
 	Clients []NFSClient `json:"clients"`
+	FSID    string      `json:"fsid,omitempty"` // solo /cluster/<vol>: el UUID del volumen
 }
 
 // NFSClient es un host o red con su acceso.

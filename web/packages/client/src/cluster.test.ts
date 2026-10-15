@@ -59,17 +59,37 @@ describe("clúster GlusterFS (mock y helpers)", () => {
   it("sin instalar → instalar → unir → crear → montar → borrar", () => {
     const { call, finish } = ctx("healthy");
     expect(call<{ installed: boolean }>("cluster.status").installed).toBe(false);
-    expect(() => call("cluster.peer.add", { host: "nas-b" })).toThrow(RpcError);
+    expect(() => call("cluster.peer.prepare", { host: "nas-b", code: "ABCDE-FGHJK" })).toThrow(RpcError);
     call("cluster.install");
     finish();
     expect(call<{ installed: boolean; nodes: unknown[] }>("cluster.status").nodes).toHaveLength(1);
-    expect(() => call("cluster.peer.add", { host: "rechazado" })).toThrow(/invitá/);
-    call("cluster.peer.add", { host: "nas-b" });
-    call("cluster.peer.add", { host: "nas-c" });
-    call("cluster.volume.create", { name: "gv_docs", replica: 3, preset: "production-replica3", start: true, bricks: ["tango", "nas-b", "nas-c"].map((host) => ({ host, tangoVolume: "volume1" })) });
+    expect(() => call("cluster.peer.prepare", { host: "rechazado", code: "ABCDE-FGHJK" })).toThrow(/invitalo/);
+    expect(() => call("cluster.peer.prepare", { host: "nas-b", code: "corto" })).toThrow(/código/);
+    for (const host of ["nas-b", "nas-c"]) {
+      const p = call<{ id: string; fingerprint: string }>("cluster.peer.prepare", { host, code: "ABCDE-FGHJK" });
+      expect(p.fingerprint.split(" ")).toHaveLength(8);
+      call("cluster.peer.confirm", { id: p.id });
+    }
+    expect(() => call("cluster.peer.confirm", { id: "j1" })).toThrow(/venció/);
+    call("cluster.volume.create", { name: "gv_docs", replica: 3, preset: "production-replica3", start: true, bricks: ["tango", "nas-b", "nas-c"].map((host) => ({ host, kind: "dir", tangoVolume: "volume1" })) });
     finish();
     const st = call<{ volumes: ClusterVolume[] }>("cluster.status");
     expect(st.volumes[0].bricks[1].path).toBe("/volume1/@gluster/gv_docs");
+    expect(st.volumes[0].bricks[1].kind).toBe("dir");
+    // Sin bricks dedicados thin no hay instantáneas.
+    expect(() => call("cluster.volume.snapshot", { name: "gv_docs", op: "create", snap: "s1" })).toThrow(/thin/);
+    // Cuotas
+    call("cluster.volume.quota", { name: "gv_docs", op: "enable" });
+    const q = call<{ quotas: { path: string }[] }>("cluster.volume.quota", { name: "gv_docs", op: "limit", path: "/Fotos", limit: 10 * 1024 ** 3 });
+    expect(q.quotas.map((x) => x.path)).toEqual(["/Fotos"]);
+    // Agregar un conjunto y rebalancear hasta terminar
+    call("cluster.volume.bricks.add", { name: "gv_docs", bricks: ["tango", "nas-b", "nas-c"].map((host) => ({ host, kind: "lv", pool: "data", size: 1024 ** 3, thin: true })) });
+    finish();
+    expect(call<{ volumes: ClusterVolume[] }>("cluster.status").volumes[0].type).toBe("Distributed-Replicate");
+    call("cluster.volume.rebalance", { name: "gv_docs", action: "start" });
+    let done = false;
+    for (let i = 0; i < 6 && !done; i++) done = !!call<{ task: { done: boolean } | null }>("cluster.volume.rebalance", { name: "gv_docs", action: "status" }).task?.done;
+    expect(done).toBe(true);
     expect(st.volumes[0].options["network.ping-timeout"]).toBe("10");
     call("cluster.volume.mount", { name: "gv_docs", enabled: true, share: "Docs" });
     finish();
@@ -81,6 +101,6 @@ describe("clúster GlusterFS (mock y helpers)", () => {
     call("cluster.volume.action", { name: "gv_docs", action: "delete" });
     const end = call<{ volumes: ClusterVolume[]; orphans: unknown[] }>("cluster.status");
     expect(end.volumes).toHaveLength(0);
-    expect(end.orphans).toHaveLength(1);
+    expect(end.orphans).toHaveLength(2); // la carpeta y el volumen dedicado de este nodo
   });
 });

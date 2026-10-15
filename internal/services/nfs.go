@@ -41,10 +41,18 @@ func ValidNFSHost(h string) error {
 	return nil
 }
 
-// ValidExportPath: solo carpetas compartidas de TangoOS (/<volumen>/@shares/<Carpeta>).
+var clusterExportRe = regexp.MustCompile(`^/cluster/[a-z][a-z0-9_]{0,31}$`)
+
+var fsidRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// ValidExportPath: carpetas compartidas de TangoOS (/<volumen>/@shares/<Carpeta>) o
+// volúmenes del clúster montados en /cluster/<volumen> (docs/17).
 func ValidExportPath(p string) error {
 	if p != path.Clean(p) || !strings.HasPrefix(p, "/") {
 		return fmt.Errorf("ruta inválida %q", p)
+	}
+	if clusterExportRe.MatchString(p) {
+		return nil
 	}
 	parts := strings.Split(strings.TrimPrefix(p, "/"), "/")
 	if len(parts) != 3 || parts[1] != "@shares" || parts[0] == "" || parts[2] == "" || strings.ContainsAny(p, " \t\n\"'\\") {
@@ -67,6 +75,17 @@ func RenderExports(exports []agentproto.NFSExport) (string, error) {
 		if err := ValidExportPath(e.Path); err != nil {
 			return "", err
 		}
+		// Un montaje FUSE (volumen del clúster) no tiene un número de dispositivo estable:
+		// el export necesita un fsid fijo, el UUID del volumen de GlusterFS.
+		extra := ""
+		if clusterExportRe.MatchString(e.Path) {
+			if !fsidRe.MatchString(e.FSID) {
+				return "", fmt.Errorf("%s: falta el fsid (UUID del volumen del clúster)", e.Path)
+			}
+			extra = ",fsid=" + e.FSID
+		} else if e.FSID != "" {
+			return "", fmt.Errorf("%s: fsid solo para volúmenes del clúster", e.Path)
+		}
 		b.WriteString(e.Path)
 		for _, c := range e.Clients {
 			if err := ValidNFSHost(c.Host); err != nil {
@@ -78,7 +97,7 @@ func RenderExports(exports []agentproto.NFSExport) (string, error) {
 			} else if c.Access != "ro" {
 				return "", fmt.Errorf("acceso inválido %q", c.Access)
 			}
-			fmt.Fprintf(&b, " %s(%s,sync,no_subtree_check,root_squash,sec=sys)", strings.TrimSpace(c.Host), mode)
+			fmt.Fprintf(&b, " %s(%s,sync,no_subtree_check,root_squash,sec=sys%s)", strings.TrimSpace(c.Host), mode, extra)
 		}
 		b.WriteByte('\n')
 	}

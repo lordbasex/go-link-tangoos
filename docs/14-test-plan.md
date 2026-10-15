@@ -85,6 +85,7 @@ partition, stands in for a USB key: the cloud kernel has no `usb-storage`).
 | 16b | Replace a disk of the hybrid pool (M2 → D3) | + D3 | too small SSD → `DEVICE_TOO_SMALL`, rebuild of both tiers, M2 free, file intact |
 | 17 | VM reboot with the key plugged in (`TANGO_E2E_REBOOT=1`) | — | volume unlocked and mounted by itself, file intact, pool healthy |
 | 18 | UI: wizard (Hybrid-1 with mixed disks), encrypted volume, lock/unlock, delete (`web/e2e/pools.spec.ts`) | S3+S6+M1 | screenshots `pools-*.png`; plus the demo scenarios `pools`, `hybrid`, `locked` |
+| 28 | Cluster stage 2 (`make e2e-cluster2`, VMs 112–114): join with code + fingerprint, certify an old member, replica 3 on thin LV bricks, TLS on with the volume mounted, encryption checked with tcpdump/openssl, quotas, add/rebalance/remove a set, snapshot + restore, replace, NFS, revocation, TLS off | TANGO-G<n>, TANGO-P<n> | 14/14; UI `web/e2e/cluster2.spec.ts` (`cluster2-*.png`) |
 
 ## ZFS (ADR 0013) — `go test -tags e2e -run TestZfs` + Playwright
 

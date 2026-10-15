@@ -56,6 +56,9 @@ type M4Deps struct {
 	Audit   *audit.Log
 	Notify  *notify.Service
 	Version string
+	// ClusterCtlAddr es donde escucha el canal de control del clúster (":24010"); vacío =
+	// no escucha (tests, --dev).
+	ClusterCtlAddr string
 }
 
 // svcConfig es lo que se persiste en services.json (0600: lleva secretos CHAP).
@@ -63,6 +66,8 @@ type svcConfig struct {
 	NFS struct {
 		Enabled bool                              `json:"enabled"`
 		Exports map[string][]agentproto.NFSClient `json:"exports"` // Share.ID → clientes
+		// Cluster: volúmenes del clúster montados en /cluster/<vol> (docs/17) → clientes.
+		Cluster map[string][]agentproto.NFSClient `json:"cluster,omitempty"`
 	} `json:"nfs"`
 	SFTP struct {
 		Enabled bool `json:"enabled"`
@@ -87,10 +92,11 @@ type iscsiConfig struct {
 }
 
 type m4API struct {
-	a    *API
-	d    M4Deps
-	sftp *sftpServer
-	ups  *upsAPI // UPS por NUT (ups.go, protocol/README.md §13)
+	a       *API
+	d       M4Deps
+	cluster *clusterAPI // clúster GlusterFS (cluster.go); nil sin agente
+	sftp    *sftpServer
+	ups     *upsAPI // UPS por NUT (ups.go, protocol/README.md §13)
 
 	mu  sync.Mutex
 	cfg svcConfig
@@ -941,6 +947,15 @@ func (m *m4API) applyNFSNow(ctx context.Context, h *jobs.Handle) error {
 		if sh, ok := m.shareByID(ctx, id); ok {
 			args.Exports = append(args.Exports, agentproto.NFSExport{Path: sh.Path, Clients: clients})
 		}
+	}
+	if m.cluster != nil {
+		m.mu.Lock()
+		cl := map[string][]agentproto.NFSClient{}
+		for k, v := range m.cfg.NFS.Cluster {
+			cl[k] = v
+		}
+		m.mu.Unlock()
+		args.Exports = append(args.Exports, m.cluster.clusterNFSExports(ctx, cl)...)
 	}
 	if err := m.d.Agent.NFSApply(ctx, args); err != nil {
 		return agentErr(err)

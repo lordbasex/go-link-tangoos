@@ -26,6 +26,7 @@ const MountRoot = "/cluster"
 // y el rango de los procesos de cada brick (glusterd.vol: base-port..max-port).
 const (
 	PortGlusterd  = 24007
+	PortCtl       = 24010 // canal de control entre los tangod del clúster (mTLS)
 	PortRDMA      = 24008
 	PortBrickMin  = 49152
 	PortBrickMax  = 60999
@@ -82,9 +83,8 @@ func (b Brick) String() string { return b.Host + ":" + b.Path }
 // glusterd crea el directorio del brick pero no los intermedios: cada nodo mantiene
 // creado /volumeN/@gluster (BrickParent) y el brick queda un nivel abajo.
 //
-// Hook para LVM (docs/17 §4): cuando exista el pool LVM, un brick tendrá su propio LV
-// con XFS montado en /srv/gluster/<vol>; esa forma se agrega acá y en
-// ValidBrick sin cambiar el resto del flujo.
+// Es la forma "dir"; la forma "lv" (LV dedicado con XFS) es LVBrickPath, y otras formas
+// se suman en brickForms (ops2.go).
 func BrickPath(tangoVolume, vol string) string {
 	return BrickParent(tangoVolume) + "/" + vol
 }
@@ -94,14 +94,14 @@ func BrickParent(tangoVolume string) string {
 	return "/" + strings.TrimPrefix(tangoVolume, "/") + "/@gluster"
 }
 
-// ValidBrick exige un host válido y la ruta de TangoOS para ese volumen del clúster.
+// ValidBrick exige un host válido y una ruta de TangoOS para ese volumen del clúster
+// (cualquiera de las formas de brickForms).
 func ValidBrick(b Brick, vol string) error {
 	if err := ValidHost(b.Host); err != nil {
 		return err
 	}
-	m := btrfsBrickRe.FindStringSubmatch(b.Path)
-	if m == nil || m[1] != vol {
-		return fmt.Errorf("brick %s: la ruta tiene que ser /volumeN/@gluster/%s", b, vol)
+	if v := brickVolume(b.Path); v != vol && v != "*" {
+		return fmt.Errorf("brick %s: la ruta tiene que ser /volumeN/@gluster/%s o %s", b, vol, LVBrickPath(vol))
 	}
 	return nil
 }

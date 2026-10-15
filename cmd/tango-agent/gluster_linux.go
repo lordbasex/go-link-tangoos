@@ -105,13 +105,29 @@ func glusterAgentErr(err error) *agentproto.Error {
 	return agentproto.Errf(agentproto.CodeFailed, "%v", err)
 }
 
-// glusterDo corre una operación sin datos y traduce el error.
+// glusterDo corre una operación sin datos y traduce el error. Si otro nodo tiene tomado el
+// lock del clúster (por ejemplo leyendo el estado), GlusterFS responde "Another transaction
+// is in progress": se reintenta unas veces.
 func glusterDo(ctx context.Context, args []string) error {
-	out, code, err := runGluster(ctx, args...)
-	if err != nil {
-		return err
+	var err error
+	for i := 0; i < 10; i++ {
+		var out []byte
+		var code int
+		out, code, err = runGluster(ctx, args...)
+		if err != nil {
+			return err
+		}
+		err = gluster.ParseResult(out, code)
+		if err == nil || !gluster.IsBusy(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(time.Duration(500+300*i) * time.Millisecond):
+		}
 	}
-	return gluster.ParseResult(out, code)
+	return err
 }
 
 func registerGluster(r *agentproto.Registry, jobs *asyncJobs, log *slog.Logger) {
@@ -218,13 +234,24 @@ func registerGluster(r *agentproto.Registry, jobs *asyncJobs, log *slog.Logger) 
 			args = gluster.ArgsAddBrick(a.Name, a.Replica, a.Bricks)
 		case "remove":
 			args, _ = gluster.ArgsRemoveBrick(a.Name, a.Replica, a.Bricks, a.Phase)
+			if a.Phase == "status" {
+				out, _, err := runGluster(ctx, args...)
+				if err != nil {
+					return nil, glusterAgentErr(err)
+				}
+				t, err := gluster.ParseTask(out, hostnameOr(""))
+				if err != nil {
+					return nil, glusterAgentErr(err)
+				}
+				return agentproto.GlusterTaskResult{Task: t}, nil
+			}
 		case "replace":
 			args = gluster.ArgsReplaceBrick(a.Name, a.From, a.To)
 		}
 		if err := glusterDo(ctx, args); err != nil {
 			return nil, glusterAgentErr(err)
 		}
-		return struct{}{}, nil
+		return agentproto.GlusterTaskResult{}, nil
 	})
 
 	agentproto.Register(r, agentproto.OpGlusterMount, validateGlusterMount, func(ctx context.Context, a *agentproto.GlusterMountArgs) (any, *agentproto.Error) {
@@ -271,6 +298,8 @@ func registerGluster(r *agentproto.Registry, jobs *asyncJobs, log *slog.Logger) 
 		}
 		return struct{}{}, nil
 	})
+
+	registerGluster2(r, log)
 }
 
 // glusterHealInfo corre `gluster volume heal <vol> info summary` en una unidad
@@ -311,7 +340,7 @@ func sortedKeys(m map[string]string) []string {
 
 func glusterStatus(ctx context.Context, self string) agentproto.GlusterStatusResult {
 	res := agentproto.GlusterStatusResult{Installed: glusterInstalled(), Peers: []gluster.Peer{}, Volumes: []gluster.Volume{},
-		Orphans: []agentproto.GlusterOrphan{}, Mounts: glusterMounts(), Allowed: readGlusterAllowed()}
+		Orphans: []agentproto.GlusterOrphan{}, Mounts: glusterMounts(), Allowed: readGlusterAllowed(), TLS: glusterTLSState(), LVBricks: glusterLVBricks(ctx)}
 	if !res.Installed {
 		return res
 	}
@@ -353,6 +382,8 @@ func glusterStatus(ctx context.Context, self string) agentproto.GlusterStatusRes
 	// pide aparte cada tanto.
 	res.Volumes = vols
 	res.Orphans = glusterOrphans(vols)
+	// Los LV de bricks huérfanos los calcula tangod (sabe con qué nombres e IPs se conoce a
+	// este nodo; el agente no tiene red).
 	return res
 }
 
@@ -520,7 +551,7 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 	prevShare := glusterShares()[mnt]
 
 	// La carpeta SMB se saca antes de desmontar (y si cambió de nombre).
-	if prevShare != "" && prevShare != a.Share {
+	if a.Action == "" && prevShare != "" && prevShare != a.Share {
 		if _, err := diskops.RemoveSambaShare(ctx, prevShare); err != nil {
 			log.Warn("gluster smb", "share", prevShare, "err", err)
 		}
@@ -530,6 +561,25 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 		return nil, agentproto.Errf(agentproto.CodeFailed, "systemd: %v", err)
 	}
 	defer c.Close()
+	if a.Action != "" {
+		if !fileExists(unitPath) {
+			return nil, agentproto.Errf(agentproto.CodeNotFound, "%s no está configurado para montarse", a.Name)
+		}
+		ch := make(chan string, 1)
+		var err error
+		if a.Action == "stop" {
+			_, err = c.StopUnitContext(ctx, unit, "replace", ch)
+		} else {
+			_, err = c.StartUnitContext(ctx, unit, "replace", ch)
+		}
+		if err == nil {
+			err = sdWait(ctx, ch, unit)
+		}
+		if err != nil {
+			return nil, agentproto.Errf(agentproto.CodeBusy, "%s %s: %v", a.Action, mnt, err)
+		}
+		return struct{}{}, nil
+	}
 	if !a.Enabled {
 		ch := make(chan string, 1)
 		if _, err := c.StopUnitContext(ctx, unit, "replace", ch); err == nil {
@@ -554,6 +604,16 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 	if _, _, err := c.EnableUnitFilesContext(ctx, []string{unitPath}, false, true); err != nil {
 		return nil, agentproto.Errf(agentproto.CodeFailed, "systemd: %v", err)
 	}
+	// Un montaje que existe pero no responde (cliente FUSE colgado, por ejemplo después de
+	// cambiar el TLS) se rehace.
+	if isMountedAt(mnt) {
+		if _, err := os.Stat(mnt + "/."); err != nil {
+			ch := make(chan string, 1)
+			if _, err := c.StopUnitContext(ctx, unit, "replace", ch); err == nil {
+				_ = sdWait(ctx, ch, unit)
+			}
+		}
+	}
 	if !isMountedAt(mnt) {
 		ch := make(chan string, 1)
 		if _, err := c.StartUnitContext(ctx, unit, "replace", ch); err != nil {
@@ -569,6 +629,14 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 			return nil, agentproto.Errf(agentproto.CodeFailed, "systemd montó %s pero no aparece", mnt)
 		}
 	}
+	// Recién montado, el cliente FUSE tarda un instante en conectar con los bricks (más con
+	// TLS): hasta entonces cualquier acceso da "transport endpoint is not connected".
+	for i := 0; i < 60; i++ {
+		if _, err := os.Stat(mnt + "/."); err == nil {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 	if a.Share == "" {
 		return struct{}{}, nil
 	}
@@ -578,11 +646,12 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 		}
 	}
 	rwG, roG := diskops.ShareGroups(a.Share)
-	rwGID, err := diskops.EnsureGroup(ctx, rwG)
+	// GID fijo por nombre: las ACL quedan guardadas en GlusterFS y valen en todos los nodos.
+	rwGID, err := diskops.EnsureClusterGroup(ctx, rwG)
 	if err != nil {
 		return nil, userErr(err, log)
 	}
-	roGID, err := diskops.EnsureGroup(ctx, roG)
+	roGID, err := diskops.EnsureClusterGroup(ctx, roG)
 	if err != nil {
 		return nil, userErr(err, log)
 	}
