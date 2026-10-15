@@ -253,7 +253,8 @@ OpenZFS 2.3.9 (Debian 13 contrib, `zfs-dkms`) on kernel `6.12.111+deb13-cloud-am
 
 | Case (docs/14 rows 19–27) | Result |
 |---|---|
-| Enable ZFS (contrib + headers + DKMS) | ok — headers 47 s + install/DKMS 228 s (first install, measured by hand with the same steps the op runs) |
+| Enable ZFS (contrib + headers + DKMS) | ok — first install by hand: headers 47 s + install/DKMS 228 s; then purged and enabled **through the API** (`storage.zfs.enable`, `TANGO_E2E_ZFS_REINSTALL=1`): 3 min 59 s |
+| UI (Playwright): demo + real mirror S3 + S6 from the wizard, volume, destroy | ok — 6.8 s demo, 13.2 s real |
 | Mirror S3 + S6, validations (raidz1 with 2, name `mirror`, volume1's disk) | ok — `INVALID_PARAMS` ×2, `DEVICE_NOT_ELIGIBLE` |
 | Volume + SMB folder (dataset) + snapshot + file versions + Previous Versions (`smbclient allinfo` → `@GMT-`) | ok |
 | zvol 256 MiB + iSCSI target (`iblock`), zvol delete refused while used | ok |
