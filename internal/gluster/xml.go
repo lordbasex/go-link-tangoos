@@ -171,6 +171,8 @@ type BrickStatus struct {
 	SizeTotal uint64 `json:"sizeTotal,omitempty"`
 	SizeFree  uint64 `json:"sizeFree,omitempty"`
 	FsName    string `json:"fsName,omitempty"`
+	// Kind es la forma del brick: dir (carpeta en un volumen) o lv (LV dedicado con XFS).
+	Kind string `json:"kind,omitempty"`
 	// Curación (heal info summary): -1 si el brick no respondió.
 	HealPending int    `json:"healPending"`
 	SplitBrain  int    `json:"splitBrain"`
@@ -195,6 +197,10 @@ type Volume struct {
 	HealPending int    `json:"healPending"`
 	SplitBrain  int    `json:"splitBrain"`
 	Online      int    `json:"online"` // bricks en línea
+	// TLS: client.ssl y server.ssl on (E/S cifrada y solo nodos con certificado del clúster).
+	TLS bool `json:"tls"`
+	// Quota: cuotas por directorio activadas (features.quota).
+	Quota bool `json:"quota"`
 }
 
 func splitBrick(name string) Brick {
@@ -243,6 +249,7 @@ func ParseVolumes(info, status []byte) ([]Volume, error) {
 		}
 		for _, b := range v.Bricks {
 			bs := BrickStatus{Brick: splitBrick(b.Name), HostUUID: b.HostUUID, Arbiter: b.Arbiter == 1}
+			bs.Kind = BrickKind(bs.Path)
 			if i, ok := live[key{bs.Host, bs.Path}]; ok {
 				n := nodes[i]
 				bs.Online = n.Status == 1
@@ -257,6 +264,8 @@ func ParseVolumes(info, status []byte) ([]Volume, error) {
 			}
 			vol.Bricks = append(vol.Bricks, bs)
 		}
+		vol.TLS = vol.Options["client.ssl"] == "on" && vol.Options["server.ssl"] == "on"
+		vol.Quota = vol.Options["features.quota"] == "on"
 		if vol.Sets > 1 { // distribuido: cada conjunto suma su capacidad
 			vol.SizeTotal *= uint64(vol.Sets)
 			vol.SizeFree *= uint64(vol.Sets)

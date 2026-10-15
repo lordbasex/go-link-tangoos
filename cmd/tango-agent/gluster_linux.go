@@ -218,13 +218,24 @@ func registerGluster(r *agentproto.Registry, jobs *asyncJobs, log *slog.Logger) 
 			args = gluster.ArgsAddBrick(a.Name, a.Replica, a.Bricks)
 		case "remove":
 			args, _ = gluster.ArgsRemoveBrick(a.Name, a.Replica, a.Bricks, a.Phase)
+			if a.Phase == "status" {
+				out, _, err := runGluster(ctx, args...)
+				if err != nil {
+					return nil, glusterAgentErr(err)
+				}
+				t, err := gluster.ParseTask(out, hostnameOr(""))
+				if err != nil {
+					return nil, glusterAgentErr(err)
+				}
+				return agentproto.GlusterTaskResult{Task: t}, nil
+			}
 		case "replace":
 			args = gluster.ArgsReplaceBrick(a.Name, a.From, a.To)
 		}
 		if err := glusterDo(ctx, args); err != nil {
 			return nil, glusterAgentErr(err)
 		}
-		return struct{}{}, nil
+		return agentproto.GlusterTaskResult{}, nil
 	})
 
 	agentproto.Register(r, agentproto.OpGlusterMount, validateGlusterMount, func(ctx context.Context, a *agentproto.GlusterMountArgs) (any, *agentproto.Error) {
@@ -271,6 +282,8 @@ func registerGluster(r *agentproto.Registry, jobs *asyncJobs, log *slog.Logger) 
 		}
 		return struct{}{}, nil
 	})
+
+	registerGluster2(r, log)
 }
 
 // glusterHealInfo corre `gluster volume heal <vol> info summary` en una unidad
@@ -311,7 +324,7 @@ func sortedKeys(m map[string]string) []string {
 
 func glusterStatus(ctx context.Context, self string) agentproto.GlusterStatusResult {
 	res := agentproto.GlusterStatusResult{Installed: glusterInstalled(), Peers: []gluster.Peer{}, Volumes: []gluster.Volume{},
-		Orphans: []agentproto.GlusterOrphan{}, Mounts: glusterMounts(), Allowed: readGlusterAllowed()}
+		Orphans: []agentproto.GlusterOrphan{}, Mounts: glusterMounts(), Allowed: readGlusterAllowed(), TLS: glusterTLSState(), LVBricks: glusterLVBricks(ctx)}
 	if !res.Installed {
 		return res
 	}
@@ -353,6 +366,15 @@ func glusterStatus(ctx context.Context, self string) agentproto.GlusterStatusRes
 	// pide aparte cada tanto.
 	res.Volumes = vols
 	res.Orphans = glusterOrphans(vols)
+	known := map[string]bool{}
+	for _, v := range vols {
+		known[v.Name] = true
+	}
+	for _, lb := range res.LVBricks {
+		if !known[lb.Vol] {
+			res.Orphans = append(res.Orphans, agentproto.GlusterOrphan{Kind: "lv", TangoVolume: lb.Pool, Name: lb.Vol, Path: gluster.LVMountPath(lb.Vol)})
+		}
+	}
 	return res
 }
 
@@ -520,7 +542,7 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 	prevShare := glusterShares()[mnt]
 
 	// La carpeta SMB se saca antes de desmontar (y si cambió de nombre).
-	if prevShare != "" && prevShare != a.Share {
+	if a.Action == "" && prevShare != "" && prevShare != a.Share {
 		if _, err := diskops.RemoveSambaShare(ctx, prevShare); err != nil {
 			log.Warn("gluster smb", "share", prevShare, "err", err)
 		}
@@ -530,6 +552,25 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 		return nil, agentproto.Errf(agentproto.CodeFailed, "systemd: %v", err)
 	}
 	defer c.Close()
+	if a.Action != "" {
+		if !fileExists(unitPath) {
+			return nil, agentproto.Errf(agentproto.CodeNotFound, "%s no está configurado para montarse", a.Name)
+		}
+		ch := make(chan string, 1)
+		var err error
+		if a.Action == "stop" {
+			_, err = c.StopUnitContext(ctx, unit, "replace", ch)
+		} else {
+			_, err = c.StartUnitContext(ctx, unit, "replace", ch)
+		}
+		if err == nil {
+			err = sdWait(ctx, ch, unit)
+		}
+		if err != nil {
+			return nil, agentproto.Errf(agentproto.CodeBusy, "%s %s: %v", a.Action, mnt, err)
+		}
+		return struct{}{}, nil
+	}
 	if !a.Enabled {
 		ch := make(chan string, 1)
 		if _, err := c.StopUnitContext(ctx, unit, "replace", ch); err == nil {
@@ -578,11 +619,12 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 		}
 	}
 	rwG, roG := diskops.ShareGroups(a.Share)
-	rwGID, err := diskops.EnsureGroup(ctx, rwG)
+	// GID fijo por nombre: las ACL quedan guardadas en GlusterFS y valen en todos los nodos.
+	rwGID, err := diskops.EnsureClusterGroup(ctx, rwG)
 	if err != nil {
 		return nil, userErr(err, log)
 	}
-	roGID, err := diskops.EnsureGroup(ctx, roG)
+	roGID, err := diskops.EnsureClusterGroup(ctx, roG)
 	if err != nil {
 		return nil, userErr(err, log)
 	}

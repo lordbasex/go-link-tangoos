@@ -37,6 +37,8 @@ Description=TangoOS cluster volume %[1]s
 Documentation=https://github.com/lordbasex/go-link-tangoos
 After=network-online.target glusterd.service
 Wants=network-online.target glusterd.service
+# Antes de nfs-server: si el volumen se exporta por NFS, el export encuentra el montaje.
+Before=nfs-server.service
 
 [Mount]
 What=localhost:/%[1]s
@@ -88,7 +90,7 @@ func SplitAddrs(addrs []string) (v4, v6 []string) {
 // desde loopback y las direcciones permitidas.
 func FirewallRules(allowed []string) string {
 	v4, v6 := SplitAddrs(allowed)
-	ports := fmt.Sprintf("{ %d, %d, %d-%d }", PortGlusterd, PortRDMA, PortBrickMin, PortBrickMax)
+	ports := fmt.Sprintf("{ %d, %d, %d, %d-%d }", PortGlusterd, PortRDMA, PortCtl, PortBrickMin, PortBrickMax)
 	set := func(name, typ string, elems []string) string {
 		s := fmt.Sprintf("\tset %s {\n\t\ttype %s\n", name, typ)
 		if len(elems) > 0 {

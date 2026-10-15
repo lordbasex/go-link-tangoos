@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cliOutput>
+  <opRet>0</opRet>
+  <opErrno>0</opErrno>
+  <opErrstr/>
+  <snapInfo>
+    <originVolume>
+      <name>gt</name>
+      <snapCount>1</snapCount>
+      <snapRemaining>255</snapRemaining>
+    </originVolume>
+    <count>1</count>
+    <snapshots>
+      <snapshot>
+        <name>s1</name>
+        <uuid>49c57013-3359-4331-9214-0283e481cc5e</uuid>
+        <description>prueba uno</description>
+        <createTime>2026-10-15 16:47:03 +0000</createTime>
+        <volCount>1</volCount>
+        <snapVolume>
+          <name>a3ec2f1b3cde4ac782555541f26e6a5a</name>
+          <status>Stopped</status>
+        </snapVolume>
+      </snapshot>
+    </snapshots>
+  </snapInfo>
+</cliOutput>
