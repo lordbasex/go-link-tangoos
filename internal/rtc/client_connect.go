@@ -24,7 +24,7 @@ import (
 
 // HubMode elige cómo unirse a la sesión del NAS.
 type HubMode struct {
-	App      string // "tangoos"
+	App      string // "go-link-tangoos"
 	Code     string // claim con el código de vinculación
 	DeviceID string // reach (navegador vinculado o invitado de un enlace)
 }

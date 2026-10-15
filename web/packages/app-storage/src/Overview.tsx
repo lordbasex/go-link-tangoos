@@ -170,12 +170,12 @@ function Migrate({ disks }: { disks: Disk[] }) {
         <HardDriveDownload size={26} />
       </div>
       <div className="ts-migrate-body">
-        <h3>Encontramos discos de un Synology</h3>
+        <h3>Encontramos discos de otro NAS</h3>
         <p className="ts-migrate-meta">
           {f.label} · {f.profile} · bahías {foreign.map((d) => d.bay).join(" y ")}
         </p>
         <p>
-          Synology usa mdadm + LVM + Btrfs, el mismo stack que TangoOS. Podés montar el volumen en <strong>solo lectura</strong> y revisar tus archivos: nada se escribe en los discos.
+          La mayoría de los NAS comerciales usa mdadm + LVM + Btrfs, el mismo stack que TangoOS. Podés montar el volumen en <strong>solo lectura</strong> y revisar tus archivos: nada se escribe en los discos.
         </p>
         {mounted ? (
           <div className="ts-migrate-ok">

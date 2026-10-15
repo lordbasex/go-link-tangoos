@@ -113,7 +113,7 @@ and open in a window (an isolated iframe to a local port proxied over a DataChan
 - **Our own wallpapers:** generated or CC0 photographs, 3 light and 3 dark, with a dynamic mode
   based on the time of day.
 - **Our own app icons** in SVG with a *squircle* shape and a consistent palette. They have to be
-  designed; no Apple or Synology icons are used.
+  designed; no Apple or third-party NAS vendor icons are used.
 
 ### Second theme (after M3)
 

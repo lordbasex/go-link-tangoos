@@ -103,7 +103,7 @@ Consequence: everything TangoOS adds is installed as **`.deb` packages** and upd
 
 ### Graphical installer
 
-Like Synology's *Web Assistant*, but also on the machine's own screen:
+Like the web setup assistants of commercial NAS systems, but also on the machine's own screen:
 
 ```
 GRUB ─ "Instalar TangoOS" (Install TangoOS, default) ──► live + installer.squashfs layer
@@ -150,8 +150,8 @@ bios_grub 1M | ESP 512M (vfat) | /boot 1G (ext4, label tangoos-boot) | root (res
                                       └─ @snapshots   → /.snapshots: root snapshots before each update
 ```
 
-A separate disk is used (SSD/NVMe/good-quality USB), which is simpler and safer than the Synology model of
-replicating the system on every data disk. The Synology model (md RAID1 of the system across
+A separate disk is used (SSD/NVMe/good-quality USB), which is simpler and safer than the commercial NAS model of
+replicating the system on every data disk. That model (md RAID1 of the system across
 all bays) remains an option to evaluate.
 
 ## Updates

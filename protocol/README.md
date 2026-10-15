@@ -562,7 +562,7 @@ users.appPasswords.revoke {"id","name"?} → {}
 ## 15. TangoConnect: remote access and public links (signalhub, `tangoos` app)
 
 Reuses signalhub (`github.com/lordbasex/signalhub`, protocol v1, see its README) and its coturn.
-Production: `wss://signal.go-link.org/ws?v=1` (requires `tangoos` in `ALLOWED_APPS`);
+Production: `wss://signal.go-link.org/ws?v=1` (requires `go-link-tangoos` in `ALLOWED_APPS`);
 development: a local instance with no restriction. No accounts: codes + device tokens, like go-link.
 
 ### Roles
@@ -654,7 +654,7 @@ development: a local instance with no restriction. No accounts: codes + device t
 - **Web client:** `rtcFromSignal(join, {remote:{beforeAuth}})` in `@tango/client` builds an `RtcTransport` on top of
   signalhub signaling (the portal implements `SignalProvider`); `fetchBundleFile(path)` downloads and verifies a
   bundle file; `connectLinkProof()` and `parseShareURL()` in `protocol-connect.ts`.
-- **Production:** signalhub needs `ALLOWED_APPS=go-link,tangoos` and `ALLOWED_ORIGINS` with `https://tangoos.go-link.org`.
+- **Production:** signalhub needs `ALLOWED_APPS=go-link,go-link-tangoos` and `ALLOWED_ORIGINS` with `https://tangoos.go-link.org`.
   There is no need to raise `MAX_ROOMS_PER_SESSION` (rooms are not used).
 
 ## 16. Cluster (GlusterFS)

@@ -40,8 +40,8 @@ export interface Disk {
   volume?: string;
   reallocated: number;
   pending: number;
-  /** Disco que viene de un Synology (escenario migrate). */
-  foreign?: { vendor: "synology"; label: string; profile: string };
+  /** Disco que viene de otro NAS (escenario migrate). */
+  foreign?: { label: string; profile: string };
 }
 
 export type VolumeProfile = "basic" | "raid1" | "raid5" | "raid6" | "raid10";

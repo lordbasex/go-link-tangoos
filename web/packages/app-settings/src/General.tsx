@@ -76,7 +76,7 @@ export function General() {
           <Button onClick={() => demoApply("El nuevo nombre")}>Cambiar nombre…</Button>
         </Row>
       </Group>
-      <p className="tset-foot">TangoOS es un proyecto independiente, no afiliado a Apple Inc. ni a Synology Inc.</p>
+      <p className="tset-foot">TangoOS es un proyecto independiente, no afiliado a Apple Inc. ni a ningún fabricante de NAS.</p>
     </>
   );
 }

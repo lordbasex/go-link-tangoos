@@ -19,7 +19,7 @@ import (
 )
 
 // App es el namespace de TangoOS en signalhub.
-const App = "tangoos"
+const App = "go-link-tangoos"
 
 // Valores por defecto (protocol/README.md §15).
 const (

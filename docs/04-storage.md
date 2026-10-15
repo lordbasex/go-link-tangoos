@@ -1,8 +1,8 @@
 # 04 — Storage
 
-## Decision: mdadm + Btrfs (the Synology model)
+## Decision: mdadm + Btrfs (the commercial NAS model)
 
-Synology does not use Btrfs RAID. It uses `mdadm` for redundancy, optionally LVM, and
+Commercial NAS systems do not use Btrfs RAID. They use `mdadm` for redundancy, optionally LVM, and
 **single-device** Btrfs on top, to get snapshots, subvolumes, checksums and compression.
 TangoOS does the same:
 
@@ -24,8 +24,8 @@ documented upstream. Btrfs RAID1/RAID1c3 are reliable, but mdadm offers a full r
 profiles with a single tool and a well-known recovery story.
 
 **Honest limitation:** with single Btrfs on top of md, the checksum *detects* corruption
-but cannot *repair* it from another copy (md does not expose which mirror is good). Synology
-patches this in the kernel; we do not. Mitigations: scheduled md (`check`) and Btrfs
+but cannot *repair* it from another copy (md does not expose which mirror is good). Some commercial
+NAS systems patch this in the kernel; we do not. Mitigations: scheduled md (`check`) and Btrfs
 scrubs, clear alerts, and the "native Btrfs RAID1" mode as an advanced option for
 2-disk volumes (ADR 0004). Today: the scrub (md `check` + Btrfs scrub) is started by hand ("Verify now"),
 there is no scheduled scrub yet, and native Btrfs RAID1 is not implemented.

@@ -174,7 +174,7 @@ export function ReplaceDisk({ vol, disks, onClose }: { vol: Volume | null; disks
   const need = vol ? memberSize(vol, disks) : 0;
   const failed = vol ? disks.find((d) => d.volume === vol.id && d.use === "failed") ?? null : null;
   const candidates = useMemo(() => disks.filter((d) => d.use !== "system" && d.use !== "failed" && d.volume !== vol?.id), [disks, vol]);
-  const reasonOf = (d: Disk) => (d.use !== "free" ? "En uso por otro volumen" : d.foreign ? "Viene de un Synology" : d.size < need ? `Más chico que los discos del volumen (${fmtBytes(need)})` : null);
+  const reasonOf = (d: Disk) => (d.use !== "free" ? "En uso por otro volumen" : d.foreign ? "Viene de otro NAS" : d.size < need ? `Más chico que los discos del volumen (${fmtBytes(need)})` : null);
 
   useEffect(() => {
     setPick(null);

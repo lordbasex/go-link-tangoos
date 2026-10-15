@@ -7,7 +7,7 @@ to build it.
 
 A **navigable desktop, on the final stack and with labeled demo data**, that demonstrates:
 
-1. Visual quality on par with Mac-OS-Desktop and above DSM: it is the first thing people compare ([12](12-strategy-vs-synology.md)).
+1. Visual quality on par with Mac-OS-Desktop and above commercial NAS interfaces: it is the first thing people compare ([12](12-strategy-vs-commercial-nas.md)).
 2. A real window manager (not fixed positions).
 3. The "real-time" feel: metrics that move, jobs with progress, notifications that arrive.
 4. That the apps talk to a `Transport` interface: later `MockTransport` is swapped for WebRTC without touching the apps.
@@ -349,7 +349,7 @@ export interface Transport {
 | `degraded` | a failed disk, degraded volume, critical notification, Doctor |
 | `busy` | scrub in progress + 2 transfers + a snapshot being created |
 | `empty` | freshly installed NAS: no volumes, first-volume wizard highlighted |
-| `migrate` | disks from a Synology detected → "Synology volume found (read-only)" card ([12](12-strategy-vs-synology.md)) |
+| `migrate` | disks from another NAS detected → "Volume from another NAS found (read-only)" card ([12](12-strategy-vs-commercial-nas.md)) |
 
 - A scenario picker (development only) in ◆ → "Demo".
 - **DEMO badge** visible on every view with mock data, without exception.

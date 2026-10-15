@@ -20,7 +20,7 @@ export function useAvailable(m: Method): boolean {
 export function ineligibleReason(d: Disk, vols: Volume[]): string | null {
   if (d.use === "system") return "Disco del sistema";
   if (d.use === "failed") return "Falló: no responde";
-  if (d.foreign) return "Viene de un Synology";
+  if (d.foreign) return "Viene de otro NAS";
   if (d.use === "member") return `Miembro de ${vols.find((v) => v.id === d.volume)?.name ?? "un volumen"}`;
   return null;
 }
@@ -70,7 +70,7 @@ export function capacity(profile: VolumeProfile, sizes: number[]) {
 
 /** Contenido detectado en el disco (demo, determinístico). */
 export function detectedContent(d: Disk): string {
-  if (d.foreign) return `Volumen ${d.foreign.profile} de un Synology (${d.foreign.label})`;
+  if (d.foreign) return `Volumen ${d.foreign.profile} de otro NAS (${d.foreign.label})`;
   if (d.bay === 3) return "Una partición ext4 sin montar (3,9 TB)";
   return "Vacío: sin tabla de particiones";
 }

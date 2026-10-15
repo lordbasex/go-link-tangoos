@@ -4,7 +4,7 @@
 // instalado). Sirve una interfaz web por HTTP que se ve de dos formas:
 //
 //   - en la pantalla del equipo, con un navegador en modo kiosco (cog) sobre 127.0.0.1;
-//   - desde otra PC de la red (como el Web Assistant de Synology), con un código de 6
+//   - desde otra PC de la red (como los asistentes web de los NAS comerciales), con un código de 6
 //     dígitos que solo se muestra en la pantalla local.
 //
 // No instala nada por sí mismo: valida lo que elige la persona y llama al motor
