@@ -1,120 +1,148 @@
 # 09 — Roadmap
 
-Cada hito tiene un **gate**: no se avanza al siguiente sin cumplirlo. Las duraciones son
-orientativas para una persona con ayuda de agentes.
+Each milestone has a **gate**: we do not move to the next one until it is met. Durations are
+rough estimates for one person working with agents.
 
-## M0 — Fundaciones y prototipo (2–3 semanas)
+**Where we are (v0.1, October 2026):** M0–M3.5 are done except for the items still unchecked
+below. M4 (v1.0) is mostly done and in testing on VMs. From M5, TangoConnect is done. M6 has not
+started. Every check below was verified against the code and [`tests/RESULTS.md`](../tests/RESULTS.md).
 
-- [ ] Monorepo, CI (Go + web + gitleaks + govulncheck), licencia MIT, ADRs.
-- [x] **Prototipo visual navegable** con `MockTransport` ([05](05-escritorio-y-temas.md#prototipo-lo-siguiente-a-construir)).
-- [x] **Spike WebRTC:** `tangod` mínimo con embed.FS + `/signal` + pion + canal `rpc`
-      (`system.info`) + STUN embebido.
-- [ ] **Benchmark de throughput** de DataChannels navegador↔pion y pion↔pion ([03 §7](03-protocolo-webrtc.md)).
-- [x] Prueba de concepto del Service Worker → DataChannel con `<video>` y Range.
+## M0 — Foundations and prototype (2–3 weeks)
 
-**Gate:** el prototipo se ve a la altura de Mac-OS-Desktop y los números de throughput están
-documentados y aceptados.
+- [ ] Monorepo, CI (Go + web + gitleaks + govulncheck), MIT license, ADRs.
+      _Done: monorepo, MIT license, ADRs, `make check` (gofmt, go vet, go test). Missing: CI, gitleaks and
+      govulncheck._
+- [x] **Navigable visual prototype** with `MockTransport` ([05](05-desktop-and-themes.md#prototype-the-next-thing-to-build)).
+- [x] **WebRTC spike:** minimal `tangod` with embed.FS + `/signal` + pion + `rpc` channel
+      (`system.info`) + embedded STUN.
+- [ ] **Throughput benchmark** for browser↔pion and pion↔pion DataChannels ([03 §7](03-webrtc-protocol.md)).
+      _Done: pion↔pion with one channel and the 1 GiB end-to-end transfer. Missing: browser↔pion and the
+      channel-count matrix._
+- [x] Proof of concept of Service Worker → DataChannel with `<video>` and Range.
 
-## M1 — Plataforma (4–5 semanas)
+**Gate:** the prototype looks on par with Mac-OS-Desktop, and the throughput numbers are
+documented and accepted.
 
-- [ ] `protocol/` + codegen Go/TS + vectores compartidos.
-- [x] `pkg/rtcrpc`: router, authz declarativa, eventos con `seq`/resume, cancelación.
-- [x] Login, sesiones, argon2id, lockout, TOTP, resume "el host prueba primero".
-- [x] `tango-agent` con protocolo versionado, `SO_PEERCRED`, journal y los primeros ops de solo lectura.
-- [x] Jobs durables + auditoría + reconciliación.
-- [x] Shell real conectado: Monitor (canal `metrics`) y Registro.
-- [x] `.deb` con nFPM + repo apt de desarrollo + VM QEMU con Debian 13 minimal y discos virtuales.
+## M1 — Platform (4–5 weeks)
 
-**Gate:** login real y Monitor/Registro en vivo sobre WebRTC; sin operaciones destructivas.
+- [ ] `protocol/` + Go/TS codegen + shared vectors.
+      _Done: `protocol/` and the shared vectors. Missing: codegen; the TS types are written by hand._
+- [x] `pkg/rtcrpc`: router, declarative authz, events with `seq`/resume, cancellation.
+- [x] Login, sessions, argon2id, lockout, TOTP, "the host proves first" resume.
+- [x] `tango-agent` with a versioned protocol, `SO_PEERCRED`, journal and the first read-only ops.
+- [x] Durable jobs + audit + reconciliation.
+- [x] Real shell connected: Monitor (`metrics` channel) and Log.
+- [x] `.deb` with nFPM + development apt repo + test VM with Debian 13 minimal and virtual disks.
 
-## M2 — Almacenamiento (5–6 semanas)
+**Gate:** real login and live Monitor/Log over WebRTC; no destructive operations.
 
-- [ ] Inventario de discos (udev + `lsblk --json` + SMART), solo lectura; detecta volúmenes Synology (sin montar).
-- [x] Crear volumen Básico / RAID1 con plan + token de confirmación.
-- [x] Carpetas compartidas = subvolúmenes; snapshots y retención; restaurar archivo.
-- [ ] Scrub, alertas de degradado, reemplazar disco y rebuild.
-- [ ] Harness QEMU con fallos inyectados en CI.
+## M2 — Storage (5–6 weeks)
 
-**Gate:** toda la batería de [04](04-almacenamiento.md#batería-de-pruebas-discos-virtuales-qemu) en verde.
+- [x] Disk inventory (sysfs + udev + native SMART), read-only.
+- [ ] Detect Synology volumes (without mounting them).
+      _Only in the UI with simulated data; the backend does not detect them yet._
+- [x] Create a Basic / RAID1 volume with a plan + confirmation token.
+- [x] Shared folders = subvolumes; snapshots and retention; restore a file.
+- [x] Scrub, degraded alerts, replace a disk and rebuild.
+- [ ] QEMU harness with injected faults in CI.
+      _The fault-injection matrix exists (`tests/e2e`) and passes, but it runs by hand against a VM, not in CI._
 
-## M3 — Archivos, SMB y app nativa (5–6 semanas)
+**Gate:** the whole battery in [04](04-storage.md#test-battery-qemu-virtual-disks) passes.
 
-- [x] file-worker por UID con `openat2`; app Archivos completa; papelera.
-- [ ] Transferencias con pool de canales, reanudables, y Service Worker para descargas y vistas previas.
-      _Hecho: pool de canales, rangos y Service Worker (`/dc/stream`, `/dc/download`, 206). Falta: reanudar subidas._
-- [x] Usuarios, grupos, permisos; Samba + Time Machine + `vfs_shadow_copy2`; NFS; SFTP con chroot; mDNS + WS-Discovery.
-      _Usuarios con alta, baja (`users.delete`) y contraseñas de app; Time Machine (vfs_fruit + Bonjour `_adisk._tcp`);
-      «Versiones anteriores» (`vfs_shadow_copy2` sobre los enlaces `.gmt`); WS-Discovery nativo en Go (sin wsdd2).
-      Verificado en la VM 108 (protocol/README.md §14)._
-- [ ] `tango-desk` para Windows y Linux (webview + pion + bridge), vinculación y montaje SMB.
-- [ ] Tests de clientes macOS y Windows.
-- [ ] Volúmenes Synology: montar en solo lectura y navegarlos en Archivos ([12](12-estrategia-vs-synology.md)).
+## M3 — Files, SMB and native app (5–6 weeks)
 
-**Gate:** se cumple la [métrica de éxito del MVP](01-vision-y-alcance.md#métrica-de-éxito-del-mvp).
+- [x] Per-UID file-worker with `openat2`; complete Files app; trash.
+- [ ] Transfers with a channel pool, resumable, and a Service Worker for downloads and previews.
+      _Done: channel pool, ranges and Service Worker (`/dc/stream`, `/dc/download`, 206). Missing: resuming uploads._
+- [x] Users, groups, permissions; Samba + Time Machine + `vfs_shadow_copy2`; NFS; SFTP with chroot; mDNS + WS-Discovery.
+      _Users with create, delete (`users.delete`) and app passwords; Time Machine (vfs_fruit + Bonjour `_adisk._tcp`);
+      Windows "Previous Versions" (`vfs_shadow_copy2` over the `.gmt` links); native Go WS-Discovery (no wsdd2).
+      Verified on VM 108 (protocol/README.md §14)._
+- [ ] `tango-desk` for Windows and Linux (webview + pion + bridge), pairing and SMB mounting.
+- [ ] macOS and Windows client tests.
+- [ ] Synology volumes: mount read-only and browse them in Files ([12](12-strategy-vs-synology.md)).
 
-## M3.5 — Centro de apps (adelantado por pedido del producto)
+**Gate:** the [MVP success metric](01-vision-and-scope.md#mvp-success-metric) is met.
 
-- [x] Instalar Docker Engine (`docker.io` + `docker-compose` de Debian) desde el NAS, como job con progreso.
-- [x] `tangod` → Docker Engine API por socket Unix, vía el agente (sin `exec`, ADR 0009).
-- [x] Catálogo de apps (manifiesto propio + Compose): Jellyfin, Immich, Home Assistant, Nextcloud, Pi-hole, Vaultwarden…
-- [x] Instalar / iniciar / detener / actualizar / desinstalar / logs en vivo; datos en `@apps/<app>` del volumen.
-- [x] Cada app abre su propia ventana del escritorio (proxy local hacia el puerto del contenedor).
+## M3.5 — App center (moved forward at the product's request)
 
-**Gate:** instalar, usar, actualizar y desinstalar 3 apps del catálogo sin terminal, con datos que sobreviven a la actualización.
+- [x] Install Docker Engine (Debian's `docker.io` + `docker-compose`) from the NAS, as a job with progress.
+- [x] `tangod` → Docker Engine API over a Unix socket, through the agent (no `exec`, ADR 0009).
+- [x] App catalog (own manifest + Compose): Jellyfin, Immich, Home Assistant, Nextcloud, Pi-hole, Vaultwarden…
+- [x] Install / start / stop / update / uninstall / live logs; data in the volume's `@apps/<app>`.
+- [x] Each app opens its own desktop window (local proxy to the container's port).
 
-## M4 — Producto instalable (5–6 semanas) → **v1.0**
+**Gate:** install, use, update and uninstall 3 catalog apps without a terminal, with data that survives the update.
 
-- [ ] Repo apt firmado, ISO (debian-installer + preseed/simple-cdd), primer arranque, updates por apt con snapshot del root y rollback (grub-btrfs).
+## M4 — Installable product (5–6 weeks) → **v1.0** (in testing)
+
+- [x] Signed apt repo, ISO, first boot, apt updates with a root snapshot and rollback.
+      _The ISO is our own image (debootstrap + squashfs) with a graphical installer, which can also be driven
+      from another computer on the network; the netinst + preseed image remains as `make iso-netinst`. Rollback
+      swaps the `@rootfs` Btrfs subvolume (our own, not grub-btrfs). Also `install.sh` over an existing Debian 13.
+      Verified on VMs 109 and 111._
 - [x] iSCSI (LIO), WebDAV.
-- [ ] Certificados (DNS del proyecto / ACME / CA local).
-      _En curso: hay ACME en `internal/tlscert`; falta el DNS del proyecto._
-- [ ] RAID5/6/10, LUKS2, notificaciones (email/ntfy/Telegram), UPS (NUT).
-      _Hecho: UPS por NUT (local por USB o remoto, apagado ordenado) y notificaciones. Falta validar el resto en VM._
-- [ ] Backup/import de configuración; modo recuperación.
-- [ ] Asistente de importación de volúmenes Synology + tests con volúmenes reales DSM 6/7.
-- [ ] Mission Control y widgets.
-- [ ] Release con SBOM, sumas firmadas y matriz de hardware.
+- [ ] Certificates (project DNS / ACME / local CA).
+      _Done: self-signed and local CA, swapped without a restart. Missing: ACME and the project's DNS._
+- [ ] RAID5/6/10, LUKS2, notifications (email/ntfy/Telegram), UPS (NUT).
+      _Done and verified on the VM: RAID 5/6/10, notifications and UPS over NUT (local over USB or remote,
+      orderly shutdown). Missing: LUKS2._
+- [ ] Configuration backup/import; recovery mode.
+- [ ] Synology volume import wizard + tests with real DSM 6/7 volumes.
+- [x] Mission Control and widgets.
+- [ ] Release with SBOM, signed sums and a hardware matrix.
+      _Today there are only `.sha256` files for the ISO._
 
-**Gate:** instalación limpia → update → rollback forzado → los datos están intactos.
+**Gate:** clean install → update → forced rollback → the data is intact.
 
-## Próximos (post v1.0)
+## Next (post v1.0)
 
-Prioridades de [la comparativa con Synology](../reports/Comparativa%20NAS%20Synology%20vs%20TangoOS.md),
-sin lo que ya quedó hecho en la fase v1.0 (proxy de apps con sesión, 2FA TOTP, NUT, NFS, SFTP, Time Machine).
+Priorities from the comparison with Synology, minus what was already done in the v1.0 phase
+(app proxy with session, TOTP 2FA, NUT, NFS, SFTP, Time Machine).
 
-- **P0, credibilidad:**
-  - [ ] `tests/RESULTS.md` reproducible: harness QEMU con fallos inyectados y Playwright.
-  - [ ] Updates desde la UI con instantánea de `@rootfs`, rollback en un clic y repo apt firmado.
-  - [ ] Backup de configuración `.tangobak`.
-  - [x] "Versiones anteriores" de Windows (`vfs_shadow_copy2`).
-  - [ ] TLS de confianza: dominio del proyecto y CA local.
-  - [x] 2FA también en WebDAV y SFTP: con 2FA activa aceptan solo contraseñas de app (y SMB usa una de app).
-- **P1, diferenciación:**
-  - [ ] Respaldo 3-2-1 con asistente (restic/Kopia a USB, S3, B2 u otro TangoOS) y replicación `btrfs send`.
-  - [ ] Acceso remoto: Tailscale/WireGuard en un clic y después TangoConnect P2P con TURN.
-  - [ ] Migración desde Synology: montar SHR/RAID en solo lectura y navegarlo.
-  - [ ] Jellyfin con QSV/VAAPI y `/dev/dri` automático.
-  - [ ] Btrfs RAID1 nativo para dos discos.
-  - [ ] Cuotas, LUKS2 y perfiles de energía.
-  - [ ] Catálogo más grande con modo compose avanzado.
-- **P2, alcance:**
-  - [ ] `tango-desk` (Windows/Linux) y app móvil.
-  - [ ] Compartir por enlace, pedido de archivos y subida reanudable.
-  - [ ] Discos mixtos tipo SHR.
-  - [ ] Hot spare y migración de nivel.
-  - [ ] LDAP/AD y passkeys.
-  - [ ] ARM64, inglés y segundo tema.
-- **P3, opcional:**
-  - [ ] ZFS, caché SSD.
-  - [ ] Respaldo de PC con agente.
-  - [ ] Asistente de IA / MCP con confirmación y step-up auth.
+- **P0, credibility:**
+  - [ ] Reproducible `tests/RESULTS.md`: QEMU harness with injected faults, and Playwright, in CI.
+  - [x] Updates from the UI with an `@rootfs` snapshot, one-click rollback and a signed apt repo.
+  - [ ] `.tangobak` configuration backup.
+  - [x] Windows "Previous Versions" (`vfs_shadow_copy2`).
+  - [ ] Trusted TLS: the project's domain and local CA. _Local CA done._
+  - [x] 2FA in WebDAV and SFTP too: with 2FA on they accept only app passwords (and SMB uses an app password).
+- **P1, differentiation:**
+  - [ ] Guided 3-2-1 backup (restic/Kopia to USB, S3, B2 or another TangoOS) and `btrfs send` replication.
+  - [ ] Remote access: Tailscale/WireGuard in one click, and TangoConnect P2P with TURN.
+        _TangoConnect done ([16](16-tangoconnect.md)). Missing: Tailscale/WireGuard._
+  - [ ] Migration from Synology: mount SHR/RAID read-only and browse it.
+  - [ ] Jellyfin with QSV/VAAPI and automatic `/dev/dri`.
+  - [ ] Native Btrfs RAID1 for two disks.
+  - [ ] Quotas, LUKS2 and power profiles.
+  - [ ] Larger catalog with an advanced compose mode.
+- **P2, scope:**
+  - [ ] `tango-desk` (Windows/Linux) and mobile app.
+  - [ ] Share by link, file requests and resumable upload. _Share links done._
+  - [ ] SHR-style mixed disks.
+  - [ ] Hot spare and level migration. _Growing a RAID 5 (reshape) is done._
+  - [ ] LDAP/AD and passkeys.
+  - [ ] ARM64, English UI and a second theme.
+- **P3, optional:**
+  - [ ] ZFS, SSD cache.
+  - [ ] PC backup with an agent.
+  - [ ] AI assistant / MCP with confirmation and step-up auth.
 
-## M5 — Ecosistema
+## M5 — Ecosystem (started)
 
-App Media (Jellyfin + Intel QSV), **TangoConnect**
-(acceso remoto vía signalhub + coturn), replicación de snapshots, Respaldo (restic),
-WebAuthn, ARM64 de referencia y el segundo tema ("Arrabal").
+- [ ] Media app (Jellyfin + Intel QSV). _Jellyfin installs from the catalog, without QSV._
+- [x] **TangoConnect** (remote access through signalhub + coturn), with share links.
+- [ ] Snapshot replication.
+- [ ] Backup (restic).
+- [ ] WebAuthn.
+- [ ] ARM64 reference build.
+- [ ] Second theme ("Arrabal").
 
-## M6 — Avanzado
+## M6 — Advanced (not started)
 
-Volumen híbrido tipo SHR (md por rebanadas + LVM), ZFS opcional (`tangoos-zfs`), caché SSD, cliente de sincronización (Drive), LDAP/AD, cuotas por usuario.
+- [ ] SHR-style hybrid volume (md slices + LVM).
+- [ ] Optional ZFS (`tangoos-zfs`).
+- [ ] SSD cache.
+- [ ] Sync client (Drive).
+- [ ] LDAP/AD.
+- [ ] Per-user quotas. _The field and the UI bar exist; nothing is enforced yet._

@@ -1,100 +1,107 @@
-# 16 · TangoOS Connect (portal web)
+# 16 · TangoOS Connect (web portal)
 
-Portal público para llegar al NAS desde internet: **https://tangoos.go-link.org** (más adelante
-`connect.tangoos.org` puede ser un CNAME). Contrato: `protocol/README.md` §15. Copy: "TangoOS Connect ·
-sobre la red de go-link". Código: `web/apps/connect` (Vite + React 19 + TS, workspace `@tango/connect`).
+Public portal for reaching the NAS from the internet: **https://tangoos.go-link.org** (later on
+`connect.tangoos.org` can be a CNAME). Contract: `protocol/README.md` §15. Copy: "TangoOS Connect ·
+on the go-link network". Code: `web/apps/connect` (Vite + React 19 + TS, workspace `@tango/connect`).
 
-## 1. Páginas
+## 1. Pages
 
-| Ruta | Qué hace |
+| Route | What it does |
 |---|---|
-| `/` | Landing (mismo diseño que desk.go-link.org: `tokens.css`, `landing.css`, `webapp.css` copiados de go-link-desk, MIT, mismo autor). Capturas WebP 800w/1600w con `srcset`; si falta una, queda un hueco con el nombre del archivo. |
-| `/demo` | Escritorio completo de TangoOS sobre `MockTransport("lab")`, en el navegador. Carga diferida. **Sin red**: `WebSocket`, `RTCPeerConnection` y `EventSource` reemplazados por constructores que fallan, `fetch` solo al propio origen, `sendBeacon` no-op. Se entra y sale con recarga completa. |
-| `/nas` | Mis NAS: vínculos guardados en IndexedDB (`tangoos-connect` / `nas`) del origen del portal. |
-| `/nas/vincular` | Código de 9 dígitos (segmentado, pegar/teclado) → `claim`. |
-| `/nas/<device_id>` | `reach` → el NAS prueba primero → escritorio del NAS (canal `bundle`) o, si no hay bundle firmado, modo desarrollo. |
-| `/s/<device_id>.<link_id>#<secreto>` | Enlace público (sin cuenta): `reach` + `guest.open`. El secreto va en el fragmento: nunca llega al servidor. |
+| `/` | Landing (same design as desk.go-link.org: `tokens.css`, `landing.css`, `webapp.css` copied from go-link-desk, MIT, same author). WebP screenshots at 800w/1600w with `srcset`; if one is missing, a gap is left with the file name. |
+| `/demo` | Full TangoOS desktop on `MockTransport("lab")`, in the browser. Lazy-loaded. **No network**: `WebSocket`, `RTCPeerConnection` and `EventSource` are replaced with constructors that fail, `fetch` only to its own origin, `sendBeacon` is a no-op. Entering and leaving does a full reload. |
+| `/nas` | My NAS: links stored in IndexedDB (`tangoos-connect` / `nas`) of the portal's origin. |
+| `/nas/vincular` | 9-digit code (segmented, paste/keyboard) → `claim`. |
+| `/nas/<device_id>` | `reach` → the NAS proves itself first → the NAS's desktop (`bundle` channel) or, if there is no signed bundle, development mode. |
+| `/s/<device_id>.<link_id>#<secret>` | Public link (no account): `reach` + `guest.open`. The secret goes in the fragment: it never reaches the server. |
 
-**Regla de dominio:** ninguna cookie con `Domain=.go-link.org`; el portal no usa cookies. Los tokens
-(vínculo del navegador) viven en IndexedDB del origen; la sesión de TangoOS en `sessionStorage`
-(`tango.session`) y se descarta al cambiar de NAS (`tangoconnect.device`).
+**Domain rule:** no cookie with `Domain=.go-link.org`; the portal does not use cookies. The tokens
+(browser link) live in the origin's IndexedDB; the TangoOS session lives in `sessionStorage`
+(`tango.session`) and is discarded when switching NAS (`tangoconnect.device`).
 
-## 2. Señalización
+## 2. Signaling
 
-`src/signal/socket.ts → joinSignal(target)` abre un WebSocket nuevo a signalhub
-(`VITE_SIGNAL_URL`, por defecto `wss://signal.go-link.org/ws?v=1`, app `tangoos`) en cada (re)conexión:
+`src/signal/socket.ts → joinSignal(target)` opens a new WebSocket to signalhub
+(`VITE_SIGNAL_URL`, by default `wss://signal.go-link.org/ws?v=1`, app `tangoos`) on every (re)connection:
 
-- `claim {code}` (primera vez) o `reach {device_id}` (vinculado / enlace público) → `paired {remote}`.
-- El `payload` de cada `signal` es el `SignalPayload` de tangod (`{"kind":"offer"|"answer"|"candidate",…}`)
-  **sin envoltura**; el NAS no manda `hello` (lo implementa `internal/connect/service.go`).
-- ICE: los de signalhub (STUN + TURN efímero); `mergeIce` descarta STUN/TURN de redes privadas.
+- `claim {code}` (first time) or `reach {device_id}` (linked / public link) → `paired {remote}`.
+- The `payload` of each `signal` is tangod's `SignalPayload` (`{"kind":"offer"|"answer"|"candidate",…}`)
+  **with no wrapper**; the NAS does not send `hello` (implemented in `internal/connect/service.go`).
+- ICE: the ones from signalhub (STUN + ephemeral TURN); `mergeIce` discards STUN/TURN on private networks.
 
-El transporte es `rtcFromSignal(join, {remote:{beforeAuth}})` de `@tango/client`: hello sintético con
-esos ICE, métodos por `connect.hello`, y `beforeAuth` corre el paso de vínculo **antes** del `auth.resume`
-en cada reconexión. Errores fijos de signalhub (`invalid or expired code`, `app not allowed`, …) se
-traducen al castellano; los que no se arreglan reintentando cortan la sesión.
+The transport is `rtcFromSignal(join, {remote:{beforeAuth}})` from `@tango/client`: a synthetic hello with
+those ICE servers, methods via `connect.hello`, and `beforeAuth` runs the link step **before** `auth.resume`
+on every reconnection. Fixed signalhub errors (`invalid or expired code`, `app not allowed`, …) are
+translated into Spanish; the ones that retrying will not fix end the session.
 
-## 3. Vínculo del navegador
+## 3. Browser link
 
 ```
-claim  → connect.link {label}            → {linkId, token, deviceId, fingerprint}  (se guarda; después: reach)
+claim  → connect.link {label}            → {linkId, token, deviceId, fingerprint}  (stored; afterwards: reach)
 reach  → connect.challenge {linkId, nonce} → {proof}
-         proof == base64url(HMAC-SHA256(SHA-256(token), "tangoconnect link proof\n"+nonce)) sin padding
-         (si no coincide: NO se envía el token)
+         proof == base64url(HMAC-SHA256(SHA-256(token), "tangoconnect link proof\n"+nonce)) without padding
+         (if it does not match: the token is NOT sent)
        → connect.resume {linkId, token}
 guest  → guest.open {link, secret} → guest.info / guest.unlock / guest.list / guest.download.begin (files.N)
 ```
 
-`fingerprint` (DTLS del NAS) se guarda y se compara con el SDP en cada conexión: si cambia es **solo un
-aviso** (la prueba HMAC ya identificó al NAS). Vector compartido: `protocol/vectors/tangoconnect.json`
-(generado con `internal/connect.LinkProof`).
+`fingerprint` (the NAS's DTLS) is stored and compared with the SDP on every connection, before
+`connect.challenge`: if it changed, the portal **aborts** (`FINGERPRINT_CHANGED`) without sending a proof or the
+token, and the user decides whether to forget the NAS and link it again (e.g. after a reinstall). Shared vector: `protocol/vectors/tangoconnect.json`
+(generated with `internal/connect.LinkProof`).
 
-## 4. Escritorio servido por el NAS (canal `bundle`)
+## 4. Desktop served by the NAS (`bundle` channel)
 
-1. `bundle.manifest` → `{version, files, signed, signature, keyId}`. El portal verifica Ed25519 sobre los
-   bytes exactos de `signed` (JSON de `internal/connect.Manifest`, lo produce `cmd/tango-bundlesign`) con la
-   clave pública **embebida en el portal** (`VITE_BUNDLE_PUBKEY`, base64 de 32 B) — nunca con
-   `.tango-manifest.pub` que trae el NAS — y usa la lista de archivos de adentro de `signed`.
-   Sin firma (build de desarrollo) → no se abre.
-2. Valida forma (rutas relativas sin `..`, sha256 hex, ≤ 2000 archivos, ≤ 200 MB, `index.html`).
-3. `RtcTransport.fetchBundleFile(path)` por cada archivo y sha256 contra el manifiesto **firmado**.
+1. `bundle.manifest` → `{version, files, signed, signature, keyId}`. The portal verifies Ed25519 over the
+   exact bytes of `signed` (JSON of `internal/connect.Manifest`, produced by `cmd/tango-bundlesign`) with the
+   public key **embedded in the portal** (`VITE_BUNDLE_PUBKEY`, base64 of 32 B) — never with the
+   `.tango-manifest.pub` that the NAS ships — and uses the file list from inside `signed`.
+   Unsigned (development build) → it is not opened.
+2. Validates the shape (relative paths without `..`, hex sha256, ≤ 2000 files, ≤ 200 MB, `index.html`).
+3. `RtcTransport.fetchBundleFile(path)` for each file, and sha256 checked against the **signed** manifest.
 4. Cache Storage (`tangoos-bundle-<device>-<version>`) + Service Worker `/bundle-sw.js` (scope
-   `/nas-bundle/`, nunca va a la red) los sirve en `/nas-bundle/<device>/…`.
-5. Se libera el React del portal, se inyectan CSS y el `<script type=module>` del `index.html` del NAS, y
-   el escritorio toma el transporte ya abierto de `window.__TANGO_TRANSPORT__`.
+   `/nas-bundle/`, never goes to the network) serve them at `/nas-bundle/<device>/…`.
+5. The portal's React is released, the CSS and the `<script type=module>` from the NAS's `index.html` are injected, and
+   the desktop takes the already open transport from `window.__TANGO_TRANSPORT__`.
 
-**Requisitos pendientes del lado del escritorio** (no los toca el portal):
-- `web/apps/desktop/vite.config.ts` con `base: "./"` (hoy los chunks se piden con `/assets/…`, que en el
-  portal apuntan al origen equivocado).
-- `web/apps/desktop/src/main.tsx`: si existe `window.__TANGO_TRANSPORT__`, usarlo en vez de crear uno.
+Desktop side (done): `web/apps/desktop/vite.config.ts` builds with `base: "./"` (the same build is served by
+tangod at `/` and by the portal from `/nas-bundle/<device>/`), and `web/apps/desktop/src/main.tsx` uses
+`window.__TANGO_TRANSPORT__` when it exists instead of opening a new transport.
 
-Mientras tanto `/nas/<id>` cae a **modo desarrollo**: monta el escritorio que trae el propio portal sobre
-la conexión remota, con un banner que lo dice.
+Public key: `make connect-web-build` sets `VITE_BUNDLE_PUBKEY` from `build/keys/release-ed25519.pub` (in the
+repo; the private seed lives outside it and is passed to `cmd/tango-bundlesign` with `TANGO_BUNDLE_KEY`,
+see `make release-vm`). `make web` signs with the development key (`build/keys/dev-ed25519`) by default, and
+`make connect-portal-dev` builds a portal that trusts that dev key (used by `make e2e-connect`).
 
-**Límite honesto (§15):** quien controle el portal puede servir otro cargador. Mitigación: portal mínimo,
-open source, build reproducible, self-hosteable (`cmd/connect-web`).
+**Development mode** is only a fallback: `/nas/<id>` mounts the desktop that the portal itself ships on top of
+the remote connection, with a banner saying why, when the portal has no public key, the NAS does not serve
+`bundle.manifest`, or the NAS desktop fails to mount. A security failure (bad signature, bad hash, bad
+manifest) never falls back: the session stops with an error.
 
-## 5. Correr local
+**Honest limit (§15):** whoever controls the portal can serve a different loader. Mitigation: minimal portal,
+open source, reproducible build, self-hostable (`cmd/connect-web`).
+
+## 5. Running locally
 
 ```
-make connect-web-preview     # capturas WebP + build + vite preview en http://localhost:5174
-cd web/apps/connect && npm run dev   # desarrollo (puerto 5174)
-make connect-web             # además: binario dist/connect-web (embed + cabeceras de seguridad)
+make connect-web-preview     # WebP screenshots + build + vite preview at http://localhost:5174
+cd web/apps/connect && npm run dev   # development (port 5174)
+make connect-web             # also: dist/connect-web binary (embed + security headers)
 ./dist/connect-web -addr :8080 -signal wss://signal.go-link.org
 ```
 
-Variables de build: `VITE_SIGNAL_URL`, `VITE_BUNDLE_PUBKEY`. Para probar contra un NAS real, signalhub
-tiene que tener `tangoos` en `ALLOWED_APPS` (si no: "app not allowed", que el portal explica).
+Build variables: `VITE_SIGNAL_URL`, `VITE_BUNDLE_PUBKEY`. To test against a real NAS, signalhub
+must have `tangoos` in `ALLOWED_APPS` (otherwise: "app not allowed", which the portal explains).
 
-Tests: `cd web && npx vitest run apps/connect` (código de 9 dígitos, IndexedDB, firma del manifiesto con el
-vector de Go, prueba de vínculo con el vector de Go, señalización con un signalhub falso, frames, rutas) y
+Tests: `cd web && npx vitest run apps/connect` (9-digit code, IndexedDB, manifest signature with the
+Go vector, link proof with the Go vector, signaling with a fake signalhub, frames, routes) and
 `go test ./cmd/connect-web`.
 
 ## 6. `cmd/connect-web`
 
-Servidor estático para self-hosting: embebe `web/apps/connect/dist` (placeholder si no se construyó),
-fallback SPA para las rutas, 404 para archivos inexistentes, `immutable` para `/assets/` y `/img/opt/`,
-`no-cache` para el resto, solo GET/HEAD, sin cookies. Cabeceras:
+Static server for self-hosting: embeds `web/apps/connect/dist` (a placeholder if it was not built),
+SPA fallback for routes, 404 for nonexistent files, `immutable` for `/assets/` and `/img/opt/`,
+`no-cache` for the rest, GET/HEAD only, no cookies. Headers:
 
 ```
 Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
@@ -103,30 +110,26 @@ Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'
   object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 X-Content-Type-Options: nosniff · Referrer-Policy: no-referrer · X-Frame-Options: DENY
 Cross-Origin-Opener-Policy: same-origin · Permissions-Policy: camera=(), microphone=(), geolocation=()
-Strict-Transport-Security (detrás de TLS)
+Strict-Transport-Security (behind TLS)
 ```
 
-## 7. Publicación (tangoos.go-link.org)
+## 7. Publishing (tangoos.go-link.org)
 
-Mismo esquema que desk.go-link.org (`go-link-desk/scripts/deploy-web.sh`): bucket S3 privado detrás de
-CloudFront. `scripts/deploy-connect-web.sh` (no se corre en CI ni automáticamente):
+Same scheme as desk.go-link.org (`go-link-desk/scripts/deploy-web.sh`): private S3 bucket behind
+CloudFront. `scripts/deploy-connect-web.sh` (not run in CI or automatically):
 
-- exige `TANGOOS_DISTRIBUTION`; `TANGOOS_BUCKET` (por defecto `tangoos.go-link.org`), `AWS_PROFILE`;
-- se niega si hay `.map` o PNG originales en `dist/img`;
-- sube `assets/` e `img/opt/` con `max-age=31536000, immutable`, después las páginas con `no-cache`,
-  borra lo viejo (salvo assets) e invalida `/*`.
+- requires `TANGOOS_DISTRIBUTION`; `TANGOOS_BUCKET` (default `tangoos.go-link.org`), `AWS_PROFILE`;
+- refuses if there are `.map` files or original PNGs in `dist/img`;
+- uploads `assets/` and `img/opt/` with `max-age=31536000, immutable`, then the pages with `no-cache`,
+  deletes old files (except assets) and invalidates `/*`.
 
-En CloudFront: error 403/404 → `/index.html` 200 (rutas SPA) y una *response headers policy* con las
-mismas cabeceras de §6 (`connect-src 'self' wss://signal.go-link.org`). Sin cookies en el comportamiento.
+In CloudFront: error 403/404 → `/index.html` 200 (SPA routes) and a *response headers policy* with the
+same headers as §6 (`connect-src 'self' wss://signal.go-link.org`). No cookies in the behavior.
 
-## 8. Pendientes
+## 8. Pending
 
-- Escritorio servido por el NAS: `base: "./"` + `window.__TANGO_TRANSPORT__` en `apps/desktop` (§4), y
-  publicar la clave pública de release en `VITE_BUNDLE_PUBKEY` del build del portal.
-- La huella DTLS es solo aviso; no hay pinning duro.
-- Estado "en línea" de cada NAS en `/nas`: no se sondea (signalhub limita `reach` a 5/min); se muestra el
-  último acceso.
-- `protocol/README.md` §15 todavía describe enlaces públicos con `join {invite}`; la implementación real
-  (y el portal) usan `reach` + `guest.open {link, secret}` con URL `/s/<device>.<link>#<secreto>`.
-- No probado contra un NAS real ni contra signalhub de producción desde este portal (falta `tangoos` en
-  `ALLOWED_APPS` y desplegar). Probado: build, tests, demo en preview local.
+- "Online" status of each NAS in `/nas`: it is not polled (signalhub limits `reach` to 5/min); the
+  last access is shown.
+- Tested end to end with a real browser against the lab NAS and a local development signalhub
+  (`make e2e-connect`, tests/README.md); that run never uses the production signal server. Production
+  signalhub must have `tangoos` in `ALLOWED_APPS`.
