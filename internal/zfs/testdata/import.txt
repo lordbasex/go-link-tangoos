@@ -1,0 +1,11 @@
+  pool: fz
+    id: 15037992200479423202
+ state: ONLINE
+action: The pool can be imported using its name or numeric identifier.
+config:
+
+	fz                                         ONLINE
+	  raidz1-0                                 ONLINE
+	    scsi-0QEMU_QEMU_HARDDISK_drive-scsi11  ONLINE
+	    scsi-0QEMU_QEMU_HARDDISK_drive-scsi12  ONLINE
+	    scsi-0QEMU_QEMU_HARDDISK_drive-scsi3   ONLINE
