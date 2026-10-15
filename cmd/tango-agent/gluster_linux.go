@@ -6,6 +6,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -20,6 +22,7 @@ import (
 
 	sd "github.com/coreos/go-systemd/v22/dbus"
 
+	"github.com/lordbasex/go-link-tangoos/internal/appsys"
 	"github.com/lordbasex/go-link-tangoos/internal/diskops"
 	"github.com/lordbasex/go-link-tangoos/internal/gluster"
 	"github.com/lordbasex/go-link-tangoos/pkg/agentproto"
@@ -228,6 +231,19 @@ func registerGluster(r *agentproto.Registry, jobs *asyncJobs, log *slog.Logger) 
 		return glusterMount(ctx, a, log)
 	})
 
+	agentproto.Register(r, agentproto.OpGlusterHealInfo, func(a *agentproto.GlusterHealInfoArgs) *agentproto.Error {
+		if err := gluster.ValidVolumeName(a.Name); err != nil {
+			return badArgs(err)
+		}
+		return nil
+	}, func(ctx context.Context, a *agentproto.GlusterHealInfoArgs) (any, *agentproto.Error) {
+		heal, err := glusterHealInfo(ctx, a.Name)
+		if err != nil {
+			return nil, glusterAgentErr(err)
+		}
+		return heal, nil
+	})
+
 	agentproto.Register(r, agentproto.OpGlusterBrickClean, validateGlusterBrickClean, func(ctx context.Context, a *agentproto.GlusterBrickCleanArgs) (any, *agentproto.Error) {
 		out, code, err := runGluster(ctx, "volume", "info", a.Name)
 		if err == nil {
@@ -241,15 +257,45 @@ func registerGluster(r *agentproto.Registry, jobs *asyncJobs, log *slog.Logger) 
 		} else if !errors.Is(err, errGlusterMissing) {
 			return nil, glusterAgentErr(err)
 		}
-		dir := filepath.Join("/", a.TangoVolume, "@gluster", a.Name)
+		dir := gluster.BrickPath(a.TangoVolume, a.Name)
 		if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
 			return nil, agentproto.Errf(agentproto.CodeNotFound, "no existe %s", dir)
 		}
-		if err := os.RemoveAll(dir); err != nil {
-			return nil, agentproto.Errf(agentproto.CodeFailed, "%v", err)
+		// GlusterFS deja en .glusterfs archivos sin permisos (modo 000) y el agente no tiene
+		// CAP_DAC_OVERRIDE: el borrado va en una unidad transitoria (root completo), que
+		// vuelve a validar la ruta.
+		self, _ := os.Executable()
+		logp := filepath.Join(m4LogDir, "gluster-clean-"+a.Name+".log")
+		if err := appsys.RunUnit(ctx, "tango-gluster-clean", []string{self, m4HelperArg, "gluster-clean", dir}, nil, logp, nil); err != nil {
+			return nil, agentproto.Errf(agentproto.CodeFailed, "no se pudo borrar %s: %v", dir, err)
 		}
 		return struct{}{}, nil
 	})
+}
+
+// glusterHealInfo corre `gluster volume heal <vol> info summary` en una unidad
+// transitoria (red del host): glfsheal habla TCP con glusterd y con los bricks.
+func glusterHealInfo(ctx context.Context, vol string) ([]gluster.HealBrick, error) {
+	if !glusterInstalled() {
+		return nil, errGlusterMissing
+	}
+	var rb [4]byte
+	_, _ = rand.Read(rb[:])
+	out := filepath.Join(m4LogDir, "gluster-heal-"+vol+"-"+hex.EncodeToString(rb[:])+".xml")
+	defer os.Remove(out)
+	argv := append([]string{gluster.Binary, "--mode=script", "--xml", "--timeout=" + strconv.Itoa(glusterReadTimeout)}, gluster.ArgsHealSummary(vol)...)
+	ctx, cancel := context.WithTimeout(ctx, glusterTimeout)
+	defer cancel()
+	// El código de salida no importa: con un brick caído GlusterFS igual devuelve el XML.
+	_ = appsys.RunUnit(ctx, "tango-gluster-heal", argv, nil, out, nil)
+	b, err := os.ReadFile(out)
+	if err != nil {
+		return nil, err
+	}
+	if i := bytes.Index(b, []byte("<?xml")); i > 0 {
+		b = b[i:] // descarta lo que haya escrito antes en stderr
+	}
+	return gluster.ParseHeal(b)
 }
 
 func sortedKeys(m map[string]string) []string {
@@ -303,15 +349,8 @@ func glusterStatus(ctx context.Context, self string) agentproto.GlusterStatusRes
 		res.Error = glusterAgentErr(err).Message
 		return res
 	}
-	for i := range vols {
-		if vols[i].Status == "Started" && vols[i].Replica > 1 {
-			if hb, _, err := runGlusterT(ctx, glusterReadTimeout, gluster.ArgsHealSummary(vols[i].Name)...); err == nil {
-				if heal, err := gluster.ParseHeal(hb); err == nil {
-					gluster.MergeHeal(&vols[i], heal)
-				}
-			}
-		}
-	}
+	// La curación no va acá: `heal info` necesita red (glusterHealInfo) y tangod la
+	// pide aparte cada tanto.
 	res.Volumes = vols
 	res.Orphans = glusterOrphans(vols)
 	return res
@@ -567,7 +606,21 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 	return struct{}{}, nil
 }
 
-// ---- Instalación (unidad transitoria, root fuera del sandbox) ----------------------
+// ---- Unidades transitorias (root fuera del sandbox) ---------------------------------
+
+var brickDirRe = regexp.MustCompile(`^/volume[0-9]{1,3}/@gluster/[a-z][a-z0-9_]{0,31}$`)
+
+// helperGlusterClean borra un brick huérfano (la op ya comprobó que su volumen no
+// existe). Valida la ruta de nuevo: este proceso corre con todos los permisos.
+func helperGlusterClean(dir string) error {
+	if !brickDirRe.MatchString(dir) {
+		return fmt.Errorf("ruta inválida: %q", dir)
+	}
+	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
+		return fmt.Errorf("no es un directorio: %s", dir)
+	}
+	return os.RemoveAll(dir)
+}
 
 // helperGlusterInstall: primero nftables y el firewall cargado, después
 // glusterfs-server (su postinst arranca glusterd, que ya encuentra los puertos cerrados).

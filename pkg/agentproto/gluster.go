@@ -19,7 +19,15 @@ const (
 	OpGlusterBricks       = "gluster.volume.bricks"  // add / remove / replace
 	OpGlusterMount        = "gluster.mount"          // montaje local y carpeta SMB
 	OpGlusterBrickClean   = "gluster.brick.cleanup"  // borra un brick huérfano de este nodo
+	OpGlusterHealInfo     = "gluster.heal.info"      // pendientes y split-brain por brick
 )
+
+// GlusterHealInfoArgs pide `volume heal <Name> info summary`. Corre fuera del sandbox
+// del agente: glfsheal se conecta a glusterd y a los bricks por TCP y el agente no
+// tiene red.
+type GlusterHealInfoArgs struct {
+	Name string `json:"name"`
+}
 
 // GlusterInstallArgs instala GlusterFS con el firewall ya cargado (Allowed: los
 // nodos permitidos desde el primer momento; vacío = solo este equipo).

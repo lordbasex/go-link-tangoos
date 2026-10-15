@@ -3,6 +3,7 @@ package agentclient
 import (
 	"context"
 
+	"github.com/lordbasex/go-link-tangoos/internal/gluster"
 	"github.com/lordbasex/go-link-tangoos/pkg/agentproto"
 )
 
@@ -60,6 +61,15 @@ func (c *Client) GlusterBricks(ctx context.Context, a agentproto.GlusterBricksAr
 // GlusterMount monta o desmonta un volumen (y su carpeta SMB).
 func (c *Client) GlusterMount(ctx context.Context, a agentproto.GlusterMountArgs) error {
 	return c.CallOnce(ctx, agentproto.OpGlusterMount, a, nil)
+}
+
+// GlusterHealInfo lee lo pendiente de curar y el split-brain de un volumen.
+func (c *Client) GlusterHealInfo(ctx context.Context, name string) ([]gluster.HealBrick, error) {
+	var r []gluster.HealBrick
+	if err := c.Call(ctx, agentproto.OpGlusterHealInfo, agentproto.GlusterHealInfoArgs{Name: name}, &r); err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 // GlusterBrickCleanup borra un brick huérfano de este nodo.

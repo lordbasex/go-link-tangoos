@@ -183,3 +183,14 @@ apt-repo:
 	go run ./cmd/tango-aptrepo -out $(APT_REPO) $(DEB)
 apt-publish:
 	AWS_PROFILE=$${AWS_PROFILE:-tangoos} TANGOOS_DISTRIBUTION=$${TANGOOS_DISTRIBUTION:-ESSYABR5TAKTB} scripts/publish-apt.sh $(APT_REPO)
+
+## e2e-cluster: clúster GlusterFS de 3 nodos TangoOS (docs/17). Destructivo: necesita 3 VMs con TangoOS,
+##   un disco libre TANGO-G<n> en cada una y Proxmox (PVE) para apagar un nodo.
+##   make e2e-cluster CLUSTER=172.17.0.48,172.17.0.49,172.17.0.50 CLUSTER_VMIDS=112,113,114
+CLUSTER       ?=
+CLUSTER_VMIDS ?=
+.PHONY: e2e-cluster
+e2e-cluster:
+	@test -n "$(CLUSTER)" || { echo "definí CLUSTER=ip1,ip2,ip3"; exit 1; }
+	TANGO_SSH_KEY=$(SSH_KEY) TANGO_E2E_DESTRUCTIVE=1 TANGO_E2E_CLUSTER=$(CLUSTER) TANGO_E2E_CLUSTER_VMIDS=$(CLUSTER_VMIDS) \
+	TANGO_E2E_PVE=$(PVE) go test -tags e2e ./tests/e2e -run TestCluster -v -count=1 -timeout 60m

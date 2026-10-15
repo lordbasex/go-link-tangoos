@@ -36,6 +36,7 @@ type clusterAgent interface {
 	GlusterBricks(ctx context.Context, a agentproto.GlusterBricksArgs) error
 	GlusterMount(ctx context.Context, a agentproto.GlusterMountArgs) error
 	GlusterBrickCleanup(ctx context.Context, a agentproto.GlusterBrickCleanArgs) error
+	GlusterHealInfo(ctx context.Context, name string) ([]gluster.HealBrick, error)
 }
 
 // InviteTTL es cuánto queda abierta una invitación (la confirmación de este lado).
@@ -63,6 +64,9 @@ type clusterAPI struct {
 	stMu sync.Mutex
 	st   *agentproto.GlusterStatusResult
 	stAt time.Time
+
+	// heal: último `heal info` por volumen (lo pide el bucle; tarda segundos).
+	heal map[string][]gluster.HealBrick
 }
 
 const statusTTL = 3 * time.Second
@@ -119,7 +123,7 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 	if !ok {
 		return
 	}
-	c := &clusterAPI{m: m, ag: ag, invites: map[string]clusterInvite{}, latency: map[string]int{}, alerted: map[string]bool{}, pending: map[string]int{}}
+	c := &clusterAPI{m: m, ag: ag, invites: map[string]clusterInvite{}, latency: map[string]int{}, alerted: map[string]bool{}, pending: map[string]int{}, heal: map[string][]gluster.HealBrick{}}
 	a := m.a
 	admin := func(fn func(ctx context.Context, p json.RawMessage) (any, error)) rtcrpc.HandlerFunc {
 		return func(ctx context.Context, s *rtcrpc.Session, p json.RawMessage) (any, error) {
@@ -303,6 +307,13 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 		if err := c.ag.GlusterHeal(ctx, q); err != nil {
 			return nil, agentErr(err)
 		}
+		go func() { // la curación arrancó: refrescar lo pendiente en unos segundos
+			time.Sleep(3 * time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			c.refreshHeal(ctx, q.Name)
+			c.publish(ctx)
+		}()
 		return struct{}{}, nil
 	}))
 	r.Handle("cluster.volume.bricks", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
@@ -519,7 +530,7 @@ func (c *clusterAPI) status(ctx context.Context, fresh bool) (*ClusterStatus, er
 		return nil, agentErr(err)
 	}
 	out := &ClusterStatus{Installed: st.Installed, Running: st.Running, Version: st.Version, Error: st.Error, Self: c.self(),
-		SelfAddrs: localAddrs(), Volumes: st.Volumes, Orphans: st.Orphans, Mounts: st.Mounts, Allowed: st.Allowed,
+		SelfAddrs: localAddrs(), Volumes: c.withHeal(st.Volumes), Orphans: st.Orphans, Mounts: st.Mounts, Allowed: st.Allowed,
 		Invites: []clusterInvite{}, Nodes: []ClusterNode{}, TangoVolumes: []ClusterTangoVolume{},
 		Presets: gluster.Presets(), Options: gluster.Options()}
 	c.mu.Lock()
@@ -550,6 +561,33 @@ func (c *clusterAPI) status(ctx context.Context, fresh bool) (*ClusterStatus, er
 		}
 	}
 	return out, nil
+}
+
+// withHeal copia los volúmenes y les suma la última curación conocida.
+func (c *clusterAPI) withHeal(vols []gluster.Volume) []gluster.Volume {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]gluster.Volume, len(vols))
+	for i, v := range vols {
+		v.Bricks = slices.Clone(v.Bricks)
+		if h, ok := c.heal[v.Name]; ok && v.Status == "Started" {
+			gluster.MergeHeal(&v, h)
+		}
+		out[i] = v
+	}
+	return out
+}
+
+// refreshHeal pide `heal info` de un volumen al agente y lo guarda.
+func (c *clusterAPI) refreshHeal(ctx context.Context, vol string) {
+	h, err := c.ag.GlusterHealInfo(ctx, vol)
+	if err != nil {
+		c.m.a.d.Log.Warn("cluster: heal info", "vol", vol, "err", err)
+		return
+	}
+	c.mu.Lock()
+	c.heal[vol] = h
+	c.mu.Unlock()
 }
 
 func localAddrs() []string {
@@ -618,7 +656,23 @@ func (c *clusterAPI) tick(ctx context.Context) {
 	c.mu.Lock()
 	c.latency = lat
 	c.mu.Unlock()
-	c.alerts(st)
+	known := map[string]bool{}
+	for _, v := range st.Volumes {
+		known[v.Name] = true
+		if v.Status == "Started" && v.Replica > 1 {
+			c.refreshHeal(ctx, v.Name)
+		}
+	}
+	c.mu.Lock()
+	for name := range c.heal {
+		if !known[name] {
+			delete(c.heal, name)
+		}
+	}
+	c.mu.Unlock()
+	withHeal := *st
+	withHeal.Volumes = c.withHeal(st.Volumes)
+	c.alerts(&withHeal)
 	c.publish(ctx)
 }
 

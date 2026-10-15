@@ -65,6 +65,11 @@ func runM4Helper(task string, args []string) error {
 			return err
 		}
 		return helperUPS(ctx, &a)
+	case "gluster-clean":
+		if len(args) != 1 {
+			return errors.New("uso: gluster-clean <brick>")
+		}
+		return helperGlusterClean(args[0])
 	case "gluster-install":
 		var a agentproto.GlusterInstallArgs
 		if err := readArgs(args, &a); err != nil {
