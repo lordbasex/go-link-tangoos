@@ -20,7 +20,7 @@ web:
 	set -e; \
 	cd web && (if [ -f package-lock.json ]; then npm ci; else npm install; fi) && npm run build -w @tango/desktop; \
 	cd ..; \
-	rm -rf $(WEBUI) && mkdir -p $(WEBUI) && cp -R web/apps/desktop/dist/. $(WEBUI)/ && \
+	rm -rf $(WEBUI) && mkdir -p $(WEBUI) && cp -R web/apps/desktop/dist/. $(WEBUI)/ && touch $(WEBUI)/.keep && \
 	go run ./cmd/tango-bundlesign -dir $(WEBUI) -version $(VERSION)
 
 ## tangod: static linux/amd64 binary in dist/
