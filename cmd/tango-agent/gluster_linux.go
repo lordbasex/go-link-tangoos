@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +32,14 @@ import (
 
 const glusterTimeout = 25 * time.Second
 
+// glusterReadTimeout acota las lecturas de estado: con un nodo caído que glusterd
+// todavía no detectó, `volume status` espera al nodo hasta el timeout del CLI (120 s).
+const glusterReadTimeout = 8
+
+// glusterdPingTimeout es el ping-timeout entre glusterd (Debian trae 0 = nunca): con
+// 0, un nodo que se apaga de golpe sigue «Connected» y cada operación lo espera.
+const glusterdPingTimeout = "10"
+
 func glusterInstalled() bool {
 	return fileExists(gluster.Binary) && fileExists("/usr/sbin/glusterd")
 }
@@ -38,12 +47,21 @@ func glusterInstalled() bool {
 // runGluster corre `gluster --mode=script --xml <args>` y devuelve la salida y el
 // código de salida. args sale siempre de internal/gluster (validado).
 func runGluster(ctx context.Context, args ...string) ([]byte, int, error) {
+	return runGlusterT(ctx, 0, args...)
+}
+
+// runGlusterT es runGluster con el timeout propio del CLI (segundos; 0 = el de siempre).
+func runGlusterT(ctx context.Context, timeout int, args ...string) ([]byte, int, error) {
 	if !glusterInstalled() {
 		return nil, -1, errGlusterMissing
 	}
 	ctx, cancel := context.WithTimeout(ctx, glusterTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, gluster.Binary, append([]string{"--mode=script", "--xml"}, args...)...)
+	pre := []string{"--mode=script", "--xml"}
+	if timeout > 0 {
+		pre = append(pre, "--timeout="+strconv.Itoa(timeout))
+	}
+	cmd := exec.CommandContext(ctx, gluster.Binary, append(pre, args...)...)
 	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8", "LC_ALL=C.UTF-8"}
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
@@ -110,7 +128,7 @@ func registerGluster(r *agentproto.Registry, jobs *asyncJobs, log *slog.Logger) 
 			return nil, agentproto.Errf(agentproto.CodeFailed, "%v", err)
 		}
 		if fileExists(filepath.Join("/etc/systemd/system", gluster.FirewallUnitName)) {
-			if err := restartUnit(ctx, gluster.FirewallUnitName); err != nil {
+			if err := reloadUnit(ctx, gluster.FirewallUnitName); err != nil {
 				log.Warn("gluster firewall", "err", err)
 				return nil, agentproto.Errf(agentproto.CodeFailed, "no se pudo aplicar el firewall: %v", err)
 			}
@@ -251,13 +269,14 @@ func glusterStatus(ctx context.Context, self string) agentproto.GlusterStatusRes
 	if !res.Installed {
 		return res
 	}
+	ensureBrickParents()
 	if v, err := exec.CommandContext(ctx, gluster.Binary, "--version").Output(); err == nil {
 		res.Version = strings.TrimPrefix(firstLineOf(string(v)), "glusterfs ")
 	}
 	if self == "" {
 		self, _ = os.Hostname()
 	}
-	out, code, err := runGluster(ctx, gluster.ArgsPoolList()...)
+	out, code, err := runGlusterT(ctx, glusterReadTimeout, gluster.ArgsPoolList()...)
 	if err == nil {
 		if err = gluster.ParseResult(out, code); err == nil {
 			res.Peers, err = gluster.ParsePool(out, self)
@@ -268,13 +287,17 @@ func glusterStatus(ctx context.Context, self string) agentproto.GlusterStatusRes
 		return res
 	}
 	res.Running = true
-	info, code, err := runGluster(ctx, gluster.ArgsVolumeInfo()...)
+	info, code, err := runGlusterT(ctx, glusterReadTimeout, gluster.ArgsVolumeInfo()...)
 	if err != nil || code != 0 && !bytes.Contains(info, []byte("<cliOutput")) {
 		res.Error = "no se pudo leer los volúmenes"
 		return res
 	}
-	// status falla si no hay ningún volumen arrancado: se sigue sin él.
-	status, _, _ := runGluster(ctx, gluster.ArgsVolumeStatus()...)
+	// status falla si no hay ningún volumen arrancado: se sigue sin él. Si no respondió a
+	// tiempo (un nodo caído que glusterd todavía espera), los bricks quedan sin estado.
+	status, scode, serr := runGlusterT(ctx, glusterReadTimeout, gluster.ArgsVolumeStatus()...)
+	if serr == nil && scode != 0 && !bytes.Contains(status, []byte("<cliOutput")) {
+		res.Error = "Algún nodo no responde: el estado de los bricks puede estar incompleto."
+	}
 	vols, err := gluster.ParseVolumes(info, status)
 	if err != nil {
 		res.Error = glusterAgentErr(err).Message
@@ -282,7 +305,7 @@ func glusterStatus(ctx context.Context, self string) agentproto.GlusterStatusRes
 	}
 	for i := range vols {
 		if vols[i].Status == "Started" && vols[i].Replica > 1 {
-			if hb, _, err := runGluster(ctx, gluster.ArgsHealSummary(vols[i].Name)...); err == nil {
+			if hb, _, err := runGlusterT(ctx, glusterReadTimeout, gluster.ArgsHealSummary(vols[i].Name)...); err == nil {
 				if heal, err := gluster.ParseHeal(hb); err == nil {
 					gluster.MergeHeal(&vols[i], heal)
 				}
@@ -300,6 +323,20 @@ func firstLineOf(s string) string {
 }
 
 var tangoVolDirRe = regexp.MustCompile(`^volume[0-9]{1,3}$`)
+
+// ensureBrickParents deja /volumeN/@gluster en cada volumen de TangoOS montado:
+// glusterd crea el directorio del brick pero no sus padres, y desde otro nodo no hay
+// forma de crearlos. Un directorio común (no un subvolumen): las instantáneas de
+// TangoOS son de @shares y no lo incluyen.
+func ensureBrickParents() {
+	tops, _ := os.ReadDir("/")
+	for _, t := range tops {
+		p := "/" + t.Name()
+		if t.IsDir() && tangoVolDirRe.MatchString(t.Name()) && isMountedAt(p) {
+			_ = os.Mkdir(gluster.BrickParent(p), 0o755)
+		}
+	}
+}
 
 // glusterOrphans son los /volumeN/@gluster/<vol> de este nodo cuyo volumen ya no
 // existe (quedan al borrar un volumen: GlusterFS no borra los datos de los bricks).
@@ -420,14 +457,16 @@ func sdWait(ctx context.Context, ch <-chan string, unit string) error {
 	}
 }
 
-func restartUnit(ctx context.Context, unit string) error {
+// reloadUnit recarga el firewall (ExecReload) o lo arranca si no corría. Nunca
+// restart: glusterd lo requiere (RequiredBy) y un restart reiniciaría glusterd también.
+func reloadUnit(ctx context.Context, unit string) error {
 	c, err := sd.NewSystemConnectionContext(ctx)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 	ch := make(chan string, 1)
-	if _, err := c.RestartUnitContext(ctx, unit, "replace", ch); err != nil {
+	if _, err := c.ReloadOrRestartUnitContext(ctx, unit, "replace", ch); err != nil {
 		return err
 	}
 	return sdWait(ctx, ch, unit)
@@ -563,6 +602,30 @@ func helperGlusterInstall(ctx context.Context, a *agentproto.GlusterInstallArgs)
 			return err
 		}
 	}
+	changed, err := setGlusterdPingTimeout("/etc/glusterfs/glusterd.vol")
+	if err != nil {
+		return err
+	}
 	stage(0.9, "Arrancando glusterd")
-	return runCmd(ctx, "/usr/bin/systemctl", "enable", "--now", "glusterd.service")
+	if err := runCmd(ctx, "/usr/bin/systemctl", "enable", "--now", "glusterd.service"); err != nil {
+		return err
+	}
+	if changed {
+		return runCmd(ctx, "/usr/bin/systemctl", "restart", "glusterd.service")
+	}
+	return nil
+}
+
+// setGlusterdPingTimeout deja `option ping-timeout` de glusterd.vol en
+// glusterdPingTimeout. Devuelve si cambió el archivo.
+func setGlusterdPingTimeout(path string) (bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	out, changed := gluster.SetVolOption(string(b), "ping-timeout", glusterdPingTimeout)
+	if !changed {
+		return false, nil
+	}
+	return true, writeFileAtomic(path, []byte(out), 0o644)
 }

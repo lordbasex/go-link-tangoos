@@ -77,7 +77,7 @@ func TestValidateCreate(t *testing.T) {
 		"réplica alta":     {Layout{Replica: 5}, bricks("gv0", "n1", "n2", "n3", "n4", "n5")},
 		"ruta de otro vol": {Layout{Replica: 2}, bricks("gv1", "n1", "n2")},
 		"ruta arbitraria":  {Layout{Replica: 1}, []Brick{{Host: "n1", Path: "/etc"}}},
-		"ruta con ..":      {Layout{Replica: 1}, []Brick{{Host: "n1", Path: "/volume1/@gluster/gv0/../../etc/brick"}}},
+		"ruta con ..":      {Layout{Replica: 1}, []Brick{{Host: "n1", Path: "/volume1/@gluster/gv0/../../etc"}}},
 		"host como opción": {Layout{Replica: 1}, []Brick{{Host: "-force", Path: BrickPath("volume1", "gv0")}}},
 		"sin bricks":       {Layout{Replica: 1}, nil},
 		"réplica cero":     {Layout{Replica: 0}, bricks("gv0", "n1")},
@@ -126,7 +126,7 @@ func TestOptionsAndPresets(t *testing.T) {
 func TestArgs(t *testing.T) {
 	got := ArgsVolumeCreate("gv0", Layout{Replica: 3, Arbiter: true}, bricks("gv0", "n1", "n2", "n3"))
 	want := []string{"volume", "create", "gv0", "replica", "3", "arbiter", "1", "transport", "tcp",
-		"n1:/volume1/@gluster/gv0/brick", "n2:/volume1/@gluster/gv0/brick", "n3:/volume1/@gluster/gv0/brick"}
+		"n1:/volume1/@gluster/gv0", "n2:/volume1/@gluster/gv0", "n3:/volume1/@gluster/gv0"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("create: %v", got)
 	}
@@ -286,5 +286,20 @@ func TestUnits(t *testing.T) {
 	}
 	if strings.Contains(FirewallUnit, "ExecStop") {
 		t.Error("detener el firewall no puede abrir los puertos")
+	}
+}
+
+func TestSetVolOption(t *testing.T) {
+	vol := "volume management\n    type mgmt/glusterd\n    option working-directory /var/lib/glusterd\n    option ping-timeout 0\nend-volume\n"
+	out, ch := SetVolOption(vol, "ping-timeout", "10")
+	if !ch || !strings.Contains(out, "    option ping-timeout 10\n") || strings.Contains(out, "ping-timeout 0") {
+		t.Fatalf("%v\n%s", ch, out)
+	}
+	if _, ch := SetVolOption(out, "ping-timeout", "10"); ch {
+		t.Error("idempotente")
+	}
+	out, ch = SetVolOption("volume management\n    type mgmt/glusterd\nend-volume\n", "ping-timeout", "10")
+	if !ch || !strings.Contains(out, "type mgmt/glusterd\n    option ping-timeout 10\n") {
+		t.Errorf("agregar: %s", out)
 	}
 }

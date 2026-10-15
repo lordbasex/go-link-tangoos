@@ -57,6 +57,29 @@ type clusterAPI struct {
 	alerted map[string]bool          // avisos ya mandados (se limpian al resolverse)
 	pending map[string]int           // vueltas seguidas con curación pendiente
 	last    string                   // último estado publicado (para cluster.changed)
+
+	// Caché corta del estado del agente: la UI, el bucle y cada método lo piden a la vez
+	// y el agente atiende de a uno (con un nodo caído, una lectura puede tardar segundos).
+	stMu sync.Mutex
+	st   *agentproto.GlusterStatusResult
+	stAt time.Time
+}
+
+const statusTTL = 3 * time.Second
+
+// agentStatus devuelve el estado del agente (cacheado statusTTL salvo fresh).
+func (c *clusterAPI) agentStatus(ctx context.Context, fresh bool) (*agentproto.GlusterStatusResult, error) {
+	c.stMu.Lock()
+	defer c.stMu.Unlock()
+	if !fresh && c.st != nil && time.Since(c.stAt) < statusTTL {
+		return c.st, nil
+	}
+	st, err := c.ag.GlusterStatus(ctx, c.self())
+	if err != nil {
+		return nil, err
+	}
+	c.st, c.stAt = st, time.Now()
+	return st, nil
 }
 
 // ClusterNode es un nodo como lo ve la app (el peer de GlusterFS + latencia).
@@ -116,7 +139,7 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 	}
 
 	r.Handle("cluster.status", admin(func(ctx context.Context, _ json.RawMessage) (any, error) {
-		return c.status(ctx)
+		return c.status(ctx, false)
 	}))
 	r.Handle("cluster.install", admin(func(ctx context.Context, _ json.RawMessage) (any, error) {
 		j := a.d.Jobs.Start("cluster.install", "Instalando GlusterFS", "", func(ctx context.Context, h *jobs.Handle) error {
@@ -300,7 +323,7 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 		if err := decode(p, &q); err != nil {
 			return nil, err
 		}
-		st, err := c.ag.GlusterStatus(ctx, c.self())
+		st, err := c.agentStatus(ctx, false)
 		if err != nil {
 			return nil, agentErr(err)
 		}
@@ -456,7 +479,7 @@ func (c *clusterAPI) desiredAllowed(st *agentproto.GlusterStatusResult) []string
 func (c *clusterAPI) syncFirewall(ctx context.Context, st *agentproto.GlusterStatusResult) error {
 	if st == nil {
 		var err error
-		if st, err = c.ag.GlusterStatus(ctx, c.self()); err != nil {
+		if st, err = c.agentStatus(ctx, true); err != nil {
 			return agentErr(err)
 		}
 	}
@@ -476,7 +499,7 @@ func (c *clusterAPI) syncFirewall(ctx context.Context, st *agentproto.GlusterSta
 }
 
 func (c *clusterAPI) backupServers(ctx context.Context) []string {
-	st, err := c.ag.GlusterStatus(ctx, c.self())
+	st, err := c.agentStatus(ctx, false)
 	if err != nil {
 		return nil
 	}
@@ -490,8 +513,8 @@ func (c *clusterAPI) backupServers(ctx context.Context) []string {
 	return out
 }
 
-func (c *clusterAPI) status(ctx context.Context) (*ClusterStatus, error) {
-	st, err := c.ag.GlusterStatus(ctx, c.self())
+func (c *clusterAPI) status(ctx context.Context, fresh bool) (*ClusterStatus, error) {
+	st, err := c.agentStatus(ctx, fresh)
 	if err != nil {
 		return nil, agentErr(err)
 	}
@@ -542,7 +565,7 @@ func localAddrs() []string {
 
 // publish manda cluster.changed si el estado cambió.
 func (c *clusterAPI) publish(ctx context.Context) {
-	st, err := c.status(ctx)
+	st, err := c.status(ctx, true)
 	if err != nil {
 		return
 	}
@@ -568,7 +591,7 @@ func (c *clusterAPI) loop() {
 }
 
 func (c *clusterAPI) tick(ctx context.Context) {
-	st, err := c.ag.GlusterStatus(ctx, c.self())
+	st, err := c.agentStatus(ctx, true)
 	if err != nil || !st.Installed {
 		return
 	}

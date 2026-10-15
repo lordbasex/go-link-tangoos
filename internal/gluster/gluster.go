@@ -38,8 +38,8 @@ var (
 	volNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 	// Nombre de host: etiquetas DNS en minúsculas (como en /etc/hosts de un clúster).
 	hostRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$`)
-	// Brick de TangoOS hoy: un directorio dentro de un volumen Btrfs (/volumeN/@gluster/<vol>/brick).
-	btrfsBrickRe = regexp.MustCompile(`^/volume[0-9]{1,3}/@gluster/([a-z][a-z0-9_]{0,31})/brick$`)
+	// Brick de TangoOS hoy: un directorio dentro de un volumen Btrfs (/volumeN/@gluster/<vol>).
+	btrfsBrickRe = regexp.MustCompile(`^/volume[0-9]{1,3}/@gluster/([a-z][a-z0-9_]{0,31})$`)
 )
 
 // ValidVolumeName valida un nombre de volumen del clúster. Sin guiones a propósito:
@@ -79,12 +79,19 @@ type Brick struct {
 func (b Brick) String() string { return b.Host + ":" + b.Path }
 
 // BrickPath es la ruta de un brick de TangoOS dentro de un volumen Btrfs del nodo.
+// glusterd crea el directorio del brick pero no los intermedios: cada nodo mantiene
+// creado /volumeN/@gluster (BrickParent) y el brick queda un nivel abajo.
 //
 // Hook para LVM (docs/17 §4): cuando exista el pool LVM, un brick tendrá su propio LV
-// con XFS montado en /srv/gluster/<vol>/<brick>; esa forma se agrega acá y en
+// con XFS montado en /srv/gluster/<vol>; esa forma se agrega acá y en
 // ValidBrick sin cambiar el resto del flujo.
 func BrickPath(tangoVolume, vol string) string {
-	return "/" + strings.TrimPrefix(tangoVolume, "/") + "/@gluster/" + vol + "/brick"
+	return BrickParent(tangoVolume) + "/" + vol
+}
+
+// BrickParent es el directorio de los bricks de un volumen de TangoOS.
+func BrickParent(tangoVolume string) string {
+	return "/" + strings.TrimPrefix(tangoVolume, "/") + "/@gluster"
 }
 
 // ValidBrick exige un host válido y la ruta de TangoOS para ese volumen del clúster.
@@ -94,7 +101,7 @@ func ValidBrick(b Brick, vol string) error {
 	}
 	m := btrfsBrickRe.FindStringSubmatch(b.Path)
 	if m == nil || m[1] != vol {
-		return fmt.Errorf("brick %s: la ruta tiene que ser /volumeN/@gluster/%s/brick", b, vol)
+		return fmt.Errorf("brick %s: la ruta tiene que ser /volumeN/@gluster/%s", b, vol)
 	}
 	return nil
 }

@@ -137,3 +137,27 @@ ExecReload=/usr/sbin/nft -f ` + FirewallFile + `
 WantedBy=multi-user.target
 RequiredBy=glusterd.service
 `
+
+// SetVolOption cambia (o agrega) `option <key> <val>` en el bloque de glusterd.vol
+// (management). Devuelve el texto nuevo y si cambió.
+func SetVolOption(vol, key, val string) (string, bool) {
+	lines := strings.Split(vol, "\n")
+	want := "    option " + key + " " + val
+	for i, l := range lines {
+		f := strings.Fields(l)
+		if len(f) >= 2 && f[0] == "option" && f[1] == key {
+			if len(f) == 3 && f[2] == val {
+				return vol, false
+			}
+			lines[i] = want
+			return strings.Join(lines, "\n"), true
+		}
+	}
+	for i, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "type mgmt/glusterd") {
+			lines = append(lines[:i+1], append([]string{want}, lines[i+1:]...)...)
+			return strings.Join(lines, "\n"), true
+		}
+	}
+	return vol, false
+}
