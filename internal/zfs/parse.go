@@ -15,17 +15,17 @@ import (
 // `zfs list -j -p`). Con -p los números vienen como strings decimales.
 
 type jsonVdev struct {
-	Name     string              `json:"name"`
-	Type     string              `json:"vdev_type"`
-	GUID     string              `json:"guid"`
-	Path     string              `json:"path"`
-	State    string              `json:"state"`
-	Total    string              `json:"total_space"`
-	RepSize  string              `json:"rep_dev_size"`
-	Read     string              `json:"read_errors"`
-	Write    string              `json:"write_errors"`
-	Cksum    string              `json:"checksum_errors"`
-	Vdevs    map[string]jsonVdev `json:"vdevs"`
+	Name    string              `json:"name"`
+	Type    string              `json:"vdev_type"`
+	GUID    string              `json:"guid"`
+	Path    string              `json:"path"`
+	State   string              `json:"state"`
+	Total   string              `json:"total_space"`
+	RepSize string              `json:"rep_dev_size"`
+	Read    string              `json:"read_errors"`
+	Write   string              `json:"write_errors"`
+	Cksum   string              `json:"checksum_errors"`
+	Vdevs   map[string]jsonVdev `json:"vdevs"`
 }
 
 type jsonScan struct {
