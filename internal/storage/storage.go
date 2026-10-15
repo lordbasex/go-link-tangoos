@@ -37,7 +37,10 @@ type Disk struct {
 	Pending      int      `json:"pending"`
 	// Rebuilding: el disco está recibiendo la reconstrucción de su array (§11).
 	Rebuilding bool `json:"rebuilding,omitempty"`
-	USB        bool `json:"-"`
+	// Pool y Role: grupo de almacenamiento al que pertenece y su papel (§16).
+	Pool string `json:"pool,omitempty"`
+	Role string `json:"role,omitempty"` // data | cache
+	USB  bool   `json:"-"`
 	// ByID is the /dev/disk/by-id link name (no prefix) that tango-agent
 	// takes to address the disk ("" when udev made none).
 	ByID string `json:"-"`
@@ -59,10 +62,17 @@ type Volume struct {
 	Growth30d []float64 `json:"growth30d"`
 	// Tarea de md en curso (protocol/README.md §11): rebuild | reshape | resync; vacío si
 	// está quieto. TaskSpeed en bytes/s (sync_speed) y TaskEtaSec estimado.
-	Task       string   `json:"task,omitempty"`
-	TaskSpeed  *uint64  `json:"taskSpeed,omitempty"`
-	TaskEtaSec *int64   `json:"taskEtaSec,omitempty"`
-	rebuilding []string // discos (sdX) que reciben la reconstrucción
+	Task       string  `json:"task,omitempty"`
+	TaskSpeed  *uint64 `json:"taskSpeed,omitempty"`
+	TaskEtaSec *int64  `json:"taskEtaSec,omitempty"`
+	// Grupos de almacenamiento (§16): kind "pool" = volumen lógico de un grupo.
+	Kind       string       `json:"kind,omitempty"` // classic | pool
+	Pool       string       `json:"pool,omitempty"` // Pool.id
+	Encrypted  bool         `json:"encrypted,omitempty"`
+	Locked     bool         `json:"locked,omitempty"`
+	KeyDevice  string       `json:"keyDevice,omitempty"`
+	Cache      *VolumeCache `json:"cache,omitempty"`
+	rebuilding []string     // discos (sdX) que reciben la reconstrucción
 }
 
 // SmartInfo is what a SMART source (the privileged agent) knows of a disk.
@@ -87,6 +97,9 @@ type Inventory struct {
 	Dev   string
 	Proc  string
 	Smart SmartSource
+	// PoolAgent es tango-agent (pool.report); nil = sin grupos de almacenamiento.
+	PoolAgent PoolSource
+	pc        poolCache
 }
 
 // New returns an inventory of the running system.
@@ -185,7 +198,8 @@ func (inv *Inventory) Disks(ctx context.Context) ([]Disk, error) {
 			}
 		}
 	}
-	vols, _ := inv.volumes()
+	vols, _ := inv.volumes(ctx)
+	poolOf := inv.poolDisks(ctx)
 	memberOf := map[string]string{}
 	failed := map[string]bool{}
 	rebuilding := map[string]bool{}
@@ -243,6 +257,12 @@ func (inv *Inventory) Disks(ctx context.Context) ([]Disk, error) {
 			d.Use = "system"
 		case failed[name]:
 			d.Use, d.Volume = "failed", memberOf[name]
+			if pr, ok := poolOf[name]; ok {
+				d.Volume, d.Pool, d.Role = "", pr[0], pr[1]
+			}
+		case poolOf[name][0] != "":
+			d.Use, d.Pool, d.Role = "member", poolOf[name][0], poolOf[name][1]
+			d.Rebuilding = rebuilding[name]
 		case memberOf[name] != "":
 			d.Use, d.Volume = "member", memberOf[name]
 			d.Rebuilding = rebuilding[name]
@@ -448,8 +468,8 @@ var mdProfiles = map[string]string{"raid1": "raid1", "raid5": "raid5", "raid6": 
 // Volumes lists md arrays (with their mounted filesystem, if any) and
 // mounted Btrfs filesystems that are not on md. System mounts are excluded.
 // Volume.Disks carries the same stable ids as Disk.ID.
-func (inv *Inventory) Volumes(context.Context) ([]Volume, error) {
-	vols, err := inv.volumes()
+func (inv *Inventory) Volumes(ctx context.Context) ([]Volume, error) {
+	vols, err := inv.volumes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +484,7 @@ func (inv *Inventory) Volumes(context.Context) ([]Volume, error) {
 }
 
 // volumes is Volumes with kernel disk names (sdb) in Volume.Disks.
-func (inv *Inventory) volumes() ([]Volume, error) {
+func (inv *Inventory) volumes(ctx context.Context) ([]Volume, error) {
 	mounts := inv.mounts()
 	// Dispositivos del sistema: el Btrfs de la raíz (instalación desde la ISO) tiene más
 	// subvolúmenes montados (/.snapshots, /var/log) que no son volúmenes de datos.
@@ -495,6 +515,16 @@ func (inv *Inventory) volumes() ([]Volume, error) {
 	for _, md := range inv.mdArrays() {
 		dir := filepath.Join(inv.Sys, "block", md, "md")
 		disks, _ := inv.mdMembers(md)
+		st := readTrim(filepath.Join(dir, "array_state"))
+		stale := len(disks) == 0 && (readTrim(filepath.Join(dir, "level")) == "" || st == "clear" || st == "inactive")
+		if stale || inv.isPoolMD(md) {
+			// Un nodo md vacío que dejó una creación fallida, o un md de un grupo: sus
+			// volúmenes son los lógicos (poolVolumes).
+			for _, d := range disks {
+				onMD[d] = true
+			}
+			continue
+		}
 		v := Volume{
 			ID: md, Name: inv.mdName(md), Profile: mdProfiles[readTrim(filepath.Join(dir, "level"))],
 			Size: readUint(filepath.Join(inv.Sys, "block", md, "size")) * 512, State: "healthy",
@@ -559,7 +589,7 @@ func (inv *Inventory) volumes() ([]Volume, error) {
 	// Btrfs not on md (single disk or Btrfs RAID1, ADR 0004).
 	seenFS := map[string]bool{}
 	for dev, m := range mountOf {
-		if m.fstype != "btrfs" || strings.HasPrefix(dev, "md") {
+		if m.fstype != "btrfs" || strings.HasPrefix(dev, "md") || strings.HasPrefix(dev, "dm-") {
 			continue
 		}
 		uuid := inv.btrfsUUID(dev)
@@ -586,6 +616,7 @@ func (inv *Inventory) volumes() ([]Volume, error) {
 		v.Size, v.Used = statfs(m.point, 0)
 		vols = append(vols, v)
 	}
+	vols = append(vols, inv.poolVolumes(ctx, mounts)...)
 	sort.Slice(vols, func(i, j int) bool { return vols[i].Name < vols[j].Name })
 	return vols, nil
 }
