@@ -1,9 +1,9 @@
 import { fmtAgo, profileInfo, unusedBytes, useIsReal, useTransport } from "@tango/client";
 import type { Method } from "@tango/client";
-import type { Disk, DiskHealth, Volume, VolumeProfile } from "@tango/client";
+import type { Disk, DiskHealth, Pool, Volume, VolumeProfile } from "@tango/client";
 import type { Tone } from "@tango/ui";
 
-export type Section = "overview" | "volumes" | "disks" | "snapshots" | "iscsi";
+export type Section = "overview" | "pools" | "volumes" | "disks" | "snapshots" | "iscsi";
 
 export type Led = "ok" | "warn" | "crit" | "off" | "busy" | "rebuild";
 
@@ -17,23 +17,45 @@ export function useAvailable(m: Method): boolean {
 }
 
 /** Motivo por el que un disco no puede usarse para un volumen nuevo (null = elegible). */
-export function ineligibleReason(d: Disk, vols: Volume[]): string | null {
+export function ineligibleReason(d: Disk, vols: Volume[], pools: Pool[] = []): string | null {
   if (d.use === "system") return "Disco del sistema";
   if (d.use === "failed") return "Falló: no responde";
   if (d.foreign) return "Viene de otro NAS";
+  if (d.pool) return `${d.role === "cache" ? "Caché SSD del grupo" : "Miembro del grupo"} ${pools.find((p) => p.id === d.pool)?.name ?? ""}`.trim();
   if (d.use === "member") return `Miembro de ${vols.find((v) => v.id === d.volume)?.name ?? "un volumen"}`;
   return null;
 }
 
-export function ledOf(d: Disk | undefined, vols: Volume[]): Led {
+/** Nombre corto de para qué se usa un disco (tabla de discos, chasis). */
+export function diskUse(d: Disk, vols: Volume[], pools: Pool[] = []): string {
+  if (d.use === "system") return "Disco del sistema";
+  if (d.use === "failed") return "Falló";
+  if (d.foreign) return "Otro NAS (ajeno)";
+  if (d.pool) {
+    const p = pools.find((x) => x.id === d.pool)?.name ?? "grupo";
+    return d.role === "cache" ? `Caché SSD · ${p}` : p;
+  }
+  if (d.use === "member") return vols.find((v) => v.id === d.volume)?.name ?? "En uso";
+  return "Sin usar";
+}
+
+export function ledOf(d: Disk | undefined, vols: Volume[], pools: Pool[] = []): Led {
   if (!d) return "off";
   if (d.use === "failed" || d.smart === "crit") return "crit";
   if (d.smart === "warn") return "warn";
+  const p = d.pool ? pools.find((x) => x.id === d.pool) : undefined;
+  if (p) {
+    if (d.rebuilding && p.task === "rebuild") return "rebuild";
+    return p.task || p.state === "building" || p.state === "scrubbing" ? "busy" : "ok";
+  }
   const v = vols.find((x) => x.id === d.volume);
   if (d.rebuilding && v?.task === "rebuild") return "rebuild";
   if (v && (v.task || v.state === "scrubbing" || v.state === "building")) return "busy";
   return "ok";
 }
+
+/** Nombre de un sistema de archivos. */
+export const fsName: Record<Volume["fs"], string> = { btrfs: "Btrfs", xfs: "XFS", ext4: "ext4" };
 
 const VOL_COLORS = ["#2F7CF6", "#22C55E", "#F97316", "#8B5CF6", "#EC4899", "#14B8A6", "#EAB308"];
 
@@ -49,6 +71,8 @@ export const profileName: Record<VolumeProfile, string> = {
   raid5: "RAID 5",
   raid6: "RAID 6",
   raid10: "RAID 10",
+  hybrid1: "Híbrido-1",
+  hybrid2: "Híbrido-2",
 };
 
 export const profileHelp: Record<VolumeProfile, string> = {
@@ -57,6 +81,8 @@ export const profileHelp: Record<VolumeProfile, string> = {
   raid5: `${profileInfo("raid5").description} ${profileInfo("raid5").tolerance}`,
   raid6: `${profileInfo("raid6").description} ${profileInfo("raid6").tolerance}`,
   raid10: `${profileInfo("raid10").description} ${profileInfo("raid10").tolerance}`,
+  hybrid1: `${profileInfo("hybrid1").description} ${profileInfo("hybrid1").tolerance}`,
+  hybrid2: `${profileInfo("hybrid2").description} ${profileInfo("hybrid2").tolerance}`,
 };
 
 /** Capacidad útil / protección / sin usar para un perfil y un conjunto de discos (reglas de @tango/client). */

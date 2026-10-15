@@ -63,6 +63,28 @@ export function disks(s: Scenario): Disk[] {
         lab(12, "TANGO-M2", 4 * G),
       ];
     }
+    case "pools":
+    case "locked": {
+      // Un grupo Híbrido-1 con discos de 8, 8, 4 y 12 TB y una NVMe de caché (§16).
+      const pool = { use: "member" as const, pool: "p1", role: "data" as const };
+      return [
+        systemDisk,
+        { ...d1, ...pool },
+        { ...d2, ...pool },
+        { ...d3, ...pool },
+        bayDisk(4, "WD Red Pro 12TB", "WD-8KJ2P0QN", 12 * TB, 7200, pool),
+        { ...systemDisk, id: "nvme-eui.0025385c31507a11", dev: "nvme1n1", model: "Samsung 990 EVO 1TB", serial: "S7GCNX0X118822", size: 1e12, use: "member", pool: "p1", role: "cache", tempC: 44 },
+      ];
+    }
+    case "hybrid":
+      // Discos de distinto tamaño, sin grupos: el asistente muestra el RAID híbrido.
+      return [
+        systemDisk,
+        bayDisk(1, "Seagate IronWolf 4TB", "ZDH8P2L1", 4 * TB, 5900),
+        bayDisk(2, "WD Red Plus 8TB", "WD-CA1K9L2M", 8 * TB, 5640),
+        bayDisk(3, "Seagate IronWolf 8TB", "ZA1F3K7Q", 8 * TB, 7200),
+        bayDisk(4, "WD Red Pro 12TB", "WD-8KJ2P0QN", 12 * TB, 7200),
+      ];
     case "empty":
       return [systemDisk, d1, d2, d3];
     case "migrate": {
@@ -84,7 +106,24 @@ export function disks(s: Scenario): Disk[] {
 }
 
 export function volumes(s: Scenario, ds: Disk[]): Volume[] {
-  if (s === "empty" || s === "migrate") return [];
+  if (s === "empty" || s === "migrate" || s === "hybrid") return [];
+  if (s === "pools" || s === "locked") {
+    const disks = ds.filter((d) => d.pool === "p1" && d.role === "data").map((d) => d.id);
+    const nvme = ds.filter((d) => d.role === "cache").map((d) => d.id);
+    const growth = Array.from({ length: 30 }, (_, i) => 0.5 + i * 0.003 + Math.sin(i / 3) * 0.004);
+    const locked = s === "locked";
+    return [
+      {
+        id: "vol1", name: "volume1", mount: "/volume1", kind: "pool", pool: "p1", profile: "hybrid1", fs: "btrfs", size: 13 * TiB, used: 7.2 * TiB,
+        state: "healthy", disks, lastScrub: iso(9 * D), growth30d: growth,
+        cache: { mode: "read", disks: nvme, size: 0.93 * TiB, used: 0.71 * TiB, dirty: 0, readHits: 4_812_330, readMisses: 985_114, writeHits: 0, writeMisses: 1_204_778, hitRatio: 0.83 },
+      },
+      {
+        id: "vol2", name: "privado", mount: locked ? "" : "/privado", kind: "pool", pool: "p1", profile: "hybrid1", fs: "btrfs", size: 2.7 * TiB, used: locked ? 0 : 0.42 * TiB,
+        state: locked ? "locked" : "healthy", disks, lastScrub: locked ? null : iso(9 * D), growth30d: [], encrypted: true, locked, keyDevice: "5E2A-91C4",
+      },
+    ];
+  }
   if (s === "lab")
     return [
       { id: "vol1", name: "volume1", mount: "/volume1", profile: "raid1", fs: "btrfs", size: 15.6 * 1024 ** 3, used: 0.4 * 1024 ** 3, state: "healthy", disks: ds.filter((d) => d.volume === "vol1").map((d) => d.id), lastScrub: iso(2 * H), growth30d: [] },
@@ -111,7 +150,7 @@ export function shares(s: Scenario): Share[] {
       { id: "familia", name: "Familia", volume: "vol1", path: "/volume1/@shares/Familia", size: 0, description: "Lo compartido de la casa", smb: true, nfs: false, snapshots: true, recycleBin: false, color: "#F97316" },
       { id: "fotos", name: "Fotos", volume: "vol2", path: "/volume2/@shares/Fotos", size: 0, description: "Biblioteca de fotos", smb: true, nfs: false, snapshots: true, recycleBin: false, color: "#EC4899" },
     ];
-  if (s === "empty" || s === "migrate") return [];
+  if (s === "empty" || s === "migrate" || s === "hybrid") return [];
   const sh = (id: string, name: string, size: number, description: string, color: string, extra: Partial<Share> = {}): Share => ({
     id, name, volume: "vol1", path: `/volume1/${name}`, size, description, smb: true, nfs: false, snapshots: true, recycleBin: true, color, ...extra,
   });
@@ -126,7 +165,7 @@ export function shares(s: Scenario): Share[] {
 }
 
 export function snapshots(s: Scenario): Snapshot[] {
-  if (s === "empty" || s === "migrate" || s === "lab") return [];
+  if (s === "empty" || s === "migrate" || s === "lab" || s === "hybrid") return [];
   const out: Snapshot[] = [];
   for (const share of ["familia", "fotos", "media", "documentos", "homes"]) {
     for (let i = 0; i < 9; i++) {

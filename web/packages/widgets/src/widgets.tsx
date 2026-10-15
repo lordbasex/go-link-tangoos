@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Clock3, Cpu, Fan, HardDrive, Loader2, MemoryStick, Network, Server, Thermometer, Timer, Users, XOctagon } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Clock3, Cpu, Fan, HardDrive, Loader2, Lock, MemoryStick, Network, Server, Thermometer, Timer, Users, XOctagon, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { fmtBytes, fmtDuration, fmtRate, useJobs, useLive, useMetrics, fmtCpuTemp, fmtRpm } from "@tango/client";
 import type { Disk, MetricsFrame, Volume } from "@tango/client";
@@ -209,6 +209,8 @@ function volumeStatus(v: Volume): { tone: "ok" | "warn" | "crit" | "info"; label
       return { tone: "info", label: `Construyendo ${Math.round((v.progress ?? 0) * 100)} %`, icon: Loader2 };
     case "readonly":
       return { tone: "warn", label: "Solo lectura", icon: AlertTriangle };
+    case "locked":
+      return { tone: "warn", label: "Bloqueado (cifrado)", icon: Lock };
     default:
       return { tone: "ok", label: "En orden", icon: CheckCircle2 };
   }
@@ -221,7 +223,8 @@ function bayTone(d?: Disk): "ok" | "warn" | "crit" | "idle" | undefined {
   return d.use === "member" ? "ok" : "idle";
 }
 
-const profileName: Record<Volume["profile"], string> = { basic: "Básico", raid1: "RAID 1", raid5: "RAID 5", raid6: "RAID 6", raid10: "RAID 10" };
+const profileName: Record<Volume["profile"], string> = { basic: "Básico", raid1: "RAID 1", raid5: "RAID 5", raid6: "RAID 6", raid10: "RAID 10", hybrid1: "Híbrido-1", hybrid2: "Híbrido-2" };
+const fsName: Record<Volume["fs"], string> = { btrfs: "Btrfs", xfs: "XFS", ext4: "ext4" };
 
 function StorageWidget() {
   const vols = useLive("storage.volumes.list", undefined, ["storage.changed"]).data;
@@ -266,7 +269,8 @@ function StorageWidget() {
   }
 
   const st = volumeStatus(v);
-  const pct = v.used / v.size;
+  const pct = v.size ? v.used / v.size : 0;
+  const cached = vols.find((x) => x.cache);
   const busy = v.state === "scrubbing" || v.state === "building";
   return (
     <>
@@ -289,7 +293,7 @@ function StorageWidget() {
           <div className="tw-vol-name">
             <strong>{v.name}</strong>
             <span className="tw-sub">
-              {profileName[v.profile]} · Btrfs
+              {profileName[v.profile]} · {fsName[v.fs] ?? v.fs}
             </span>
           </div>
           <span className="tw-status" data-tone={st.tone}>
@@ -303,6 +307,11 @@ function StorageWidget() {
           ) : (
             <span className="tw-sub">
               {fmtBytes(v.size - v.used)} libres de {fmtBytes(v.size)}
+            </span>
+          )}
+          {cached && (
+            <span className="tw-sub tw-cache" title="Caché SSD: lecturas servidas desde la SSD sobre el total">
+              <Zap size={11} strokeWidth={2.4} /> Caché SSD{cached.cache?.hitRatio != null ? ` · ${Math.round(cached.cache.hitRatio * 100)} % aciertos` : ""}
             </span>
           )}
           {bayRow}

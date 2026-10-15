@@ -1,18 +1,19 @@
 import { useState } from "react";
 import { DeleteVolume } from "./DeleteVolume";
-import { CalendarClock, Camera, Fingerprint, HardDrive, Lightbulb, Lock, Maximize2, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
+import { CalendarClock, Camera, Fingerprint, HardDrive, KeyRound, Lightbulb, Lock, Maximize2, RefreshCw, ShieldCheck, Trash2, Unlock, Usb, X, Zap } from "lucide-react";
 import { RpcError, fmtAgo, fmtBytes, fmtDate, useLive, useTransport, fmtTemp } from "@tango/client";
-import type { Disk, Snapshot, Volume } from "@tango/client";
+import type { Disk, Pool, Snapshot, Volume } from "@tango/client";
 import { Badge, Button, EmptyState, IconButton, Sheet, Status } from "@tango/ui";
 import { toast, openApp } from "@tango/shell";
 import { VolumeCard, stateInfo } from "./Overview";
-import { profileHelp, profileName, smartLabel, smartTone, scrubAgo, useAvailable } from "./util";
+import { diskUse, fsName, profileHelp, profileName, smartLabel, smartTone, scrubAgo, useAvailable } from "./util";
+import { CacheSheet, CacheStats, KeyDeviceSheet, LockedCard, PassphraseSheet, UnlockSheet } from "./Security";
+import { ResizeVolume } from "./PoolVolume";
 import { ScheduleSheet, scheduleSummary } from "./Schedule";
 
 // ---- Discos -----------------------------------------------------------------------
 
-const useLabel = (d: Disk, vols: Volume[]) =>
-  d.use === "system" ? "Disco del sistema" : d.use === "failed" ? "Falló" : d.foreign ? "Otro NAS (ajeno)" : d.use === "member" ? vols.find((v) => v.id === d.volume)?.name ?? "En uso" : "Sin usar";
+const useLabel = (d: Disk, vols: Volume[], pools: Pool[] = []) => diskUse(d, vols, pools);
 
 function smartRows(d: Disk) {
   const failed = d.use === "failed";
@@ -28,7 +29,7 @@ function smartRows(d: Disk) {
   ];
 }
 
-function Inspector({ d, vols, onClose }: { d: Disk; vols: Volume[]; onClose: () => void }) {
+function Inspector({ d, vols, pools, onClose }: { d: Disk; vols: Volume[]; pools: Pool[]; onClose: () => void }) {
   const t = useTransport();
   const canLocate = useAvailable("storage.disks.locate");
   const locate = () =>
@@ -71,7 +72,7 @@ function Inspector({ d, vols, onClose }: { d: Disk; vols: Volume[]; onClose: () 
           <dt>Tipo</dt>
           <dd>{d.kind === "nvme" ? "NVMe" : d.kind === "ssd" ? "SSD" : `HDD ${d.rpm ?? ""} rpm`}</dd>
           <dt>Uso</dt>
-          <dd>{useLabel(d, vols)}</dd>
+          <dd>{useLabel(d, vols, pools)}</dd>
         </dl>
         <p className="ts-note">
           TangoOS identifica cada disco por WWN y número de serie. El nombre del kernel (hoy <code>/dev/{d.dev}</code>) puede cambiar entre reinicios y nunca se usa para operar.
@@ -99,7 +100,7 @@ function Inspector({ d, vols, onClose }: { d: Disk; vols: Volume[]; onClose: () 
   );
 }
 
-export function Disks({ disks, vols, selected, onSelect }: { disks: Disk[]; vols: Volume[]; selected: string | null; onSelect: (id: string | null) => void }) {
+export function Disks({ disks, vols, pools = [], selected, onSelect }: { disks: Disk[]; vols: Volume[]; pools?: Pool[]; selected: string | null; onSelect: (id: string | null) => void }) {
   const sel = disks.find((d) => d.id === selected);
   const sorted = [...disks].sort((a, b) => (a.bay ?? 99) - (b.bay ?? 99));
   return (
@@ -128,24 +129,26 @@ export function Disks({ disks, vols, selected, onSelect }: { disks: Disk[]; vols
                 <td className="num">{d.use === "failed" ? "—" : fmtTemp(d.tempC)}</td>
                 <td className="num">{d.powerOnHours == null ? "—" : d.powerOnHours.toLocaleString("es-AR")}</td>
                 <td>{d.id === selected ? smartLabel[d.smart] : <Status tone={smartTone(d.smart)}>{smartLabel[d.smart]}</Status>}</td>
-                <td>{useLabel(d, vols)}</td>
+                <td>{useLabel(d, vols, pools)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {sel && <Inspector d={sel} vols={vols} onClose={() => onSelect(null)} />}
+      {sel && <Inspector d={sel} vols={vols} pools={pools} onClose={() => onSelect(null)} />}
     </div>
   );
 }
 
 // ---- Volúmenes --------------------------------------------------------------------
 
-export function Volumes({ disks, vols, onCreate, onReplace, onExpand }: { disks: Disk[]; vols: Volume[]; onCreate: () => void; onReplace: (v: Volume) => void; onExpand: (v: Volume) => void }) {
+export function Volumes({ disks, vols, pools = [], onCreate, onReplace, onExpand }: { disks: Disk[]; vols: Volume[]; pools?: Pool[]; onCreate: () => void; onReplace: (v: Volume) => void; onExpand: (v: Volume) => void }) {
   const t = useTransport();
   const canReplace = useAvailable("storage.disks.replacePlan");
   const canExpand = useAvailable("storage.volumes.expandPlan");
   const [deleting, setDeleting] = useState<Volume | null>(null);
+  const [sheet, setSheet] = useState<{ kind: "resize" | "unlock" | "pass" | "key" | "cache"; v: Volume } | null>(null);
+  const of = (k: NonNullable<typeof sheet>["kind"]) => (sheet?.kind === k ? sheet.v : null);
   if (!vols.length)
     return (
       <EmptyState icon={HardDrive} title="Todavía no hay volúmenes" action={<Button variant="primary" onClick={onCreate}>Crear volumen…</Button>}>
@@ -155,7 +158,14 @@ export function Volumes({ disks, vols, onCreate, onReplace, onExpand }: { disks:
   return (
     <div className="ts-stack">
       <DeleteVolume vol={deleting} disks={disks} onClose={() => setDeleting(null)} />
+      <ResizeVolume vol={of("resize")} pools={pools} onClose={() => setSheet(null)} />
+      <UnlockSheet vol={of("unlock")} onClose={() => setSheet(null)} />
+      <PassphraseSheet vol={of("pass")} onClose={() => setSheet(null)} />
+      <KeyDeviceSheet vol={of("key")} onClose={() => setSheet(null)} />
+      <CacheSheet vol={of("cache")} disks={disks} vols={vols} pools={pools} onClose={() => setSheet(null)} />
       {vols.map((v) => {
+        if (v.kind === "pool")
+          return <PoolVolumeDetail key={v.id} v={v} disks={disks} pools={pools} onSheet={(kind) => setSheet({ kind, v })} onDelete={() => setDeleting(v)} />;
         const members = disks.filter((d) => v.disks.includes(d.id) || d.volume === v.id);
         const s = stateInfo(v);
         return (
@@ -223,6 +233,116 @@ export function Volumes({ disks, vols, onCreate, onReplace, onExpand }: { disks:
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ---- Volumen de un grupo (§16) ---------------------------------------------------------
+
+function PoolVolumeDetail({ v, disks, pools, onSheet, onDelete }: { v: Volume; disks: Disk[]; pools: Pool[]; onSheet: (k: "resize" | "unlock" | "pass" | "key" | "cache") => void; onDelete: () => void }) {
+  const t = useTransport();
+  const p = pools.find((x) => x.id === v.pool);
+  const s = stateInfo(v);
+  const busy = v.state === "building" || v.state === "scrubbing" || !!v.task;
+  const lock = () =>
+    t.call("storage.volumes.lock", { volume: v.id }).then(
+      () => toast({ level: "ok", title: `${v.name} bloqueado`, body: "Se desmontó y se cerró: hace falta la frase (o la llave) para volver a abrirlo." }),
+      (e: Error) => toast({ level: "warn", title: "No se pudo bloquear", body: e.message }),
+    );
+  const removeCache = () =>
+    t.call("storage.cache.remove", { volume: v.id }).then(
+      () => toast({ level: "info", title: `Quitando la caché de ${v.name}`, body: "Los bloques pendientes bajan a los discos y las SSD quedan libres." }),
+      (e: Error) => toast({ level: "warn", title: "No se pudo quitar la caché", body: e.message }),
+    );
+  return (
+    <div className="ts-stack">
+      {v.locked ? <LockedCard v={v} onUnlock={() => onSheet("unlock")} /> : <VolumeCard v={v} disks={disks} />}
+      <section className="tg-card">
+        <div className="ts-card-title">Cómo está armado</div>
+        <p className="ts-note">
+          Volumen {fsName[v.fs] ?? v.fs}
+          {v.encrypted ? " cifrado" : ""} en el grupo {p?.name ?? "—"} ({profileName[v.profile]}). Estado: {s.text.toLowerCase()}.
+        </p>
+        <div className="ts-layers">
+          <div className="ts-layer">
+            <small>Sistema de archivos</small>
+            <strong>
+              {fsName[v.fs] ?? v.fs} · {v.mount || `/${v.name} (sin montar)`}
+            </strong>
+          </div>
+          {v.encrypted && (
+            <div className="ts-layer">
+              <small>Cifrado</small>
+              <strong>
+                LUKS2 (argon2id) · {v.locked ? "cerrado" : "abierto"}
+                {v.keyDevice ? ` · llave USB ${v.keyDevice}` : ""}
+              </strong>
+            </div>
+          )}
+          {v.cache && (
+            <div className="ts-layer">
+              <small>Caché SSD</small>
+              <strong>{v.cache.mode === "read" ? "Solo lectura (writethrough)" : "Lectura y escritura (writeback, SSD en RAID 1)"}</strong>
+            </div>
+          )}
+          <div className="ts-layer">
+            <small>Volumen lógico</small>
+            <strong>
+              /dev/{p?.name ?? "?"}/{v.name} · {fmtBytes(v.size)}
+            </strong>
+          </div>
+          <div className="ts-layer">
+            <small>Grupo</small>
+            <strong>
+              {p?.name ?? "—"} · {profileName[v.profile]} · {fmtBytes(p?.free ?? 0)} libres
+            </strong>
+          </div>
+        </div>
+        {v.cache && <CacheStats v={v} />}
+        <div className="ts-row-actions">
+          {v.fs === "btrfs" && !v.locked && (
+            <Button disabled={v.state !== "healthy"} onClick={() => t.call("storage.scrub.start", { volume: v.id }).catch((e: Error) => toast({ level: "warn", title: "No se pudo verificar", body: e.message }))}>
+              <ShieldCheck size={14} /> Verificar
+            </Button>
+          )}
+          <Button disabled={v.locked || busy || (p?.free ?? 0) < 8 * 1024 ** 2} title={v.locked ? "Desbloquealo primero" : undefined} onClick={() => onSheet("resize")}>
+            <Maximize2 size={14} /> Agrandar…
+          </Button>
+          {v.encrypted &&
+            (v.locked ? (
+              <Button variant="primary" onClick={() => onSheet("unlock")}>
+                <Unlock size={14} /> Desbloquear…
+              </Button>
+            ) : (
+              <Button onClick={lock}>
+                <Lock size={14} /> Bloquear
+              </Button>
+            ))}
+          {v.encrypted && (
+            <Button onClick={() => onSheet("pass")}>
+              <KeyRound size={14} /> Cambiar frase…
+            </Button>
+          )}
+          {v.encrypted && (
+            <Button onClick={() => onSheet("key")}>
+              <Usb size={14} /> Llave USB…
+            </Button>
+          )}
+          {v.cache ? (
+            <Button disabled={busy} onClick={removeCache}>
+              <Zap size={14} /> Quitar caché
+            </Button>
+          ) : (
+            <Button disabled={busy} onClick={() => onSheet("cache")}>
+              <Zap size={14} /> Caché SSD…
+            </Button>
+          )}
+          <Button variant="danger" disabled={busy} onClick={onDelete}>
+            <Trash2 size={14} /> Eliminar volumen…
+          </Button>
+          {!v.locked && v.fs === "btrfs" && <span className="tg-muted ts-push">Última verificación {scrubAgo(v)}</span>}
+        </div>
+      </section>
     </div>
   );
 }

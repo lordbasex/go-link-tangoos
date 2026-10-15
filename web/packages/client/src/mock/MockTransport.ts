@@ -5,6 +5,7 @@ import { profileInfo, profileLabel } from "../raid";
 import * as data from "./data";
 import { appsHandlers } from "./apps";
 import { m22Handlers } from "./m22";
+import { poolsHandlers } from "./pools";
 import { m4Handlers } from "./m4";
 import { usersHandlers } from "./users";
 import { connectHandlers } from "./connect";
@@ -53,7 +54,7 @@ export class MockTransport implements Transport {
     this.vols = data.volumes(scenario, this.disks);
     this.shares = data.shares(scenario);
     this.snaps = data.snapshots(scenario);
-    this.fs = new data.MemFS(scenario !== "empty" && scenario !== "migrate" && scenario !== "lab");
+    this.fs = new data.MemFS(scenario !== "empty" && scenario !== "migrate" && scenario !== "lab" && scenario !== "hybrid");
     if (scenario === "lab") this.fs.mkdir("/Familia");
     this.notices = data.initialNotices(scenario);
     if (scenario === "busy") {
@@ -119,6 +120,7 @@ export class MockTransport implements Transport {
 
   private handlers: { [M in Method]?: (p: Params<M>) => Result<M> } = {
     ...m22Handlers({ scenario: () => this.scenario, disks: () => this.disks, vols: () => this.vols, shares: () => this.shares, snaps: () => this.snaps, emit: (t, d) => this.emit(t, d), startJob: (...a) => this.startJob(...a), notify: (...a) => this.notify(...a) }),
+    ...poolsHandlers({ scenario: () => this.scenario, disks: () => this.disks, vols: () => this.vols, setVols: (v) => (this.vols = v), emit: (t, d) => this.emit(t, d), startJob: (...a) => this.startJob(...a), notify: (...a) => this.notify(...a) }),
     ...m4Handlers({ scenario: () => this.scenario, emit: (t, d) => this.emit(t, d), startJob: (...a) => this.startJob(...a), notify: (...a) => this.notify(...a), vols: () => this.vols, shares: () => this.shares }),
     ...v1Handlers({ emit: (t, d) => this.emit(t, d), startJob: (...a) => this.startJob(...a), notify: (...a) => this.notify(...a), shares: () => this.shares, fs: () => this.fs }),
     ...usersHandlers({ me: () => this.currentUser ?? "federico" }),
@@ -229,7 +231,8 @@ export class MockTransport implements Transport {
           shares: shares.map((s) => s.name),
           snapshots: this.snaps.filter((s) => shares.some((x) => x.id === s.share)).length,
           used: v.used,
-          disks: this.disks.filter((d) => v.disks.includes(d.id)).map((d) => ({ id: d.id, model: d.model, serial: d.serial })),
+          // Un volumen de un grupo no borra discos: el espacio vuelve al grupo (§16).
+          disks: v.kind === "pool" ? [] : this.disks.filter((d) => v.disks.includes(d.id)).map((d) => ({ id: d.id, model: d.model, serial: d.serial })),
         },
       };
     },
