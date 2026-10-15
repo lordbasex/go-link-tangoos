@@ -86,7 +86,10 @@ func registerStorage(r *agentproto.Registry, paths smart.Paths, env diskops.Env,
 			return agentproto.Errf(agentproto.CodeInvalidArgs, "ruta de subvolumen inválida")
 		}
 		return nil
-	}, func(_ context.Context, a *agentproto.SubvolCreateArgs) (any, *agentproto.Error) {
+	}, func(ctx context.Context, a *agentproto.SubvolCreateArgs) (any, *agentproto.Error) {
+		if _, ok := zfsVolumeOf(env, a.Mount); ok { // volumen ZFS: dataset hijo (ADR 0013)
+			return struct{}{}, zerr(zfsHelper(ctx, "zfs-subvol", a))
+		}
 		if e := mountedBtrfs(env, a.Mount); e != nil {
 			return nil, e
 		}
@@ -111,7 +114,10 @@ func registerStorage(r *agentproto.Registry, paths smart.Paths, env diskops.Env,
 			return agentproto.Errf(agentproto.CodeInvalidArgs, "%v", err)
 		}
 		return nil
-	}, func(_ context.Context, a *agentproto.SnapshotCreateArgs) (any, *agentproto.Error) {
+	}, func(ctx context.Context, a *agentproto.SnapshotCreateArgs) (any, *agentproto.Error) {
+		if _, ok := zfsVolumeOf(env, a.Mount); ok { // instantánea ZFS + enlace (ADR 0013)
+			return struct{}{}, zerr(zfsHelper(ctx, "zfs-snap", a))
+		}
 		if e := mountedBtrfs(env, a.Mount); e != nil {
 			return nil, e
 		}
@@ -135,6 +141,7 @@ func registerStorage(r *agentproto.Registry, paths smart.Paths, env diskops.Env,
 	registerM21(r, paths, env, jobs, log)
 	registerM22(r, paths, env, jobs, log)   // mantenimiento de volúmenes (protocol/README.md §11)
 	registerPools(r, paths, env, jobs, log) // grupos de almacenamiento (protocol/README.md §16)
+	registerZFS(r, paths, env, jobs, log)   // pools ZFS (zfs_linux.go, protocol/README.md §18)
 
 	agentproto.Register(r, agentproto.OpSambaApply, validateSamba, func(ctx context.Context, a *agentproto.SambaShareArgs) (any, *agentproto.Error) {
 		if fi, err := os.Stat(a.Path); err != nil || !fi.IsDir() {

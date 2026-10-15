@@ -551,6 +551,9 @@ func (s *storageAPI) scrub(ctx context.Context, volID string) (string, error) {
 	if !ok || v.Mount == "" {
 		return "", rtcrpc.Errorf("VOLUME_NOT_FOUND", "no existe el volumen o no está montado")
 	}
+	if v.Kind == "zfs" && s.a.zfs != nil { // el scrub de ZFS es del pool entero
+		return s.a.zfs.scrub(ctx, v.Pool, false)
+	}
 	if v.State != "healthy" {
 		return "", rtcrpc.Errorf("VOLUME_BUSY", "el volumen está ocupado (%s)", v.State)
 	}
@@ -606,7 +609,7 @@ func (s *storageAPI) shares(ctx context.Context) []Share {
 	defer s.mu.Unlock()
 	out := []Share{}
 	for _, v := range vols {
-		if v.Mount == "" || v.FS != "btrfs" {
+		if v.Mount == "" || (v.FS != "btrfs" && v.FS != "zfs") { // ZFS: carpetas = datasets hijos (ADR 0013)
 			continue
 		}
 		ents, _ := os.ReadDir(filepath.Join(v.Mount, "@shares"))
@@ -718,7 +721,8 @@ func (s *storageAPI) snapshots(ctx context.Context, shareID string) []Snapshot {
 		ents, _ := os.ReadDir(filepath.Join(mount, "@snapshots", sh.Name))
 		for _, e := range ents {
 			t, ok := diskops.ParseSnapshotName(e.Name())
-			if !e.IsDir() || !ok {
+			// En ZFS cada instantánea es un enlace a .zfs/snapshot (ADR 0013).
+			if (!e.IsDir() && e.Type()&os.ModeSymlink == 0) || !ok {
 				continue
 			}
 			out = append(out, Snapshot{ID: sh.ID + "@" + e.Name(), Share: sh.ID, At: t.Format(time.RFC3339), Kind: snapshotKind(e.Name())})

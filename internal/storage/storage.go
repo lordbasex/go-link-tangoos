@@ -100,6 +100,9 @@ type Inventory struct {
 	// PoolAgent es tango-agent (pool.report); nil = sin grupos de almacenamiento.
 	PoolAgent PoolSource
 	pc        poolCache
+	// ZfsAgent es tango-agent (zfs.report); nil = sin ZFS (ADR 0013).
+	ZfsAgent ZfsSource
+	zc       zfsCache
 }
 
 // New returns an inventory of the running system.
@@ -200,6 +203,9 @@ func (inv *Inventory) Disks(ctx context.Context) ([]Disk, error) {
 	}
 	vols, _ := inv.volumes(ctx)
 	poolOf := inv.poolDisks(ctx)
+	for d, pr := range inv.zfsDisks(ctx) { // discos de pools ZFS (zfs.go)
+		poolOf[d] = pr
+	}
 	memberOf := map[string]string{}
 	failed := map[string]bool{}
 	rebuilding := map[string]bool{}
@@ -617,6 +623,7 @@ func (inv *Inventory) volumes(ctx context.Context) ([]Volume, error) {
 		vols = append(vols, v)
 	}
 	vols = append(vols, inv.poolVolumes(ctx, mounts)...)
+	vols = append(vols, inv.zfsVolumes(ctx)...) // volúmenes ZFS (zfs.go, ADR 0013)
 	sort.Slice(vols, func(i, j int) bool { return vols[i].Name < vols[j].Name })
 	return vols, nil
 }

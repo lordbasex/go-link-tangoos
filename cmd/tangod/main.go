@@ -135,6 +135,7 @@ func run(ctx context.Context, cfg config) error {
 	defer agent.Close()
 	inv.Smart = api.NewSmartCache(api.AgentSmart{C: agent}, time.Minute)
 	inv.PoolAgent = agent // grupos de almacenamiento (pool.report, protocol/README.md §16)
+	inv.ZfsAgent = agent  // pools ZFS (zfs.report, protocol/README.md §18)
 
 	hub := rtcrpc.NewHub(api.Topics...)
 	router := rtcrpc.NewRouter(slog.Default())

@@ -49,7 +49,10 @@ func registerM22(r *agentproto.Registry, paths smart.Paths, env diskops.Env, job
 		return agentproto.OpRef{OpID: a.OpID}, nil
 	})
 
-	agentproto.Register(r, agentproto.OpSnapshotDelete, validateSnapshotDelete, func(_ context.Context, a *agentproto.SnapshotDeleteArgs) (any, *agentproto.Error) {
+	agentproto.Register(r, agentproto.OpSnapshotDelete, validateSnapshotDelete, func(ctx context.Context, a *agentproto.SnapshotDeleteArgs) (any, *agentproto.Error) {
+		if _, ok := zfsVolumeOf(env, a.Mount); ok { // instantánea ZFS (ADR 0013)
+			return struct{}{}, zerr(zfsHelper(ctx, "zfs-snapdel", a))
+		}
 		if e := mountedBtrfs(env, a.Mount); e != nil {
 			return nil, e
 		}
