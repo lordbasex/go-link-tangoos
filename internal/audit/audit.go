@@ -200,6 +200,9 @@ var readOnly = map[string]bool{
 	"nfs.exports.get": true, "iscsi.targets.list": true, "notify.channels.get": true, "audit.list": true,
 	"logs.query": true, "term.resize": true, "files.download.begin": true, "storage.volumes.plan": true,
 	"storage.volumes.deletePlan": true, "storage.disks.replacePlan": true, "storage.volumes.expandPlan": true,
+	// Grupos de almacenamiento (protocol/README.md §16).
+	"storage.pools.list": true, "storage.pools.plan": true, "storage.pools.expandPlan": true, "storage.pools.replacePlan": true,
+	"storage.pools.deletePlan": true, "storage.keyDevices.list": true, "storage.cache.plan": true,
 }
 
 // ShouldRecord dice si una llamada va al registro.
@@ -213,7 +216,7 @@ func ShouldRecord(method string, denied bool) bool {
 // sensitive son claves que jamás se guardan.
 func sensitive(k string) bool {
 	k = strings.ToLower(k)
-	for _, s := range []string{"password", "secret", "token", "confirm_token", "pem", "key", "data", "code"} {
+	for _, s := range []string{"password", "passphrase", "secret", "token", "confirm_token", "pem", "key", "data", "code"} {
 		if strings.Contains(k, s) {
 			return true
 		}
@@ -222,7 +225,7 @@ func sensitive(k string) bool {
 }
 
 // targetKeys son las claves que describen el objetivo, en orden de preferencia.
-var targetKeys = []string{"path", "paths", "share", "name", "volume", "id", "user", "disk", "channel", "unit", "scope", "dir", "plan_id", "typed_name", "hostname"}
+var targetKeys = []string{"path", "paths", "share", "name", "volume", "pool", "id", "user", "disk", "channel", "unit", "scope", "dir", "plan_id", "typed_name", "hostname"}
 
 // Target resume los parámetros en un texto corto sin secretos.
 func Target(params json.RawMessage) string {

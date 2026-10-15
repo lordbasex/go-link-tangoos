@@ -563,6 +563,9 @@ func (a *API) RunMaintenance(ctx context.Context) {
 			return
 		case <-monTick.C:
 			m.monitorPass(ctx)
+			if a.pools != nil {
+				a.pools.autoUnlock(ctx)
+			}
 		case <-schedTick.C:
 			m.schedulePass(ctx)
 		}
@@ -579,8 +582,18 @@ func (m *m22) monitorPass(ctx context.Context) {
 	names := map[string]string{}
 	for _, v := range vols {
 		names[v.ID] = v.Name
-		obs.Volumes = append(obs.Volumes, monitor.VolumeObs{ID: v.ID, Name: v.Name, Profile: v.Profile, State: v.State,
+		st := v.State
+		if v.Kind == "pool" {
+			st = "healthy" // la redundancia es del grupo: una sola alerta por grupo (abajo)
+		}
+		obs.Volumes = append(obs.Volumes, monitor.VolumeObs{ID: v.ID, Name: v.Name, Profile: v.Profile, State: st,
 			Progress: v.Progress, Size: v.Size, Used: v.Used, BtrfsErrors: monitor.BtrfsErrors(m.s.inv.Sys, v.ID)})
+	}
+	if pools, err := m.s.inv.Pools(ctx); err == nil {
+		for _, p := range pools {
+			names[p.ID] = "El grupo " + p.Name
+			obs.Volumes = append(obs.Volumes, monitor.VolumeObs{ID: p.ID, Name: "El grupo " + p.Name, Profile: p.Profile, State: p.State, Progress: p.Progress})
+		}
 	}
 	for _, d := range disks {
 		if d.Use == "system" && d.Smart == "unknown" {

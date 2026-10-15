@@ -322,3 +322,6 @@ func readDir(p string) ([]string, error) {
 	}
 	return out, err
 }
+
+// DiskID traduce el nombre del kernel de un disco (sdb) a su Disk.ID.
+func (inv *Inventory) DiskID(name string) string { return inv.stableIDs()(name) }
