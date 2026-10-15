@@ -373,7 +373,17 @@ func TestCluster(t *testing.T) {
 			time.Sleep(5 * time.Second)
 		}
 		n1.c.waitCluster("n3 de vuelta", 4*time.Minute, func(s clStatus) bool { return connectedPeers(s) == 3 && s.Volumes[0].Online == 3 })
-		n1.c.call("cluster.volume.heal", map[string]any{"name": vol}, nil)
+		// El demonio de curación de n3 tarda unos segundos en arrancar: HEAL_NOT_READY hasta entonces.
+		for i := 0; ; i++ {
+			_, err := n1.c.Call(ctxT(t, 30*time.Second), "cluster.volume.heal", map[string]any{"name": vol})
+			if err == nil {
+				break
+			}
+			if i == 12 || !strings.Contains(err.Error(), "HEAL_NOT_READY") {
+				t.Fatalf("cluster.volume.heal: %v", err)
+			}
+			time.Sleep(5 * time.Second)
+		}
 		s := n1.c.waitCluster("curación completa", 5*time.Minute, func(s clStatus) bool { return s.Volumes[0].HealPending == 0 && s.Volumes[0].SplitBrain == 0 })
 		t.Logf("curado: %+v", s.Volumes[0].Bricks)
 		if out := mustSSH(t, n3.ip, "ls /volume1/@gluster/"+vol+" | grep -c con-n3-caido"); strings.TrimSpace(out) != "10" {

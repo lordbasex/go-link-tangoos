@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lordbasex/go-link-tangoos/internal/gluster"
@@ -64,25 +65,38 @@ type clusterAPI struct {
 	stMu sync.Mutex
 	st   *agentproto.GlusterStatusResult
 	stAt time.Time
+	// busy cuenta las llamadas al agente en curso que pueden tardar (heal info, status):
+	// el cliente del agente atiende de a una, así que mientras tanto se responde con la
+	// caché en vez de hacer esperar a la UI.
+	busy atomic.Int32
 
 	// heal: último `heal info` por volumen (lo pide el bucle; tarda segundos).
 	heal map[string][]gluster.HealBrick
 }
 
-const statusTTL = 3 * time.Second
+const (
+	statusTTL = 3 * time.Second
+	staleMax  = 90 * time.Second // máximo de antigüedad para responder con caché mientras el agente está ocupado
+)
 
-// agentStatus devuelve el estado del agente (cacheado statusTTL salvo fresh).
+// agentStatus devuelve el estado del agente: cacheado statusTTL salvo fresh, y
+// cacheado (hasta staleMax) si hay otra llamada lenta en curso.
 func (c *clusterAPI) agentStatus(ctx context.Context, fresh bool) (*agentproto.GlusterStatusResult, error) {
 	c.stMu.Lock()
-	defer c.stMu.Unlock()
-	if !fresh && c.st != nil && time.Since(c.stAt) < statusTTL {
-		return c.st, nil
+	st, at := c.st, c.stAt
+	c.stMu.Unlock()
+	if !fresh && st != nil && (time.Since(at) < statusTTL || c.busy.Load() > 0 && time.Since(at) < staleMax) {
+		return st, nil
 	}
+	c.busy.Add(1)
 	st, err := c.ag.GlusterStatus(ctx, c.self())
+	c.busy.Add(-1)
 	if err != nil {
 		return nil, err
 	}
+	c.stMu.Lock()
 	c.st, c.stAt = st, time.Now()
+	c.stMu.Unlock()
 	return st, nil
 }
 
@@ -305,6 +319,11 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 			return nil, err
 		}
 		if err := c.ag.GlusterHeal(ctx, q); err != nil {
+			// Justo después de que vuelve un nodo, su demonio de curación todavía no arrancó
+			// y GlusterFS rechaza el pedido manual; la curación automática sigue igual.
+			if strings.Contains(err.Error(), "has been unsuccessful") {
+				return nil, rtcrpc.Errorf("HEAL_NOT_READY", "el demonio de curación de algún nodo todavía está arrancando: probá en unos segundos (la curación automática no se detiene)")
+			}
 			return nil, agentErr(err)
 		}
 		go func() { // la curación arrancó: refrescar lo pendiente en unos segundos
@@ -580,7 +599,9 @@ func (c *clusterAPI) withHeal(vols []gluster.Volume) []gluster.Volume {
 
 // refreshHeal pide `heal info` de un volumen al agente y lo guarda.
 func (c *clusterAPI) refreshHeal(ctx context.Context, vol string) {
+	c.busy.Add(1)
 	h, err := c.ag.GlusterHealInfo(ctx, vol)
+	c.busy.Add(-1)
 	if err != nil {
 		c.m.a.d.Log.Warn("cluster: heal info", "vol", vol, "err", err)
 		return
