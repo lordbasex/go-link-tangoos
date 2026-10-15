@@ -1,175 +1,175 @@
-# Resultados de pruebas
+# Test results
 
-Criterio y matriz: [`docs/14-plan-de-pruebas.md`](../docs/14-plan-de-pruebas.md) · cómo correr: [`README.md`](README.md).
+Criteria and matrix: [`docs/14-test-plan.md`](../docs/14-test-plan.md) · how to run: [`README.md`](README.md).
 
-## Corrida completa — 2026-10-15
+## Full run — 2026-10-15
 
-| Dato | Valor |
+| Item | Value |
 |---|---|
-| Versión | `0.1.0-dev` (build final desplegado en la VM 108 a las 00:28 con los arreglos de esta corrida) |
-| NAS | VM 108 `tangoos-dev` (172.17.0.44), Debian 13.7, kernel 6.12, 12 discos de datos virtuales |
-| Cliente | Mac de desarrollo, cliente WebRTC real (`internal/rtc`, pion) y Chromium (Playwright 1.64.1) |
-| Resultado | **Todo en verde** (las suites destructivas, aprobadas por el usuario, incluidas) |
+| Version | `0.1.0-dev` (final build deployed to VM 108 at 00:28 with this run's fixes) |
+| NAS | VM 108 `tangoos-dev` (172.17.0.44), Debian 13.7, kernel 6.12, 12 virtual data disks |
+| Client | Development Mac, real WebRTC client (`internal/rtc`, pion) and Chromium (Playwright 1.64.1) |
+| Result | **All green** (including the destructive suites, approved by the user) |
 
-| Capa / suite | Comando | Resultado | Duración |
+| Layer / suite | Command | Result | Duration |
 |---|---|---|---|
-| Unitarias Go (+ `go vet` Linux, gofmt) | `make check` | **157/157** en 28 paquetes | ~40 s |
-| Unitarias web (Vitest) | `cd web && npm test` | **70/70** en 9 archivos | ~1 s |
-| Seguridad | `make e2e-security` | **7/7** | 4,6 s |
-| E2E de API | `make e2e-api` | **20/20** (+ 2 subtests SFTP) | 2 min 32 s |
-| E2E de UI | `make e2e-ui E2E_DESTRUCTIVE=1` | **1/1** recorrido, 19 capturas | 44 s |
-| Matriz de almacenamiento | `make e2e-storage` | **8/8** filas | 4 min 27 s |
-| Reinicio de la VM (fila 9) | `make e2e-storage E2E_REBOOT=1` | **1/1** | 2 min 28 s |
-| Instalación desde la ISO | `make iso` + VM 109 (sin objetivo e2e todavía) | no se corrió en esta batería: medida en la fase de instalador (59–80 s, `docs/08`) y usada por M4 en la VM 109 | — |
+| Go unit tests (+ Linux `go vet`, gofmt) | `make check` | **157/157** in 28 packages | ~40 s |
+| Web unit tests (Vitest) | `cd web && npm test` | **70/70** in 9 files | ~1 s |
+| Security | `make e2e-security` | **7/7** | 4.6 s |
+| API E2E | `make e2e-api` | **20/20** (+ 2 SFTP subtests) | 2 min 32 s |
+| UI E2E | `make e2e-ui E2E_DESTRUCTIVE=1` | **1/1** walkthrough, 19 screenshots | 44 s |
+| Storage matrix | `make e2e-storage` | **8/8** rows | 4 min 27 s |
+| VM reboot (row 9) | `make e2e-storage E2E_REBOOT=1` | **1/1** | 2 min 28 s |
+| Installation from the ISO | `make iso` + VM 109 (no e2e target yet) | not run in this battery: measured in the installer phase (59–80 s, `docs/08`) and used by M4 on VM 109 | — |
 
-### E2E de API (20)
+### API E2E (20)
 
-| Test | Qué verifica |
+| Test | What it checks |
 |---|---|
-| `TestSessionLoginAndGating` | métodos públicos vs. con sesión, credenciales malas, logout invalida el token |
-| `TestSessionLockout` | bloqueo al 5.º intento fallido (usuario inexistente, nunca uno real) |
-| `TestSessionResumeAfterRestart` | el token sigue valiendo después de `systemctl restart tangod` |
-| `TestSystemInfoMetricsRTC` | `system.info`, ≥ 8 frames de métricas en 3 s, ICE conectado, canales `rpc/events/metrics/files.*`, 1 disco de sistema |
-| `TestSharesUsersPermissions` | carpeta nueva en `smbclient -L`; rw/ro/none verificados con `smbclient`; contraseña débil rechazada; cambio de contraseña aplicado a SMB; nombres inválidos |
-| `TestFiles` | **1 GiB ida y vuelta con sha256 (51,6 MB/s subida, 47,0 MB/s bajada)**; mkdir/rename/move/papelera/restaurar/vaciar; búsqueda; miniatura; traversal; symlinks absolutos y relativos que escapan; permisos por usuario (none/ro) |
-| `TestSnapshots` | instantánea manual, versiones, restaurar versión (contenido verificado), schedule ida y vuelta + validación, borrar |
-| `TestAppsLifecycle` | Docker listo, catálogo ≥ 8, syncthing: instalar → proxy 401 sin cookie → ticket → 200 sin X-Frame-Options → ticket de un uso → stop/start/restart/update → logs → desinstalar sin datos |
-| `TestAppsCookieRevokedOnLogout` | la cookie del proxy deja de valer al cerrar la sesión que la emitió |
-| `TestServicesWebDAVSFTPNFS` | WebDAV PUT/GET/401; SFTP (servidor Go, traversal y clave mala); NFS exportado a loopback y montado (leído como el usuario dueño), host inválido rechazado |
-| `TestServicesISCSI` | CHAP corto rechazado; LUN de 256 MB con CHAP visible por open-iscsi (`LIO`); CHAP malo no entra; borrar con nombre mal escrito rechazado |
-| `TestM4AuditLogsTerminal` | auditoría con login fallido y `users.setPassword` sin contraseñas; `logs.query`; terminal root (`id -u`=0) |
-| `TestM4CertAndUpdates` | `cert.info`; `updates.check`; rollback en VM 108 → `NOT_SUPPORTED` (raíz ext4); reinicio con palabra mal escrita rechazado |
-| `TestM4Notifications` | ntfy (con Bearer) y SMTP llegan a un receptor en loopback; el token no vuelve en claro; `notify.json` 0600; config restaurada |
-| `TestUsersDelete` | `CONFIRMATION_MISMATCH`, no borrar al propio admin, borrado real (Unix + Samba + login), `USER_NOT_FOUND` |
-| `TestTOTPAndAppPasswords` | TOTP begin/confirm, login en dos pasos, código malo, código de recuperación de un solo uso, `TOTP_NOT_PENDING`; con 2FA WebDAV/SFTP rechazan la contraseña de la cuenta y aceptan la de app; revocar; no ver las de otro; desactivar 2FA |
-| `TestPreviousVersionsBrowseRangesWatcher` | navegar una instantánea (`files.list/stat` con `snapshot`), rango de 4 KiB desde la instantánea, rango fuera de tamaño rechazado, **`allinfo` por SMB muestra `@GMT-`**, **`files.changed` después de escribir por SMB** |
-| `TestTimeMachineShare` | carpeta `TimeMachine` con `fruit:time machine = yes` en `testparm` y `_adisk._tcp`/`adVN=TimeMachine` en Avahi |
-| `TestWSDiscovery` | `tangoctl wsd-probe` desde la Mac encuentra el NAS |
-| `TestUPSFake` | UPS remoto falso (`fakeupsd` en loopback): `ups.status` en línea con 87 % de batería; config restaurada |
+| `TestSessionLoginAndGating` | public vs. session-only methods, bad credentials, logout invalidates the token |
+| `TestSessionLockout` | lockout on the 5th failed attempt (nonexistent user, never a real one) |
+| `TestSessionResumeAfterRestart` | the token is still valid after `systemctl restart tangod` |
+| `TestSystemInfoMetricsRTC` | `system.info`, ≥ 8 metrics frames in 3 s, ICE connected, `rpc/events/metrics/files.*` channels, 1 system disk |
+| `TestSharesUsersPermissions` | new folder in `smbclient -L`; rw/ro/none checked with `smbclient`; weak password rejected; password change applied to SMB; invalid names |
+| `TestFiles` | **1 GiB round trip with sha256 (51.6 MB/s upload, 47.0 MB/s download)**; mkdir/rename/move/trash/restore/empty; search; thumbnail; traversal; absolute and relative symlinks that escape; per-user permissions (none/ro) |
+| `TestSnapshots` | manual snapshot, versions, restore version (content verified), schedule round trip + validation, delete |
+| `TestAppsLifecycle` | Docker ready, catalog ≥ 8, syncthing: install → proxy 401 without cookie → ticket → 200 without X-Frame-Options → single-use ticket → stop/start/restart/update → logs → uninstall without data |
+| `TestAppsCookieRevokedOnLogout` | the proxy cookie stops working when the session that issued it logs out |
+| `TestServicesWebDAVSFTPNFS` | WebDAV PUT/GET/401; SFTP (Go server, traversal and bad key); NFS exported to loopback and mounted (read as the owning user), invalid host rejected |
+| `TestServicesISCSI` | short CHAP rejected; 256 MB LUN with CHAP visible to open-iscsi (`LIO`); bad CHAP does not get in; delete with a mistyped name rejected |
+| `TestM4AuditLogsTerminal` | audit with a failed login and `users.setPassword` without passwords; `logs.query`; root terminal (`id -u`=0) |
+| `TestM4CertAndUpdates` | `cert.info`; `updates.check`; rollback on VM 108 → `NOT_SUPPORTED` (ext4 root); reboot with a mistyped word rejected |
+| `TestM4Notifications` | ntfy (with Bearer) and SMTP reach a receiver on loopback; the token does not come back in clear text; `notify.json` 0600; config restored |
+| `TestUsersDelete` | `CONFIRMATION_MISMATCH`, admin cannot delete themselves, real deletion (Unix + Samba + login), `USER_NOT_FOUND` |
+| `TestTOTPAndAppPasswords` | TOTP begin/confirm, two-step login, bad code, single-use recovery code, `TOTP_NOT_PENDING`; with 2FA, WebDAV/SFTP reject the account password and accept the app password; revoke; cannot see other users' passwords; disable 2FA |
+| `TestPreviousVersionsBrowseRangesWatcher` | browse a snapshot (`files.list/stat` with `snapshot`), 4 KiB range from the snapshot, out-of-size range rejected, **`allinfo` over SMB shows `@GMT-`**, **`files.changed` after writing over SMB** |
+| `TestTimeMachineShare` | `TimeMachine` folder with `fruit:time machine = yes` in `testparm` and `_adisk._tcp`/`adVN=TimeMachine` in Avahi |
+| `TestWSDiscovery` | `tangoctl wsd-probe` from the Mac finds the NAS |
+| `TestUPSFake` | fake remote UPS (`fakeupsd` on loopback): `ups.status` online with 87 % battery; config restored |
 
-### Seguridad (7)
+### Security (7)
 
-`TestSecureResume` (el NAS prueba el token antes que el cliente), `TestSecurityUnauthenticated` (los 97 métodos no públicos → `UNAUTHENTICATED`), `TestSecurityNonAdmin` (31 métodos de administración → `PERMISSION_DENIED` para un usuario común), `TestSecurityRouterValidation` (método desconocido, campos de más), `TestSecurityAgentSocket` (`nobody` no habla con el agente; op desconocida, campos de más y versión inválida rechazados), `TestSecurityHTTPHeaders` (CSP sin `unsafe-eval`, HSTS, nosniff, Referrer-Policy, :80 → HTTPS, asset inexistente 404), `TestSecuritySecretsNotLogged` (ninguna contraseña de la corrida en el journal ni en `audit.jsonl`).
+`TestSecureResume` (the NAS proves the token before the client does), `TestSecurityUnauthenticated` (the 97 non-public methods → `UNAUTHENTICATED`), `TestSecurityNonAdmin` (31 administration methods → `PERMISSION_DENIED` for a regular user), `TestSecurityRouterValidation` (unknown method, extra fields), `TestSecurityAgentSocket` (`nobody` cannot talk to the agent; unknown op, extra fields and invalid version rejected), `TestSecurityHTTPHeaders` (CSP without `unsafe-eval`, HSTS, nosniff, Referrer-Policy, :80 → HTTPS, nonexistent asset 404), `TestSecuritySecretsNotLogged` (none of the run's passwords in the journal or in `audit.jsonl`).
 
-### Matriz de almacenamiento (discos S3, S6 de 2 GB y M1, M2 de 4 GB)
+### Storage matrix (disks S3, S6 of 2 GB and M1, M2 of 4 GB)
 
-| Fila | Perfil y discos | Creado y sano en | Resultado |
+| Row | Profile and disks | Created and healthy in | Result |
 |---|---|---|---|
-| 1 | Básico · S3 | 2 s | ✅ + carpeta, archivo, reinicio de `tangod`, borrado, disco libre |
-| 2 | RAID 1 · S3+S6 | 14 s | ✅ ídem |
-| 3+6 | RAID 5 mixto · S3+S6+M1 | 28 s | ✅ capacidad 2×2 GB y nota de tamaños distintos |
+| 1 | Basic · S3 | 2 s | ✅ + folder, file, `tangod` restart, deletion, disk free |
+| 2 | RAID 1 · S3+S6 | 14 s | ✅ same |
+| 3+6 | Mixed RAID 5 · S3+S6+M1 | 28 s | ✅ capacity 2×2 GB and note about different sizes |
 | 4 | RAID 6 · S3+S6+M1+M2 | 16 s | ✅ |
 | 5 | RAID 10 · S3+S6+M1+M2 | 23 s | ✅ |
-| 7 | Reemplazo · RAID 5 con `mdadm --fail` sobre S6 → M2 | 26 s + rebuild | ✅ alerta activa → reemplazo (disco en uso rechazado) → sano, alerta resuelta, S6 libre |
-| 8 | Ampliación · RAID 5 + M2 | 18 s + reshape | ✅ 4,29 GB → 6,43 GB |
-| 9 | Persistencia · RAID 1 S3+S6 + **reinicio de la VM** | 14 s | ✅ volume1, volume2 y el nuevo sanos; archivo presente; SMB con Familia; apps corriendo |
-| 10 | Negativos | — | ✅ disco del sistema, disco miembro, RAID 10 impar, RAID 6 con 3, Básico con 2, nombre repetido/inválido, token alterado, plan inexistente, ampliar RAID 1 |
+| 7 | Replacement · RAID 5 with `mdadm --fail` on S6 → M2 | 26 s + rebuild | ✅ alert active → replacement (disk in use rejected) → healthy, alert resolved, S6 free |
+| 8 | Expansion · RAID 5 + M2 | 18 s + reshape | ✅ 4.29 GB → 6.43 GB |
+| 9 | Persistence · RAID 1 S3+S6 + **VM reboot** | 14 s | ✅ volume1, volume2 and the new one healthy; file present; SMB with Familia; apps running |
+| 10 | Negatives | — | ✅ system disk, member disk, odd RAID 10, RAID 6 with 3, Basic with 2, repeated/invalid name, tampered token, nonexistent plan, expanding RAID 1 |
 
-En todas las filas: nombre mal escrito → `CONFIRMATION_MISMATCH`, plan de un solo uso, `mdadm --detail` y `findmnt` verificados en el NAS, y al borrar no quedan md, montaje ni firmas (`wipefs -n` vacío).
+In every row: mistyped name → `CONFIRMATION_MISMATCH`, single-use plan, `mdadm --detail` and `findmnt` checked on the NAS, and after deletion no md, mount or signatures remain (`wipefs -n` empty).
 
-### E2E de UI — capturas (`tests/e2e-ui/artifacts/`)
+### UI E2E — screenshots (`tests/e2e-ui/artifacts/`)
 
-`01-login` · `02-escritorio` · `03-almacenamiento-resumen` · `04-almacenamiento-discos` · `05-asistente-discos` · `06-asistente-perfil` · `07-asistente-revision` · `08-asistente-listo` · `09-volumen-e2eui` · `10-borrar-volumen` · `11-ajustes-carpetas` · `12-ajustes-usuarios` · `13-archivos-familia` · `14-apps-instaladas` · `15-monitor-webrtc` · `16-escritorio-oscuro` · `17-escritorio-claro` · `18-spotlight` · `19-sesion-cerrada`. Sin errores de JavaScript en la página.
+`01-login` · `02-escritorio` · `03-almacenamiento-resumen` · `04-almacenamiento-discos` · `05-asistente-discos` · `06-asistente-perfil` · `07-asistente-revision` · `08-asistente-listo` · `09-volumen-e2eui` · `10-borrar-volumen` · `11-ajustes-carpetas` · `12-ajustes-usuarios` · `13-archivos-familia` · `14-apps-instaladas` · `15-monitor-webrtc` · `16-escritorio-oscuro` · `17-escritorio-claro` · `18-spotlight` · `19-sesion-cerrada`. No JavaScript errors on the page.
 
 ## TangoConnect — 2026-10-15 (`make e2e-connect`)
 
-Navegador real (Playwright 1.64.1, Chromium) · portal local (`web/apps/connect`, build con la clave pública dev) ·
-signalhub de desarrollo en la Mac (`ws://172.17.0.5:8090`) · NAS = VM 108. Nunca se usó `signal.go-link.org`.
+Real browser (Playwright 1.64.1, Chromium) · local portal (`web/apps/connect`, built with the dev public key) ·
+development signalhub on the Mac (`ws://172.17.0.5:8090`) · NAS = VM 108. `signal.go-link.org` was never used.
 
-| Paso | Resultado |
+| Step | Result |
 |---|---|
-| Vincular con el código de 9 dígitos (`connect.pair.start` → portal `/nas/vincular`) | ✅ |
-| Escritorio entregado por el NAS (manifiesto Ed25519 + sha256 por archivo, servido desde `/nas-bundle/<id>/`), **sin modo desarrollo** | ✅ |
-| Login como admin dentro del escritorio remoto | ✅ |
-| Almacenamiento: rack de 12 bahías, volume1 RAID 1 + volume2 RAID 5 reales | ✅ |
-| Archivos → «Compartir enlace…» de `Fotos/Atardecer en el Río.jpg` | ✅ |
-| Enlace público en un contexto nuevo (`guest.open`) → descarga → **sha256 igual al del NAS** | ✅ |
-| Recarga de `/nas/<id>`: `reach` + el NAS prueba primero + resume | ✅ |
-| Revocar el vínculo del navegador → bloqueado («este navegador ya no está vinculado») | ✅ |
+| Pair with the 9-digit code (`connect.pair.start` → portal `/nas/vincular`) | ✅ |
+| Desktop served by the NAS (Ed25519 manifest + per-file sha256, served from `/nas-bundle/<id>/`), **without development mode** | ✅ |
+| Login as admin inside the remote desktop | ✅ |
+| Storage: 12-bay rack, real volume1 RAID 1 + volume2 RAID 5 | ✅ |
+| Files → "Share link…" on `Fotos/Atardecer en el Río.jpg` | ✅ |
+| Public link in a new context (`guest.open`) → download → **sha256 equal to the NAS's** | ✅ |
+| Reload of `/nas/<id>`: `reach` + the NAS proves first + resume | ✅ |
+| Revoke the browser's pairing → blocked ("this browser is no longer paired") | ✅ |
 
-3 corridas seguidas en verde (23,6 s · 32,2 s · 57,1 s). Capturas: `tests/e2e-ui/artifacts/connect-01…10-*.png`.
+3 consecutive green runs (23.6 s · 32.2 s · 57.1 s). Screenshots: `tests/e2e-ui/artifacts/connect-01…10-*.png`.
 
-**Bugs reales encontrados y corregidos por esta prueba**
-1. **El escritorio del NAS nunca montaba en el portal** (`Failed to fetch dynamically imported module`): el Service
-   Worker tenía scope `/nas-bundle/`, pero un SW solo intercepta pedidos de páginas que **controla**. Ahora scope `/`
-   (solo responde `/nas-bundle/`) y el cargador espera `controllerchange` (`web/apps/connect/src/bundle/loader.ts`, `public/bundle-sw.js`).
-2. **El portal cerraba la conexión al ceder la página**: el cleanup de React de `/nas/<id>` llamaba `s.close()` al
-   desmontar el portal → el escritorio del NAS quedaba en «Sin conexión con el NAS» (`pages/Remote.tsx`, `handedOff`).
-3. **Paso de vínculo doble** (`connect.link` / `guest.open` dos veces por conexión → `NOT_PAIRED` intermitente al
-   vincular y «esta conexión no puede usar guest.open» en enlaces): `RtcTransport` corría `onRpcOpen` si el canal
-   llegaba abierto **y** otra vez en el evento `open`. Ahora es idempotente, con test de regresión
+**Real bugs found and fixed by this test**
+1. **The NAS desktop never mounted in the portal** (`Failed to fetch dynamically imported module`): the Service
+   Worker had scope `/nas-bundle/`, but a SW only intercepts requests from pages it **controls**. Now the scope is `/`
+   (it only answers `/nas-bundle/`) and the loader waits for `controllerchange` (`web/apps/connect/src/bundle/loader.ts`, `public/bundle-sw.js`).
+2. **The portal closed the connection when handing off the page**: the React cleanup of `/nas/<id>` called `s.close()` when
+   unmounting the portal → the NAS desktop was left at "No connection to the NAS" (`pages/Remote.tsx`, `handedOff`).
+3. **Double pairing step** (`connect.link` / `guest.open` twice per connection → intermittent `NOT_PAIRED` when
+   pairing and "this connection cannot use guest.open" on links): `RtcTransport` ran `onRpcOpen` if the channel
+   arrived already open **and** again on the `open` event. It is now idempotent, with a regression test
    (`packages/client/src/rtc/RtcTransport.ts`, `connect.test.ts`).
-4. **Enlace público de un archivo sin botón «Descargar»**: el NAS informa el tipo real (`image`, `video`…) y la página
-   comparaba con `"file"` (`pages/Share.tsx`).
+4. **Public link to a file without a "Download" button**: the NAS reports the real type (`image`, `video`…) and the page
+   compared it with `"file"` (`pages/Share.tsx`).
 
-**Cambios de integración**: `apps/desktop` con `base: "./"` y transporte `window.__TANGO_TRANSPORT__` (sin
-`installDCStream` en el portal); modo desarrollo **solo** como respaldo si el bundle no está o no monta (firma/hash/
-manifiesto inválidos nunca caen al respaldo); **pin DTLS obligatorio** (huella distinta → se corta antes de la prueba
-y del token, con «Olvidar y volver a vincular»); `protocol/README.md` §15 alineado (enlaces por `reach` + `guest.open`
-con secreto en el fragmento, sección de pin DTLS); `cmd/connect-web/dist` fuera del repo (`.keep` + `.gitignore`).
+**Integration changes**: `apps/desktop` with `base: "./"` and transport `window.__TANGO_TRANSPORT__` (no
+`installDCStream` in the portal); development mode **only** as a fallback if the bundle is missing or does not mount (invalid signature/hash/
+manifest never falls back); **mandatory DTLS pin** (different fingerprint → the connection is cut before the proof
+and the token, with "Forget and pair again"); `protocol/README.md` §15 aligned (links via `reach` + `guest.open`
+with the secret in the fragment, DTLS pin section); `cmd/connect-web/dist` kept out of the repo (`.keep` + `.gitignore`).
 
-## Instalador gráfico de la ISO — 2026-10-15 (VM 109, Proxmox, OVMF, 2 vCPU, 2 GB, discos 16 GB `TANGO-SYS` + 4 GB `LAB-D1`)
+## ISO graphical installer — 2026-10-15 (VM 109, Proxmox, OVMF, 2 vCPU, 2 GB, disks 16 GB `TANGO-SYS` + 4 GB `LAB-D1`)
 
-| Prueba | Resultado |
+| Test | Result |
 |---|---|
-| `go test ./internal/installer` (código solo en pantalla local, PIN + cookie desde la LAN, bloqueo tras 5 errores, POST sin cabecera → 403, validación de disco/nombre/teclado/IP, motor falso: progreso, fallo y reintento, una sola instalación, reinicio, campos de más → 400, CSP) | ✅ 9 tests |
-| ISO de producto (533 MB): arranque → instalador gráfico en pantalla | ✅ ~41 s desde `qm start`, en español, wallpaper y estilo del escritorio |
-| Instalación **desde otra PC** (Playwright en la Mac → `http://172.17.0.8/`, código incorrecto rechazado, correcto aceptado) | ✅ 34,4 s; la pantalla local siguió el progreso sola |
-| Instalación **en la pantalla del equipo** (clics por QMP sobre cage + cog, texto con el teclado de la VM) | ✅ ~35 s; nombre `kiosco`, teclado latam |
-| Instalación gráfica con **IP fija** (172.17.0.47/24, DNS 1.1.1.1) | ✅ 33,5 s; `20-wired.network`, `/etc/hosts` y nombre correctos |
-| Reinicio desde la interfaz → sistema instalado sirve HTTPS | ✅ 17–26 s; el puerto 80 ya es `tangod` (redirige) |
-| Sistema instalado sin restos del instalador (cog, cage, `tango-installer`, unidades, usuario `tango-kiosk`, `live-boot`) | ✅ verificado por SSH (instalación gráfica y de texto) |
-| **Modo texto** interactivo (segunda entrada, whiptail) | ✅ instalación 47 s con las teclas; HTTPS 21 s después de reiniciar |
-| **Laboratorio desatendido** (`ISO_VARIANT=test`, 2 discos, `tango.disk=TANGO-SYS`) | ✅ 83–89 s de `qm start` a HTTPS (antes 90 s) |
-| **Sin pantalla gráfica** (`vga: none`) | ✅ tty1 muestra `http://<ip>/` y el código; la instalación desde otra PC sigue disponible |
+| `go test ./internal/installer` (code only on the local screen, PIN + cookie from the LAN, lockout after 5 errors, POST without header → 403, disk/name/keyboard/IP validation, fake engine: progress, failure and retry, a single installation, reboot, extra fields → 400, CSP) | ✅ 9 tests |
+| Product ISO (533 MB): boot → graphical installer on screen | ✅ ~41 s from `qm start`, in Spanish, with the desktop's wallpaper and style |
+| Installation **from another PC** (Playwright on the Mac → `http://172.17.0.8/`, wrong code rejected, correct one accepted) | ✅ 34.4 s; the local screen followed the progress on its own |
+| Installation **on the machine's own screen** (clicks via QMP on cage + cog, text with the VM's keyboard) | ✅ ~35 s; name `kiosco`, latam keyboard |
+| Graphical installation with a **static IP** (172.17.0.47/24, DNS 1.1.1.1) | ✅ 33.5 s; `20-wired.network`, `/etc/hosts` and name correct |
+| Reboot from the interface → installed system serves HTTPS | ✅ 17–26 s; port 80 is already `tangod` (redirects) |
+| Installed system with no installer leftovers (cog, cage, `tango-installer`, units, `tango-kiosk` user, `live-boot`) | ✅ checked over SSH (graphical and text installation) |
+| Interactive **text mode** (second entry, whiptail) | ✅ installation 47 s with the keys; HTTPS 21 s after rebooting |
+| **Unattended lab** (`ISO_VARIANT=test`, 2 disks, `tango.disk=TANGO-SYS`) | ✅ 83–89 s from `qm start` to HTTPS (previously 90 s) |
+| **No graphical display** (`vga: none`) | ✅ tty1 shows `http://<ip>/` and the code; installation from another PC is still available |
 
-Bugs encontrados en el camino y corregidos: WPE (cog) no genera `click` en el kiosco (la página lo
-sintetiza); su `<select>` nativo se queda con la entrada (reemplazado por controles propios); cog
-arrancaba en inglés y con restos del primer cuadro de 1024×768 (idioma desde el servidor, repintado
-completo); `/etc/issue` mostraba siempre `tango.local` (ahora `\n.local`); la ISO de laboratorio no
-era desatendida con más de un disco (`tango.disk`); los `.sha256` de las ISOs no se regeneraban.
+Bugs found along the way and fixed: WPE (cog) does not generate `click` in the kiosk (the page
+synthesizes it); its native `<select>` keeps the input (replaced by custom controls); cog
+started in English and with leftovers of the first 1024×768 frame (language from the server, full
+repaint); `/etc/issue` always showed `tango.local` (now `\n.local`); the lab ISO was not
+unattended with more than one disk (`tango.disk`); the ISOs' `.sha256` files were not regenerated.
 
-## Instalación por script y repositorio APT — 2026-10-15 (`install.sh`, `cmd/tango-aptrepo`)
+## Script installation and APT repository — 2026-10-15 (`install.sh`, `cmd/tango-aptrepo`)
 
-Repositorio de prueba armado con `tango-aptrepo` (firmado con la clave real `TangoOS Archive`,
-`B34312438C2849B683A053199C06A62DC9C4DB37`) y servido por HTTP con log de pedidos; nada contra producción.
+Test repository built with `tango-aptrepo` (signed with the real `TangoOS Archive` key,
+`B34312438C2849B683A053199C06A62DC9C4DB37`) and served over HTTP with a request log; nothing against production.
 
-| Prueba | Dónde | Resultado |
+| Test | Where | Result |
 |---|---|---|
-| `go test ./internal/aptrepo` (control del .deb, pool inmutable, época, Packages/Release, índices viejos borrados, clave de `install.sh` = `build/keys`) | Mac | ok |
-| `shellcheck -s sh install.sh`, `publish-apt.sh`, `deploy-connect-web.sh` | Mac | limpio |
-| `cat install.sh \| sh` en `debian:trixie` limpio (sin systemd, `TANGOOS_FORCE=1`) | Docker | instala `tangoos` 0.1.0-dev; usuario `tango`, grupo `tango-agent` |
-| apt solo pide `InRelease`, `Packages.gz` y el `.deb` (log del servidor) | Docker | ok: nada que CloudFront contestaría con `index.html` |
-| Versión mayor publicada (0.1.1-test) → `apt-get -s upgrade` la ve y la instala | Docker | ok |
-| `InRelease` alterado | Docker | rechazado por `sqv` ("Message has been manipulated"); restaurado: sin avisos |
-| Guardas: Debian 12, `:443` ocupado (con y sin `TANGOOS_FORCE`), usuario sin root ni sudo | Docker | aborta con mensaje claro / avisa y sigue / aborta |
-| `curl … \| sh` en VM limpia Debian 13 cloud (systemd real, VM 111 temporal, 2 vCPU, 2 GB) | Proxmox | **1 min 18 s**; tangod, agente, smbd y avahi activos, NFS deshabilitado, `https://<ip>/` 200, `http` → 308 |
-| Login admin por WebRTC (`tangoctl … system.info`) con la contraseña inicial | VM 111 | ok |
-| `system.updates.check` ve 0.1.1-test; `system.updates.apply {scope: all}` la instala y tangod vuelve | VM 111 | ok (root ext4: sin instantánea de `@rootfs`, sin error) |
+| `go test ./internal/aptrepo` (.deb control, immutable pool, epoch, Packages/Release, old indexes deleted, `install.sh` key = `build/keys`) | Mac | ok |
+| `shellcheck -s sh install.sh`, `publish-apt.sh`, `deploy-connect-web.sh` | Mac | clean |
+| `cat install.sh \| sh` on a clean `debian:trixie` (no systemd, `TANGOOS_FORCE=1`) | Docker | installs `tangoos` 0.1.0-dev; user `tango`, group `tango-agent` |
+| apt only requests `InRelease`, `Packages.gz` and the `.deb` (server log) | Docker | ok: nothing that CloudFront would answer with `index.html` |
+| Higher version published (0.1.1-test) → `apt-get -s upgrade` sees it and installs it | Docker | ok |
+| Tampered `InRelease` | Docker | rejected by `sqv` ("Message has been manipulated"); restored: no warnings |
+| Guards: Debian 12, `:443` in use (with and without `TANGOOS_FORCE`), user without root or sudo | Docker | aborts with a clear message / warns and continues / aborts |
+| `curl … \| sh` on a clean Debian 13 cloud VM (real systemd, temporary VM 111, 2 vCPU, 2 GB) | Proxmox | **1 min 18 s**; tangod, agent, smbd and avahi active, NFS disabled, `https://<ip>/` 200, `http` → 308 |
+| Admin login over WebRTC (`tangoctl … system.info`) with the initial password | VM 111 | ok |
+| `system.updates.check` sees 0.1.1-test; `system.updates.apply {scope: all}` installs it and tangod comes back | VM 111 | ok (ext4 root: no `@rootfs` snapshot, no error) |
 
-La VM 111 se borró al terminar. Hallazgo corregido: el postinstall usa `adduser`/`addgroup` y el
-paquete no lo declaraba (`adduser` no es esencial en Debian): agregado a `Depends` en `build/nfpm.yaml`.
+VM 111 was deleted when done. Finding fixed: the postinstall uses `adduser`/`addgroup` and the
+package did not declare it (`adduser` is not essential in Debian): added to `Depends` in `build/nfpm.yaml`.
 
-## Bugs de producto encontrados y corregidos en esta batería
+## Product bugs found and fixed in this battery
 
-| # | Gravedad | Bug | Arreglo | Test que lo cubre |
+| # | Severity | Bug | Fix | Test that covers it |
 |---|---|---|---|---|
-| 1 | **Alta (seguridad)** | 10 métodos sin chequeo de administrador: un usuario común podía planificar y **crear volúmenes (borra discos)**, lanzar scrub, crear carpetas e instantáneas, instalar/desinstalar/parar/actualizar apps y ver sus logs | `requireAdmin` en `internal/api/storage.go` y `internal/api/apps.go` | `TestSecurityNonAdmin` |
-| 2 | Media | `users.setPassword` de **cualquier** usuario borraba `/var/lib/tango/initial-admin-password` | solo al cambiar la de `admin` (`internal/auth/auth.go`) | `internal/auth/initialpw_test.go` |
-| 3 | Baja | `system.rollback.apply` con un id inexistente creaba un job que fallaba después (no reiniciaba nada) | valida el punto antes del job (`internal/api/m4.go`) | `TestM4CertAndUpdates` |
-| 4 | **Alta (disponibilidad)** | sin caché de SMART: cada `storage.disks.list` consultaba los 13 discos al agente (1221 `disk.smart` en 5 min) y agotaba su cupo de 20/s → operaciones reales como `storage.volumes.plan` fallaban con `RATE_LIMITED` | `SmartCache` (1 min; 10 min sin SMART; 15 s ante error) en `internal/api/smartcache.go` | `TestSmartCache`, matriz |
-| 5 | **Alta** | borrar un volumen (o carpeta) recién usado desde Archivos fallaba: "umount: target is busy". El watcher de `files.changed` mantenía un long-poll con fds en la carpeta, el worker esperaba ese long-poll al cerrarse y el vigilante relanzaba un worker sobre el volumen | el worker sale a lo sumo 2 s después del EOF (`internal/fileworker/worker_linux.go`); `ForgetUnder` + `InvalidateWorkers` antes de borrar (`internal/api/storage_m21.go`, `files_watch.go`); el desmontaje reintenta ~10 s (`internal/diskops/systemd_linux.go`) | `TestForgetUnder`, matriz filas 1–8 |
-| 6 | Baja (test) | `internal/jobs` `TestInterruptedOnReload` intermitente (escritura de `jobs.json` contra el borrado de TempDir) | el test espera a que el job termine | 50 corridas seguidas sin fallar |
+| 1 | **High (security)** | 10 methods without an administrator check: a regular user could plan and **create volumes (wipes disks)**, start a scrub, create folders and snapshots, install/uninstall/stop/update apps and see their logs | `requireAdmin` in `internal/api/storage.go` and `internal/api/apps.go` | `TestSecurityNonAdmin` |
+| 2 | Medium | `users.setPassword` for **any** user deleted `/var/lib/tango/initial-admin-password` | only when changing `admin`'s (`internal/auth/auth.go`) | `internal/auth/initialpw_test.go` |
+| 3 | Low | `system.rollback.apply` with a nonexistent id created a job that failed later (it did not reboot anything) | validates the point before the job (`internal/api/m4.go`) | `TestM4CertAndUpdates` |
+| 4 | **High (availability)** | no SMART cache: every `storage.disks.list` queried the agent for all 13 disks (1221 `disk.smart` in 5 min) and exhausted its 20/s quota → real operations such as `storage.volumes.plan` failed with `RATE_LIMITED` | `SmartCache` (1 min; 10 min without SMART; 15 s on error) in `internal/api/smartcache.go` | `TestSmartCache`, matrix |
+| 5 | **High** | deleting a volume (or folder) recently used from Files failed: "umount: target is busy". The `files.changed` watcher kept a long-poll with fds in the folder, the worker waited for that long-poll when closing, and the supervisor relaunched a worker on the volume | the worker exits at most 2 s after EOF (`internal/fileworker/worker_linux.go`); `ForgetUnder` + `InvalidateWorkers` before deleting (`internal/api/storage_m21.go`, `files_watch.go`); unmounting retries for ~10 s (`internal/diskops/systemd_linux.go`) | `TestForgetUnder`, matrix rows 1–8 |
+| 6 | Low (test) | `internal/jobs` `TestInterruptedOnReload` flaky (writing `jobs.json` racing with TempDir removal) | the test waits for the job to finish | 50 consecutive runs without failure |
 
-Además se agregó al cliente Go `DownloadRange` (descarga por rangos y desde instantáneas), usado por las pruebas y por la app nativa futura.
+In addition, `DownloadRange` (range downloads and downloads from snapshots) was added to the Go client, used by the tests and by the future native app.
 
-## Hallazgos sin arreglar (anotados)
+## Unfixed findings (noted)
 
-- En la VM 108 la vuelta atrás responde `NOT_SUPPORTED` porque la raíz es ext4 (imagen cloud); el flujo completo con Btrfs se probó en la VM 109 instalada desde la ISO (fase M4).
-- La CA local no se probó en la VM 108 para no cambiar el certificado que el usuario ya aceptó; se probó en la VM 109.
-- La programación de instantáneas con intervalo corto no tiene perilla en producción; su ejecución y retención se validaron en M2.2 con un modo de depuración (aquí: ida y vuelta + validación).
-- El widget de Almacenamiento muestra el primer volumen de la lista; con un volumen recién creado puede mostrar ese en lugar de `volume1` (cosmético).
+- On VM 108, rollback answers `NOT_SUPPORTED` because the root is ext4 (cloud image); the full flow with Btrfs was tested on VM 109 installed from the ISO (phase M4).
+- The local CA was not tested on VM 108 so as not to change the certificate the user had already accepted; it was tested on VM 109.
+- Snapshot scheduling with a short interval has no knob in production; its execution and retention were validated in M2.2 with a debug mode (here: round trip + validation).
+- The Storage widget shows the first volume in the list; with a newly created volume it may show that one instead of `volume1` (cosmetic).
 
-## Estado del laboratorio al terminar
+## Lab state at the end
 
-`volume1` RAID 1 (D1+D2) y `volume2` RAID 5 (S1, S2, S4, S5) sanos · carpetas Familia, Fotos y TimeMachine · usuarios `admin` y `sofia` (`e2etester` borrado con `users.delete`) · apps Jellyfin y Uptime Kuma corriendo · sin destinos iSCSI · papelera de Familia vacía · discos libres S3, S6, M1, M2, D3, D4 sin firmas. Quedó instalado `open-iscsi` en la VM (lo usa la suite de iSCSI). El export NFS de Familia a 172.17.0.46 es previo (prueba de M4 con la VM 109).
+`volume1` RAID 1 (D1+D2) and `volume2` RAID 5 (S1, S2, S4, S5) healthy · folders Familia, Fotos and TimeMachine · users `admin` and `sofia` (`e2etester` deleted with `users.delete`) · apps Jellyfin and Uptime Kuma running · no iSCSI targets · Familia's trash empty · free disks S3, S6, M1, M2, D3, D4 with no signatures. `open-iscsi` was left installed on the VM (used by the iSCSI suite). The NFS export of Familia to 172.17.0.46 predates this run (M4 test with VM 109).

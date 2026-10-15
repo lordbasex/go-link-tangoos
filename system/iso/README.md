@@ -1,129 +1,129 @@
-# Instalador ISO de TangoOS
+# TangoOS ISO installer
 
-Dos formas de construir la ISO. Las dos instalan **Debian 13 minimal + el `.deb` de TangoOS** (ADR 0008).
+Two ways to build the ISO. Both install **minimal Debian 13 + the TangoOS `.deb`** (ADR 0008).
 
-| | Fase 1: netinst + preseed | Fase 2: por imagen (**recomendada**) |
+| | Phase 1: netinst + preseed | Phase 2: image-based (**recommended**) |
 |---|---|---|
 | Script | `build.sh` | `image/build-image.sh` |
-| Cómo instala | debian-installer baja Debian de `deb.debian.org` | copia un Debian ya armado (squashfs) al disco |
-| Internet al instalar | sí | **no** |
-| Tiempo medido (VM, 2 vCPU, 2 GB) | 422 s (UEFI) | **83–89 s** UEFI desatendida; gráfica: 33–35 s de instalación |
-| Tamaño | 621 MB | 533 MB (388 MB sin el instalador gráfico; sha256 junto a la ISO) |
-| Interfaz | texto (d-i) | **gráfica por defecto** (pantalla local + otra PC con código); modo texto opcional |
-| Preguntas | disco (si hay más de uno) + confirmar borrado | idioma/teclado, disco + confirmar borrado, nombre, red (DHCP/IP fija) |
+| How it installs | debian-installer downloads Debian from `deb.debian.org` | copies a prebuilt Debian (squashfs) to the disk |
+| Internet during install | yes | **no** |
+| Measured time (VM, 2 vCPU, 2 GB) | 422 s (UEFI) | **83–89 s** unattended UEFI; graphical: 33–35 s of installation |
+| Size | 621 MB | 533 MB (388 MB without the graphical installer; sha256 next to the ISO) |
+| Interface | text (d-i) | **graphical by default** (local screen + another PC with a code); optional text mode |
+| Questions | disk (if there is more than one) + confirm wipe | language/keyboard, disk + confirm wipe, name, network (DHCP/static IP) |
 | Make | `make iso-netinst` | `make iso` |
 
-Tiempos = desde `qm start` hasta que `https://<ip>/` sirve el escritorio de TangoOS (incluye los
-5 s del menú de GRUB y el reinicio). Medido el 2026-10-14 en el Proxmox de desarrollo (VM 109).
-La versión anterior de la imagen (328 MB, sin dependencias ni listas de apt) tardaba 59 s BIOS /
-68–76 s UEFI; agregar Samba, NFS y las listas de apt sumó ~60 MB y ~15–20 s.
+Times = from `qm start` until `https://<ip>/` serves the TangoOS desktop (includes the
+5 s of the GRUB menu and the reboot). Measured on 2026-10-14 on the development Proxmox (VM 109).
+The previous version of the image (328 MB, without dependencies or apt lists) took 59 s BIOS /
+68–76 s UEFI; adding Samba, NFS and the apt lists added ~60 MB and ~15–20 s.
 
-ISOs generadas en el Proxmox (`local:iso/`):
+ISOs generated on the Proxmox (`local:iso/`):
 
-| Archivo | Qué es |
+| File | What it is |
 |---|---|
-| `tangoos-0.1.0-dev-amd64.iso` | **producto**: instalador gráfico por defecto (o modo texto), DHCP, sin SSH |
-| `tangoos-0.1.0-dev-amd64-test.iso` | laboratorio: entrada por defecto sin preguntas (disco `TANGO-SYS`, IP 172.17.0.46), SSH de root con la llave de desarrollo (también en el live) |
-| `tangoos-0.1.0-dev-amd64-netinst-test.iso` | fase 1 (netinst + preseed), laboratorio, IP 172.17.0.45 |
+| `tangoos-0.1.0-dev-amd64.iso` | **product**: graphical installer by default (or text mode), DHCP, no SSH |
+| `tangoos-0.1.0-dev-amd64-test.iso` | lab: default entry with no questions (disk `TANGO-SYS`, IP 172.17.0.46), root SSH with the development key (also in the live system) |
+| `tangoos-0.1.0-dev-amd64-netinst-test.iso` | phase 1 (netinst + preseed), lab, IP 172.17.0.45 |
 
-## Fase 2: ISO por imagen (`image/`)
+## Phase 2: image-based ISO (`image/`)
 
-`build-image.sh` (en un Debian/Proxmox, como root):
+`build-image.sh` (on a Debian/Proxmox host, as root):
 
-1. `debootstrap --variant=minbase trixie` con kernel, GRUB (BIOS + UEFI), Btrfs, systemd-networkd,
-   Avahi, `live-boot` y `whiptail`. Se cachea en `$WORK/rootfs-base`; los rebuilds solo cambian el `.deb`.
-2. Configura dentro del rootfs: hostname `tango`, `es_AR.UTF-8`, teclado `latam`, zona Buenos Aires,
-   fuentes de apt (trixie, trixie-updates, trixie-security), sin recomendados, root bloqueado,
-   `apt-get update` + instala `tangoos.deb` **con sus dependencias** y los servicios que maneja
-   (`samba`, `nfs-kernel-server`; ver `RUNTIME_PKGS`), habilita `tangod` y `tango-agent.socket`,
-   deja NFS apagado, escribe un `smb.conf` mínimo con el `include` de TangoOS y **conserva las
-   listas de apt** (solo borra cachés).
-3. Arma la **capa del instalador gráfico** con overlayfs sobre ese rootfs: `cage cog libpam-systemd
-   fonts-dejavu-core`, el binario `tango-installer` (Go), `tango-kiosk`, las unidades, DHCP del live y
-   un drop-in para que `tangod` no arranque en modo instalador. La capa es solo la diferencia
-   (`installer.squashfs`, ~152 MB) y **nunca se copia al disco**.
-4. Comprime el sistema en `live/filesystem.squashfs` (zstd), escribe `live/filesystem.module`
-   (orden de capas) y arma la ISO híbrida BIOS/UEFI con `grub-mkrescue` + su `.sha256`.
+1. `debootstrap --variant=minbase trixie` with kernel, GRUB (BIOS + UEFI), Btrfs, systemd-networkd,
+   Avahi, `live-boot` and `whiptail`. It is cached in `$WORK/rootfs-base`; rebuilds only change the `.deb`.
+2. Configures inside the rootfs: hostname `tango`, `es_AR.UTF-8`, `latam` keyboard, Buenos Aires time zone,
+   apt sources (trixie, trixie-updates, trixie-security), no recommends, root locked,
+   `apt-get update` + installs `tangoos.deb` **with its dependencies** and the services it manages
+   (`samba`, `nfs-kernel-server`; see `RUNTIME_PKGS`), enables `tangod` and `tango-agent.socket`,
+   leaves NFS off, writes a minimal `smb.conf` with the TangoOS `include` and **keeps the
+   apt lists** (only deletes caches).
+3. Builds the **graphical installer layer** with overlayfs on top of that rootfs: `cage cog libpam-systemd
+   fonts-dejavu-core`, the `tango-installer` binary (Go), `tango-kiosk`, the units, the live system's DHCP and
+   a drop-in so that `tangod` does not start in installer mode. The layer is only the difference
+   (`installer.squashfs`, ~152 MB) and **is never copied to the disk**.
+4. Compresses the system into `live/filesystem.squashfs` (zstd), writes `live/filesystem.module`
+   (layer order) and builds the hybrid BIOS/UEFI ISO with `grub-mkrescue` + its `.sha256`.
 
-Menú de arranque (GRUB, 5 s):
+Boot menu (GRUB, 5 s):
 
-| Entrada | Parámetro | Qué corre |
+| Entry | Parameter | What runs |
 |---|---|---|
-| **Instalar TangoOS** (por defecto) | `tango.installer` | `tango-installer.service` (web :80) + `tango-kiosk.service` (cage + cog en tty1) |
-| Instalar TangoOS en modo texto | `tango.installer=text` | `tango-installer-text.service` (whiptail en tty1) |
-| Probar TangoOS sin instalar | — | el sistema completo en RAM |
-| Arrancar el TangoOS instalado | — | por defecto si encuentra `tangoos-boot` |
-| Instalar TangoOS (laboratorio, desatendido) | `tango.installer=text tango.auto tango.disk=… tango.ip=…` | solo en la variante `test`, y es su entrada por defecto |
+| **Instalar TangoOS** (default) | `tango.installer` | `tango-installer.service` (web :80) + `tango-kiosk.service` (cage + cog on tty1) |
+| Instalar TangoOS en modo texto | `tango.installer=text` | `tango-installer-text.service` (whiptail on tty1) |
+| Probar TangoOS sin instalar | — | the full system in RAM |
+| Arrancar el TangoOS instalado | — | default if it finds `tangoos-boot` |
+| Instalar TangoOS (laboratorio, desatendido) | `tango.installer=text tango.auto tango.disk=… tango.ip=…` | only in the `test` variant, where it is the default entry |
 
-El modo gráfico se ve en la pantalla del equipo y desde otra PC en `http://<ip>/` con el código de
-6 dígitos que muestra la pantalla (sin pantalla gráfica, tty1 muestra la URL y el código). Detalles
-de diseño y seguridad: docs/08 §Instalador gráfico. Los dos modos usan el mismo motor, `tango-install`
+The graphical mode is shown on the machine's screen and from another PC at `http://<ip>/` with the
+6-digit code shown on the screen (with no graphical display, tty1 shows the URL and the code). Design
+and security details: docs/08 §Graphical installer. Both modes use the same engine, `tango-install`
 (`--list-disks`; `--disk … --yes [--hostname] [--keyboard] [--ip] [--no-reboot] [--progress]`):
 
-1. **Disco**: lista los discos (nunca el medio de instalación). Si hay más de uno pregunta cuál;
-   siempre pide confirmar el borrado mostrando modelo, serie y tamaño (docs/04).
-2. **Particiones** (GPT): `bios_grub` 1 MB · ESP 512 MB · `/boot` ext4 1 GB · raíz **Btrfs** con
-   subvolúmenes `@rootfs`, `@var-log`, `@tango`, `@snapshots` (docs/08) y `compress=zstd:1`.
-3. `unsquashfs` del sistema al disco, `fstab` por UUID, nombre del equipo, teclado, red DHCP o IP fija
+1. **Disk**: lists the disks (never the installation media). If there is more than one it asks which;
+   it always asks to confirm the wipe, showing model, serial number and size (docs/04).
+2. **Partitions** (GPT): `bios_grub` 1 MB · ESP 512 MB · `/boot` ext4 1 GB · **Btrfs** root with
+   subvolumes `@rootfs`, `@var-log`, `@tango`, `@snapshots` (docs/08) and `compress=zstd:1`.
+3. `unsquashfs` of the system to the disk, `fstab` by UUID, machine name, keyboard, DHCP network or static IP
    (systemd-networkd).
-4. Quita `live-boot`, regenera el initramfs, instala GRUB para BIOS **y** UEFI (también en la ruta
-   removible `EFI/BOOT/BOOTX64.EFI`, así arranca aunque el firmware pierda la entrada NVRAM).
-5. Reinicia. `tangod` arranca solo y la consola muestra `https://<nombre>.local` y `https://<ip>`
-   (`/etc/issue`; no hay usuarios de consola: root queda bloqueado).
+4. Removes `live-boot`, regenerates the initramfs, installs GRUB for BIOS **and** UEFI (also in the
+   removable path `EFI/BOOT/BOOTX64.EFI`, so it boots even if the firmware loses the NVRAM entry).
+5. Reboots. `tangod` starts on its own and the console shows `https://<name>.local` and `https://<ip>`
+   (`/etc/issue`; there are no console users: root stays locked).
 
-Si el medio queda puesto y el firmware arranca primero desde USB/CD, el GRUB de la ISO busca la
-partición `tangoos-boot` y, si existe, arranca el sistema instalado por defecto (sin esto, en BIOS
-se reinstalaba en bucle). La opción "Probar TangoOS sin instalar" levanta el sistema completo en RAM.
+If the media is left in and the firmware boots from USB/CD first, the ISO's GRUB looks for the
+`tangoos-boot` partition and, if it exists, boots the installed system by default (without this, on BIOS
+it reinstalled in a loop). The "Probar TangoOS sin instalar" (try without installing) option brings up the full system in RAM.
 
-Parámetros de kernel (solo laboratorio): `tango.auto` (no pregunta si hay un único disco),
-`tango.disk=TANGO-SYS` (con `tango.auto`: el disco por serie o ruta aunque haya varios) y
-`tango.ip=172.17.0.46/24,172.17.0.1,8.8.8.8` (IP fija). La variante `test` los agrega a su entrada
-por defecto y copia `authorized_keys` para SSH de root (instalado y live); la variante `product` no
-trae SSH habilitado.
+Kernel parameters (lab only): `tango.auto` (does not ask if there is a single disk),
+`tango.disk=TANGO-SYS` (with `tango.auto`: the disk by serial number or path even if there are several) and
+`tango.ip=172.17.0.46/24,172.17.0.1,8.8.8.8` (static IP). The `test` variant adds them to its default
+entry and copies `authorized_keys` for root SSH (installed and live); the `product` variant does not
+ship with SSH enabled.
 
-## Fase 1: netinst + preseed (`build.sh`)
+## Phase 1: netinst + preseed (`build.sh`)
 
-Remasteriza `debian-13.4.0-amd64-netinst.iso` con `xorriso` sin desarmarla:
+Remasters `debian-13.4.0-amd64-netinst.iso` with `xorriso` without unpacking it:
 
-- agrega `preseed.cfg` al `initrd.gz` del instalador de texto (cpio concatenado);
-- reemplaza los menús de GRUB (UEFI) e isolinux (BIOS) por "Instalar TangoOS" con 5 s de espera;
-- copia el `.deb` a `/tangoos/` en la ISO; `preseed/late_command` lo instala y habilita `tangod`;
-- reutiliza los registros de arranque originales (`-boot_image any replay`): híbrida BIOS/UEFI/USB.
+- adds `preseed.cfg` to the text installer's `initrd.gz` (concatenated cpio);
+- replaces the GRUB (UEFI) and isolinux (BIOS) menus with "Instalar TangoOS" with a 5 s timeout;
+- copies the `.deb` to `/tangoos/` on the ISO; `preseed/late_command` installs it and enables `tangod`;
+- reuses the original boot records (`-boot_image any replay`): hybrid BIOS/UEFI/USB.
 
-Archivos: `preseed.cfg` (común), `preseed-product.cfg` (DHCP, sin SSH, **pide confirmar** el borrado),
-`preseed-test.cfg` (laboratorio: sin preguntas, IP fija, llave SSH).
+Files: `preseed.cfg` (common), `preseed-product.cfg` (DHCP, no SSH, **asks to confirm** the wipe),
+`preseed-test.cfg` (lab: no questions, static IP, SSH key).
 
-Detalles que costaron:
-- d-i no acepta `!` como contraseña de root: se pone el hash de una clave aleatoria y `late_command`
-  hace `passwd -l root`.
-- Con `console=ttyS0` el instalador solo ofrece inglés (la consola serie no muestra UTF-8) y pregunta
-  el idioma: la variante de laboratorio no usa consola serie.
-- `postinstall` del `.deb` no habilita `tangod` dentro de un chroot (no hay systemd corriendo):
-  el instalador hace `systemctl enable tangod.service` explícito.
+Details that took effort:
+- d-i does not accept `!` as the root password: the hash of a random password is set and `late_command`
+  runs `passwd -l root`.
+- With `console=ttyS0` the installer only offers English (the serial console does not display UTF-8) and asks
+  for the language: the lab variant does not use a serial console.
+- The `.deb`'s `postinstall` does not enable `tangod` inside a chroot (there is no running systemd):
+  the installer runs `systemctl enable tangod.service` explicitly.
 
-## Usar la ISO
+## Using the ISO
 
-- **Proxmox**: las ISOs quedan en `local:iso/`. VM q35, OVMF o SeaBIOS, disco ≥ 16 GB, 2 GB de RAM.
-- **USB**: es híbrida → `sudo dd if=tangoos-0.1.0-dev-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync`
-  (en macOS `/dev/rdiskN`). Ojo: elegí bien el dispositivo; `dd` no pregunta.
+- **Proxmox**: the ISOs end up in `local:iso/`. q35 VM, OVMF or SeaBIOS, disk ≥ 16 GB, 2 GB of RAM.
+- **USB**: it is hybrid → `sudo dd if=tangoos-0.1.0-dev-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync`
+  (on macOS `/dev/rdiskN`). Careful: pick the right device; `dd` does not ask.
 
-## Construir
+## Building
 
 ```bash
-make iso                        # fase 2, variante product → /var/lib/vz/template/iso/tangoos-<ver>-amd64.iso en el Proxmox
-make iso ISO_VARIANT=test       # laboratorio
-make iso-netinst                # fase 1
+make iso                        # phase 2, product variant → /var/lib/vz/template/iso/tangoos-<ver>-amd64.iso on the Proxmox
+make iso ISO_VARIANT=test       # lab
+make iso-netinst                # phase 1
 ```
 
-Dependencias en el host de build (instaladas en el Proxmox para este trabajo):
-`xorriso debootstrap squashfs-tools mtools` (+ `grub-pc-bin grub-efi-amd64-bin`, que Proxmox ya trae).
-El primer build hace debootstrap (~3 min) y lo cachea; los siguientes tardan ~2–2,5 min (la capa del
-instalador gráfico se reinstala con apt; los `.deb` quedan en `$WORK/apt-archives`). `make iso` compila
-también `dist/tango-installer` y lo sube junto a los scripts.
+Dependencies on the build host (installed on the Proxmox for this work):
+`xorriso debootstrap squashfs-tools mtools` (+ `grub-pc-bin grub-efi-amd64-bin`, which Proxmox already ships).
+The first build runs debootstrap (~3 min) and caches it; subsequent ones take ~2–2.5 min (the graphical
+installer layer is reinstalled with apt; the `.deb` files stay in `$WORK/apt-archives`). `make iso` also builds
+`dist/tango-installer` and uploads it along with the scripts.
 
-Pendientes conocidos:
-- `grub-mkrescue` usa el GRUB del host (en el Proxmox es `2.12-9+pmx2`); para builds reproducibles
-  conviene correrlo con el GRUB del propio rootfs.
-- Secure Boot: la ISO no está firmada (se probó con OVMF sin claves precargadas).
-- Resuelto: el `postinstall` del `.deb` usa `deb-systemd-helper` y habilita `tangod` también dentro
-  de un chroot; los instaladores igual lo habilitan explícitamente (inocuo).
+Known pending items:
+- `grub-mkrescue` uses the host's GRUB (on the Proxmox it is `2.12-9+pmx2`); for reproducible builds
+  it should be run with the rootfs's own GRUB.
+- Secure Boot: the ISO is not signed (tested with OVMF without preloaded keys).
+- Resolved: the `.deb`'s `postinstall` uses `deb-systemd-helper` and enables `tangod` also inside
+  a chroot; the installers still enable it explicitly (harmless).

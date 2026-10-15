@@ -1,6 +1,6 @@
 //go:build e2e
 
-// Harness E2E de TangoOS contra un NAS real (docs/14-plan-de-pruebas.md).
+// Harness E2E de TangoOS contra un NAS real (docs/14-test-plan.md).
 //
 // Variables:
 //

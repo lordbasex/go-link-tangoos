@@ -1,64 +1,63 @@
 # TangoOS
 
-NAS open source (MIT) sobre Debian 13, con escritorio web estilo macOS y administración en tiempo real por WebRTC.
-Parte del ecosistema [go-link](https://go-link.org). Probá la demo en **[tangoos.go-link.org/demo](https://tangoos.go-link.org/demo)**.
+Open-source (MIT) NAS on Debian 13, with a macOS-style web desktop and real-time administration over WebRTC.
+Part of the [go-link](https://go-link.org) ecosystem. Try the demo at **[tangoos.go-link.org/demo](https://tangoos.go-link.org/demo)**.
 
-> *Open-source NAS on Debian 13 with a macOS-style web desktop, managed in real time over WebRTC.
-> Install from the ISO or with `curl -fsSL https://tangoos.go-link.org/install.sh | sh`.*
+![TangoOS desktop](web/apps/connect/public/img/desktop-dark.png)
 
-![Escritorio de TangoOS](web/apps/connect/public/img/desktop-dark.png)
+> **Status: v0.1 (pre-release), in testing.** It manages real disks: Btrfs volumes (Basic and RAID 1/5/6/10
+> with mdadm), shared folders with snapshots, SMB with Time Machine and Windows "Previous Versions",
+> discovery from Windows (WS-Discovery) and macOS (Bonjour), NFS, SFTP, WebDAV, iSCSI, users with two-step
+> verification (TOTP) and app passwords, UPS over NUT, an app center (Docker), transfers over WebRTC and
+> remote access with TangoConnect. On the [roadmap](docs/09-roadmap.md), M0–M3.5 are done, M4 (v1.0) is mostly done,
+> and TangoConnect from M5 is done. What is missing is in [docs/09 → Next](docs/09-roadmap.md#next-post-v10).
+> The interface is in Spanish for now; English is on the roadmap.
 
-> **Estado: v0.1 (pre-release), en pruebas.** Administra discos reales: volúmenes Btrfs (Básico y RAID 1/5/6/10
-> por mdadm), carpetas compartidas con instantáneas, SMB con Time Machine y «Versiones anteriores» de Windows,
-> descubrimiento en Windows (WS-Discovery) y macOS (Bonjour), NFS, SFTP, WebDAV, iSCSI, usuarios con verificación
-> en dos pasos (TOTP) y contraseñas de app, UPS por NUT, centro de apps (Docker), transferencias por WebRTC y
-> acceso remoto con TangoConnect. Lo que falta está en [docs/09 → Próximos](docs/09-roadmap.md#próximos-post-v10).
+## Install
 
-## Instalar
+**From the ISO** (recommended: a dedicated machine). Download `tangoos-<version>-amd64.iso` from
+[Releases](https://github.com/lordbasex/go-link-tangoos/releases), write it to a USB drive and boot from it. The installer is
+graphical; it can also be driven from another computer on the network (`http://<ip>`, with the code shown on screen), and it has a
+text mode in the boot menu. It installs in under a minute and leaves the system on Btrfs, with rollback of
+updates.
 
-**Desde la ISO** (recomendado: equipo dedicado). Bajá `tangoos-<versión>-amd64.iso` de
-[Releases](https://github.com/lordbasex/go-link-tangoos/releases), grabala en un USB y arrancá. El instalador es
-gráfico; también se maneja desde otra PC de la red (`http://<ip>`, con el código que aparece en pantalla) y tiene un
-modo texto en el menú de arranque. Instala en menos de un minuto y deja el sistema en Btrfs con vuelta atrás de
-actualizaciones.
-
-**Sobre un Debian 13 que ya tenés** (amd64, con systemd, puertos 80 y 443 libres):
+**On a Debian 13 you already have** (amd64, with systemd, ports 80 and 443 free):
 
 ```bash
 curl -fsSL https://tangoos.go-link.org/install.sh | sh
 ```
 
-Agrega el repositorio APT firmado de TangoOS e instala el paquete `tangoos`; las actualizaciones llegan desde el
-propio escritorio. Esta vía no tiene la vuelta atrás del sistema que da la ISO.
+It adds TangoOS's signed APT repository and installs the `tangoos` package; updates arrive from the
+desktop itself. This route does not have the system rollback that the ISO gives.
 
-En los dos casos, abrí `https://<ip-del-nas>/` y creá la cuenta de administrador.
+Either way, open `https://<nas-ip>/` and create the administrator account.
 
-## Desarrollo
+## Development
 
 ```bash
-cd web && npm install && npm run dev   # escritorio con datos simulados en http://localhost:5173/
+cd web && npm install && npm run dev   # desktop with simulated data at http://localhost:5173/
 make check                              # gofmt, go vet, go test
-make web deploy-vm                      # bundle → embed en tangod → .deb → apt install en la VM de pruebas
+make web deploy-vm                      # bundle → embedded in tangod → .deb → apt install on the test VM
 ```
 
-Parámetros del escritorio simulado: `?skip` (directo al escritorio), `?scenario=healthy|degraded|busy|empty|migrate`.
-En el login demo cualquier contraseña entra; `error` falla.
+Simulated desktop parameters: `?skip` (straight to the desktop), `?scenario=healthy|degraded|busy|empty|migrate`.
+On the demo login any password works; `error` fails.
 
-Los ajustes de tu laboratorio (`VM`, `SSH_KEY`, `PVE`…) van en `local.mk`, que no se versiona. Las pruebas E2E y el
-plan completo están en [`tests/`](tests/README.md) y [docs/14](docs/14-plan-de-pruebas.md).
+Your lab settings (`VM`, `SSH_KEY`, `PVE`…) go in `local.mk`, which is not versioned. The end-to-end tests and the
+full plan are in [`tests/`](tests/README.md) and [docs/14](docs/14-test-plan.md).
 
-## Estructura
+## Layout
 
 ```
-cmd/          tangod (servidor), tango-agent (operaciones privilegiadas), tangoctl, tango-installer, connect-web…
+cmd/          tangod (server), tango-agent (privileged operations), tangoctl, tango-installer, connect-web…
 internal/     api, rtc, storage, fileworker, appsys, connect, installer, aptrepo…
-pkg/          rtcrpc, agentproto (contratos entre procesos)
-web/          npm workspaces: shell, ui, client, widgets, app-*; apps/desktop y apps/connect (portal)
-system/       systemd, ISO, catálogo de apps
-protocol/     contrato del protocolo WebRTC
-docs/         diseño, ADRs, roadmap
+pkg/          rtcrpc, agentproto (contracts between processes)
+web/          npm workspaces: shell, ui, client, widgets, app-*; apps/desktop and apps/connect (portal)
+system/       systemd, ISO, app catalog
+protocol/     WebRTC protocol contract
+docs/         design, ADRs, roadmap
 ```
 
-## Licencia
+## License
 
-MIT, ver [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
