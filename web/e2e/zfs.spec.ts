@@ -63,6 +63,7 @@ test("demo: habilitar ZFS, pool RAIDZ1 y asistente", async ({ page }) => {
   await expect(sheet(page).getByRole("radio", { name: /^Espejo/ })).toHaveAttribute("aria-checked", "true");
   await expect(sheet(page).locator(".ts-zfs-diagram")).toBeVisible();
   await snap(page, "asistente-forma");
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: /^Volúmenes/ }).first().click();
   await expect(page.getByText("Nativo de ZFS (AES-256-GCM)")).toBeVisible();
