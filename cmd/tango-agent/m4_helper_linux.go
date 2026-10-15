@@ -320,7 +320,12 @@ func helperNFS(ctx context.Context, a *agentproto.NFSApplyArgs) error {
 		if err := setUnit(ctx, "nfs-server.service", true); err != nil {
 			return err
 		}
-		return runCmd(ctx, "/usr/sbin/exportfs", "-ra")
+		if err := runCmd(ctx, "/usr/sbin/exportfs", "-ra"); err != nil {
+			return err
+		}
+		// -ra saca lo que ya no se exporta de la tabla, pero la caché del kernel sigue
+		// teniendo el montaje (knfsd) y después no se puede desmontar: se vacía.
+		return runCmd(ctx, "/usr/sbin/exportfs", "-f")
 	}
 	stage(0.85, "Deteniendo nfs-server")
 	return setUnit(ctx, "nfs-server.service", false)
