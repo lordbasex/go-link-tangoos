@@ -78,21 +78,44 @@ const OPTIONS: ClusterStatus["options"] = [
 const uuid = (seed: string) => {
   let h = 0;
   for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  const hex = (n: number) => (h ^ (n * 2654435761)).toString(16).padStart(8, "0").slice(0, 8);
+  const hex = (n: number) => ((h ^ Math.imul(n, 2654435761)) >>> 0).toString(16).padStart(8, "0");
   return `${hex(1)}-${hex(2).slice(0, 4)}-4${hex(3).slice(0, 3)}-a${hex(4).slice(0, 3)}-${hex(5)}${hex(6).slice(0, 4)}`;
 };
 
 export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Params<M>) => Result<M> } {
-  const demo = ctx.scenario() === "cluster";
   const self = "tango";
-  let installed = demo;
-  const nodes: ClusterNode[] = demo
-    ? [
+  let installed = false;
+  const nodes: ClusterNode[] = [];
+  let volumes: ClusterVolume[] = [];
+  let mounts: ClusterStatus["mounts"] = [];
+  let invites: ClusterStatus["invites"] = [];
+  let orphans: ClusterStatus["orphans"] = [];
+  // El escenario se lee en la primera llamada: MockTransport arma los handlers antes
+  // de asignar el suyo.
+  let seeded = false;
+  const seed = () => {
+    if (seeded) return;
+    seeded = true;
+    if (ctx.scenario() !== "cluster") return;
+    installed = true;
+    nodes.push(...demoNodes());
+    volumes = demoVolumes();
+    mounts = [{ name: "gv_tel_locuciones", path: "/cluster/gv_tel_locuciones", mounted: true, share: "Locuciones" }];
+    orphans = [{ tango_volume: "volume2", name: "gv_viejo", path: "/volume2/@gluster/gv_viejo" }];
+    // La curación avanza sola en la demo.
+    setInterval(() => {
+      const v = volumes.find((x) => x.name === "gv_tel_locuciones");
+      if (!v || v.healPending === 0) return;
+      for (const b of v.bricks) if (b.healPending > 0) b.healPending = Math.max(0, b.healPending - 7 - Math.floor(Math.random() * 9));
+      recompute(v);
+      ctx.emit("cluster.changed", status());
+    }, 4000);
+  };
+  const demoNodes = (): ClusterNode[] => [
         { uuid: uuid("tango-b"), host: "tango-b", hostnames: ["tango-b"], connected: true, state: "Peer in Cluster", self: false, latencyMs: 1 },
         { uuid: uuid("tango-c"), host: "tango-c", hostnames: ["tango-c"], connected: true, state: "Peer in Cluster", self: false, latencyMs: 38 },
         { uuid: uuid(self), host: self, connected: true, state: "Este nodo", self: true, latencyMs: 0 },
-      ]
-    : [];
+      ];
   const brick = (host: string, vol: string, tv = "volume1", over: Partial<ClusterBrick> = {}): ClusterBrick => ({
     host, path: `/${tv}/@gluster/${vol}`, hostUuid: uuid(host), online: true, port: 49152 + Math.floor(Math.random() * 900), pid: 1000 + Math.floor(Math.random() * 9000),
     sizeTotal: 7.2 * 1024 * GB, sizeFree: 5.1 * 1024 * GB, fsName: "btrfs", healPending: 0, splitBrain: 0, ...over,
@@ -116,26 +139,11 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     v.splitBrain = v.bricks.reduce((s, b) => s + b.splitBrain, 0);
     return v;
   };
-  let volumes: ClusterVolume[] = demo
-    ? [
+  const demoVolumes = (): ClusterVolume[] => [
         mkVol("gv_tel_config", ["tango", "tango-b", "tango-c"].map((h) => brick(h, "gv_tel_config")), { ...prodOpts }, PROD_ORDER),
         mkVol("gv_tel_locuciones", ["tango", "tango-b", "tango-c"].map((h, i) => brick(h, "gv_tel_locuciones", "volume1", i < 2 ? { healPending: 214 } : {})), { ...prodOpts }, PROD_ORDER),
         mkVol("gv_backups", ["tango", "tango-b", "tango-c", "tango", "tango-b", "tango-c"].map((h, i) => brick(h, "gv_backups", i < 3 ? "volume1" : "volume2", i === 1 ? { splitBrain: 2 } : {})), { "cluster.quorum-type": "auto", "nfs.disable": "on" }, ["cluster.quorum-type", "nfs.disable"]),
-      ]
-    : [];
-  let mounts: ClusterStatus["mounts"] = demo ? [{ name: "gv_tel_locuciones", path: "/cluster/gv_tel_locuciones", mounted: true, share: "Locuciones" }] : [];
-  let invites: ClusterStatus["invites"] = [];
-  let orphans: ClusterStatus["orphans"] = demo ? [{ tango_volume: "volume2", name: "gv_viejo", path: "/volume2/@gluster/gv_viejo" }] : [];
-
-  // La curación avanza sola en la demo.
-  if (demo)
-    setInterval(() => {
-      const v = volumes.find((x) => x.name === "gv_tel_locuciones");
-      if (!v || v.healPending === 0) return;
-      for (const b of v.bricks) if (b.healPending > 0) b.healPending = Math.max(0, b.healPending - 7 - Math.floor(Math.random() * 9));
-      recompute(v);
-      ctx.emit("cluster.changed", status());
-    }, 4000);
+      ];
 
   const allowed = () => [...new Set([...invites.flatMap((i) => i.addrs), ...nodes.filter((n) => !n.self).map((n) => `192.168.1.${10 + nodes.indexOf(n)}`)])];
   const status = (): ClusterStatus => ({
@@ -158,7 +166,7 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     if (!nodes.length) nodes.push({ uuid: uuid(self), host: self, connected: true, state: "Este nodo", self: true, latencyMs: 0 });
   };
 
-  return {
+  const handlers: { [M in Method]?: (p: Params<M>) => Result<M> } = {
     "cluster.status": () => status(),
     "cluster.install": () => {
       const j = ctx.startJob("cluster.install", "Instalando GlusterFS", "DEMO", 0, 0.12, undefined, () => {
@@ -270,4 +278,13 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
       return {};
     },
   };
+  // Cada handler siembra la demo antes de responder.
+  for (const k of Object.keys(handlers) as Method[]) {
+    const h = handlers[k] as (p: unknown) => unknown;
+    (handlers as Record<string, (p: unknown) => unknown>)[k] = (p) => {
+      seed();
+      return h(p);
+    };
+  }
+  return handlers;
 }
