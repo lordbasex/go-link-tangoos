@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cliOutput>
+  <opRet>0</opRet>
+  <opErrno>0</opErrno>
+  <opErrstr/>
+  <peerStatus>
+    <peer>
+      <uuid>78032939-8dba-4771-91ae-66c7da32ff63</uuid>
+      <hostname>localhost</hostname>
+      <connected>1</connected>
+    </peer>
+  </peerStatus>
+</cliOutput>

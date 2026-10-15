@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cliOutput>
+  <opRet>0</opRet>
+  <opErrno>0</opErrno>
+  <opErrstr/>
+  <volCreate>
+    <volume>
+      <name>gv0</name>
+      <id>9a379168-db13-4b29-b1d3-047442d6ab24</id>
+    </volume>
+  </volCreate>
+</cliOutput>
