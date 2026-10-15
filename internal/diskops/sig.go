@@ -106,6 +106,12 @@ func DetectContent(head, tail []byte) string {
 	if len(head) >= 4 && string(head[0:4]) == "XFSB" {
 		found = append(found, "XFS")
 	}
+	if _, _, ok := LUKSUUID(head); ok {
+		found = append(found, "contenedor cifrado LUKS")
+	}
+	if len(head) >= 544 && string(head[512:520]) == "LABELONE" && string(head[536:544]) == "LVM2 001" {
+		found = append(found, "volumen físico de LVM")
+	}
 	if len(head) >= 520 && string(head[512:520]) == "EFI PART" {
 		found = append(found, "tabla de particiones GPT")
 	} else if len(head) >= 512 && head[510] == 0x55 && head[511] == 0xaa && hasMBRPartitions(head) {
