@@ -43,6 +43,33 @@ func TestCASignVerify(t *testing.T) {
 	}
 }
 
+func TestBundleDuringRotation(t *testing.T) {
+	oldC, oldK, _ := NewCA("0001")
+	newC, newK, _ := NewCA("0002")
+	key, _ := NewNodeKey()
+	csr, _ := CSR(key, "n1")
+	oldCert, _ := Sign(oldC, oldK, csr, nil)
+	newCert, _ := Sign(newC, newK, csr, nil)
+	co, _ := ParseCert(oldCert)
+	cn, _ := ParseCert(newCert)
+
+	b := Bundle(newC, oldC, newC) // repetida: entra una vez
+	if cs, err := ParseCerts(b); err != nil || len(cs) != 2 {
+		t.Fatalf("bundle: %d %v", len(cs), err)
+	}
+	if Verify(b, co) != nil || Verify(b, cn) != nil {
+		t.Fatal("con las dos CA, los dos certificados tienen que valer")
+	}
+	// La huella que se muestra es la de la primera.
+	if f1, _ := CertFingerprint(b); f1 != func() string { f, _ := CertFingerprint(newC); return f }() {
+		t.Fatal("la huella del bundle no es la de la primera CA")
+	}
+	// Al cerrar la rotación queda solo la nueva: el certificado viejo deja de valer.
+	if Verify(newC, co) == nil {
+		t.Fatal("la CA nueva validó un certificado de la anterior")
+	}
+}
+
 func TestCSRTamper(t *testing.T) {
 	key, _ := NewNodeKey()
 	csr, _ := CSR(key, "n1")

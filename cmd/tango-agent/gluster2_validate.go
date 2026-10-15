@@ -3,9 +3,9 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/pem"
 	"os"
 
+	"github.com/lordbasex/go-link-tangoos/internal/clusterpki"
 	"github.com/lordbasex/go-link-tangoos/internal/diskops"
 	"github.com/lordbasex/go-link-tangoos/internal/gluster"
 	"github.com/lordbasex/go-link-tangoos/pkg/agentproto"
@@ -32,20 +32,22 @@ func validateGlusterTLS(a *agentproto.GlusterTLSArgs) *agentproto.Error {
 		if err != nil {
 			return agentproto.Errf(agentproto.CodeInvalidArgs, "certificado y clave no forman un par: %v", err)
 		}
-		blk, _ := pem.Decode([]byte(a.CA))
-		if blk == nil || blk.Type != "CERTIFICATE" {
+		// La CA puede traer dos certificados (rotación: la nueva y la anterior).
+		cas, err := clusterpki.ParseCerts([]byte(a.CA))
+		if err != nil {
 			return agentproto.Errf(agentproto.CodeInvalidArgs, "CA inválida")
 		}
-		ca, err := x509.ParseCertificate(blk.Bytes)
-		if err != nil || !ca.IsCA {
-			return agentproto.Errf(agentproto.CodeInvalidArgs, "CA inválida")
+		pool := x509.NewCertPool()
+		for _, ca := range cas {
+			if !ca.IsCA {
+				return agentproto.Errf(agentproto.CodeInvalidArgs, "CA inválida")
+			}
+			pool.AddCert(ca)
 		}
 		leaf, err := x509.ParseCertificate(pair.Certificate[0])
 		if err != nil {
 			return agentproto.Errf(agentproto.CodeInvalidArgs, "certificado inválido")
 		}
-		pool := x509.NewCertPool()
-		pool.AddCert(ca)
 		if _, err := leaf.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {
 			return agentproto.Errf(agentproto.CodeInvalidArgs, "el certificado no lo firmó esa CA")
 		}

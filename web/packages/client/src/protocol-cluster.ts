@@ -109,6 +109,10 @@ export interface ClusterTLS {
   files: boolean;
   /** TLS de management prendido en este nodo. */
   secure: boolean;
+  /** Fecha de la CA actual (ISO). */
+  caSince?: string;
+  /** Nodos que salieron después de la última rotación: conservan la clave de la CA. */
+  revoke: { name: string; at: string }[];
 }
 
 export interface ClusterNodeInfo {
@@ -228,6 +232,7 @@ declare module "./protocol" {
     "cluster.peer.prepare": { params: { host: string; code: string }; result: { id: string; host: string; cn: string; fingerprint: string } };
     "cluster.peer.confirm": { params: { id: string; certify?: boolean }; result: Empty };
     "cluster.tls.set": { params: { enabled: boolean }; result: { job: string } };
+    "cluster.ca.rotate": { params: Record<string, never>; result: { job: string } };
     "cluster.volume.bricks.add": { params: { name: string; replica?: number; bricks: ClusterBrickSpec[] }; result: { job: string } };
     "cluster.volume.bricks.replace": { params: { name: string; from: { host: string; path: string }; to: ClusterBrickSpec }; result: { job: string } };
     "cluster.volume.bricks.remove": { params: { name: string; replica?: number; bricks: { host: string; path: string }[]; phase: "start" | "status" | "commit" }; result: { task: ClusterTask | null } };

@@ -56,6 +56,10 @@ type ClusterTLSInfo struct {
 	Fingerprint   string `json:"fingerprint"`   // huella de la clave de este nodo
 	Files         bool   `json:"files"`         // /etc/ssl/glusterfs.* instalados
 	Secure        bool   `json:"secure"`        // management con TLS (secure-access)
+	// CASince es la fecha de la CA actual; Revoke, los nodos que salieron después y
+	// conservan su clave (se resuelve rotando la CA).
+	CASince string        `json:"caSince,omitempty"`
+	Revoke  []revokedNode `json:"revoke"`
 }
 
 // ClusterBrickSpec es un brick pedido desde la UI: carpeta en un volumen de TangoOS o LV
@@ -82,8 +86,15 @@ func (c *clusterAPI) tlsInfo(st *agentproto.GlusterStatusResult) ClusterTLSInfo 
 	if c.pki == nil {
 		return ClusterTLSInfo{}
 	}
-	return ClusterTLSInfo{CA: c.pki.hasCA(), CAFingerprint: c.pki.caFingerprint(), Signed: c.pki.signed(),
-		Fingerprint: c.pki.nodeFingerprint(), Files: st.TLS.Files, Secure: st.TLS.Secure}
+	info := ClusterTLSInfo{CA: c.pki.hasCA(), CAFingerprint: c.pki.caFingerprint(), Signed: c.pki.signed(),
+		Fingerprint: c.pki.nodeFingerprint(), Files: st.TLS.Files, Secure: st.TLS.Secure, Revoke: c.pki.revoked()}
+	if info.Revoke == nil {
+		info.Revoke = []revokedNode{}
+	}
+	if t := c.pki.caSince(); !t.IsZero() {
+		info.CASince = t.Format(time.RFC3339)
+	}
+	return info
 }
 
 // ---- Lado local de los pedidos del canal ----------------------------------------------
@@ -309,6 +320,9 @@ func (c *clusterAPI) refreshNodeInfo(ctx context.Context, st *agentproto.Gluster
 // usando el código y devuelve su huella para que el usuario la compare con la pantalla
 // del otro equipo.
 func (c *clusterAPI) prepareJoin(ctx context.Context, host, code string) (*clusterJoin, error) {
+	if c.rotating.Load() {
+		return nil, rtcrpc.Errorf("BUSY", "se está rotando la CA del clúster: esperá a que termine")
+	}
 	if _, err := c.invite(ctx, host); err != nil {
 		return nil, err
 	}
@@ -352,6 +366,9 @@ func (c *clusterAPI) prepareJoin(ctx context.Context, host, code string) (*clust
 // finishJoin es el paso 2 (después de que el usuario confirmó la huella): firma el
 // certificado del invitado, se lo entrega con la CA y lo suma al pool.
 func (c *clusterAPI) finishJoin(ctx context.Context, j *clusterJoin, probe bool) error {
+	if c.rotating.Load() {
+		return rtcrpc.Errorf("BUSY", "se está rotando la CA del clúster: esperá a que termine")
+	}
 	st, err := c.agentStatus(ctx, true)
 	if err != nil {
 		return agentErr(err)
@@ -529,29 +546,9 @@ func (c *clusterAPI) setTLS(ctx context.Context, h *jobs.Handle, on bool) error 
 	sort.Strings(cns)
 	all := append(append([]string{}, hosts...), c.self())
 
-	h.Update(0.15, "Desmontando los volúmenes en cada nodo")
-	mounted := map[string][]string{}
-	for _, host := range all {
-		names, err := c.nodeMounts(ctx, host, ctlMountsReq{Op: "stop"})
-		mounted[host] = names
-		if err != nil {
-			c.restoreMounts(ctx, mounted)
-			return fmt.Errorf("no se pudo desmontar en %s (¿archivos abiertos por SMB o NFS?): %w", host, err)
-		}
-	}
-	var started []string
-	for _, v := range st.Volumes {
-		if v.Status == "Started" {
-			started = append(started, v.Name)
-		}
-	}
-	h.Update(0.3, "Deteniendo los volúmenes")
-	for _, name := range started {
-		if err := c.ag.GlusterVolumeAction(ctx, agentproto.GlusterVolumeActionArgs{Name: name, Action: "stop"}); err != nil {
-			c.restartVolumes(ctx, started)
-			c.restoreMounts(ctx, mounted)
-			return agentErr(err)
-		}
+	mounted, started, err := c.stopVolumes(ctx, h, all, st, 0.15, 0.3)
+	if err != nil {
+		return err
 	}
 	h.Update(0.45, map[bool]string{true: "Prendiendo el TLS de management (reinicio de glusterd en cada nodo)", false: "Apagando el TLS de management"}[on])
 	for _, host := range all {
@@ -576,6 +573,37 @@ func (c *clusterAPI) setTLS(ctx context.Context, h *jobs.Handle, on bool) error 
 	h.Update(0.9, "Montando de nuevo")
 	c.restoreMounts(ctx, mounted)
 	return nil
+}
+
+// stopVolumes desmonta los volúmenes del clúster en cada nodo y detiene los que estaban
+// arrancados. Devuelve qué había montado en cada nodo y qué estaba arrancado (para
+// restartVolumes y restoreMounts); si algo falla, deja todo como estaba.
+func (c *clusterAPI) stopVolumes(ctx context.Context, h *jobs.Handle, all []string, st *agentproto.GlusterStatusResult, pUnmount, pStop float64) (map[string][]string, []string, error) {
+	h.Update(pUnmount, "Desmontando los volúmenes en cada nodo")
+	mounted := map[string][]string{}
+	for _, host := range all {
+		names, err := c.nodeMounts(ctx, host, ctlMountsReq{Op: "stop"})
+		mounted[host] = names
+		if err != nil {
+			c.restoreMounts(ctx, mounted)
+			return nil, nil, fmt.Errorf("no se pudo desmontar en %s (¿archivos abiertos por SMB o NFS?): %w", host, err)
+		}
+	}
+	var started []string
+	for _, v := range st.Volumes {
+		if v.Status == "Started" {
+			started = append(started, v.Name)
+		}
+	}
+	h.Update(pStop, "Deteniendo los volúmenes")
+	for _, name := range started {
+		if err := c.ag.GlusterVolumeAction(ctx, agentproto.GlusterVolumeActionArgs{Name: name, Action: "stop"}); err != nil {
+			c.restartVolumes(ctx, started)
+			c.restoreMounts(ctx, mounted)
+			return nil, nil, agentErr(err)
+		}
+	}
+	return mounted, started, nil
 }
 
 func (c *clusterAPI) restartVolumes(ctx context.Context, names []string) error {
@@ -747,6 +775,23 @@ func (c *clusterAPI) register2(r *rtcrpc.Router, admin func(fn func(ctx context.
 		j := a.d.Jobs.Start("cluster.tls", title, "Los volúmenes se detienen un momento", func(ctx context.Context, h *jobs.Handle) error {
 			defer c.publish(context.WithoutCancel(ctx))
 			return c.setTLS(ctx, h, q.Enabled)
+		}, nil)
+		return map[string]string{"job": j.ID}, nil
+	}))
+
+	// Rotación de la CA del clúster (cluster_rotate.go): después de sacar un nodo, o cuando
+	// se quiera.
+	r.Handle("cluster.ca.rotate", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q struct{}
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		if c.rotating.Load() {
+			return nil, rtcrpc.Errorf("BUSY", "ya hay una rotación de la CA en curso")
+		}
+		j := a.d.Jobs.Start("cluster.ca.rotate", "Rotando la CA del clúster", "Si GlusterFS usa TLS, los volúmenes se detienen un momento", func(ctx context.Context, h *jobs.Handle) error {
+			defer c.publish(context.WithoutCancel(ctx))
+			return c.rotateCA(ctx, h)
 		}, nil)
 		return map[string]string{"job": j.ID}, nil
 	}))

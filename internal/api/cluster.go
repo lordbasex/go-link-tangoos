@@ -84,6 +84,8 @@ type clusterAPI struct {
 	pki   *clusterPKI             // CA y certificado de este nodo (cluster_ctl.go)
 	joins map[string]*clusterJoin // uniones preparadas esperando la confirmación de la huella
 	infos map[string]*CtlInfo     // lo que cuenta cada nodo por el canal de control
+
+	rotating atomic.Bool // rotación de la CA en curso (cluster_rotate.go): no se suman nodos
 }
 
 const (
@@ -247,6 +249,14 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 		}
 		if err := c.ag.GlusterPeer(ctx, agentproto.GlusterPeerArgs{Action: "detach", Host: q.Host}); err != nil {
 			return nil, agentErr(err)
+		}
+		// Se lleva la clave de la CA: hasta rotarla, la app lo muestra como pendiente.
+		if c.pki != nil && c.pki.hasCA() {
+			name := drop
+			if name == "" {
+				name = q.Host
+			}
+			c.pki.addRevoked(name)
 		}
 		c.mu.Lock()
 		delete(c.invites, q.Host)

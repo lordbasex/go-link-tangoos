@@ -183,9 +183,13 @@ export function AddNodeSheet({ st, onClose, certifyHost }: { st: ClusterStatus; 
 
 // ---- TLS -------------------------------------------------------------------------------
 
+const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("es", { day: "numeric", month: "long", year: "numeric" }) : "");
+
 export function SecurityGroup({ st, onTLS, onCertify }: { st: ClusterStatus; onTLS: () => void; onCertify: (host: string) => void }) {
+  const [rotate, setRotate] = useState(false);
   const peers = st.nodes.filter((n) => !n.self);
   const uncert = peers.filter((n) => !st.nodeInfo[n.host]);
+  const revoke = st.tls.revoke ?? [];
   return (
     <Group title="Cifrado entre nodos">
       <Row
@@ -200,13 +204,72 @@ export function SecurityGroup({ st, onTLS, onCertify }: { st: ClusterStatus; onT
         <Status tone={st.tls.secure ? "ok" : "warn"}>{st.tls.secure ? "Cifrado" : "Sin cifrar"}</Status>
         <Button onClick={onTLS}>{st.tls.secure ? "Apagar…" : "Prender…"}</Button>
       </Row>
-      {st.tls.caFingerprint && <Row icon={<ShieldCheck size={16} />} label="CA del clúster" hint={st.tls.caFingerprint} />}
+      {st.tls.caFingerprint && (
+        <Row icon={<ShieldCheck size={16} />} label="CA del clúster" hint={st.tls.caSince ? `${st.tls.caFingerprint} · desde el ${fmtDate(st.tls.caSince)}` : st.tls.caFingerprint}>
+          <Button onClick={() => setRotate(true)}>Rotar…</Button>
+        </Row>
+      )}
+      {revoke.length > 0 && (
+        <Row
+          icon={<KeyRound size={16} />}
+          label={revoke.length === 1 ? `${revoke[0].name} salió del clúster con la clave de la CA` : `${revoke.length} nodos salieron con la clave de la CA`}
+          hint="Ya no entra por el firewall ni por la lista de cada volumen, pero puede firmarse certificados nuevos. Rotar la CA los deja sin valor."
+        >
+          <Status tone="warn">Pendiente</Status>
+          <Button variant="primary" onClick={() => setRotate(true)}>
+            Rotar la CA…
+          </Button>
+        </Row>
+      )}
+      {rotate && <RotateCASheet st={st} onClose={() => setRotate(false)} />}
       {uncert.map((n) => (
         <Row key={n.host} icon={<KeyRound size={16} />} label={`${n.host} sin certificado`} hint="Se unió antes del TLS o no responde por el canal de control (puerto 24010).">
           <Button onClick={() => onCertify(n.host)}>Certificar…</Button>
         </Row>
       ))}
     </Group>
+  );
+}
+
+export function RotateCASheet({ st, onClose }: { st: ClusterStatus; onClose: () => void }) {
+  const t = useTransport();
+  const act = useAct();
+  const off = st.nodes.filter((n) => !n.self && !n.connected);
+  const tlsUsed = st.tls.secure || st.volumes.some((v) => v.tls);
+  const revoke = st.tls.revoke ?? [];
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      width={520}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" disabled={off.length > 0} onClick={() => void act("No se pudo rotar la CA", () => t.call("cluster.ca.rotate", {}), "Rotando la CA…").then((ok) => ok && onClose())}>
+            Rotar la CA
+          </Button>
+        </>
+      }
+    >
+      <h2 className="tg-h2">Rotar la CA del clúster</h2>
+      <p className="tg-lead">
+        Cada nodo guarda la clave de la CA para poder sumar a otros. Un nodo que sale se la lleva: rotar crea una CA nueva, le da a cada nodo un certificado nuevo y deja sin valor todo lo firmado con la anterior.
+      </p>
+      {revoke.length > 0 && <p className="tcl-note">Salieron desde la última rotación: {revoke.map((r) => r.name).join(", ")}.</p>}
+      <ol className="tcl-steps">
+        <li>Cada nodo recibe la CA nueva y su certificado, y acepta las dos CA mientras dura el cambio.</li>
+        <li>Todos pasan a presentar el certificado nuevo.</li>
+        <li>Todos dejan de aceptar la CA anterior.</li>
+        {tlsUsed && <li>Como GlusterFS usa TLS, los volúmenes se detienen, glusterd se reinicia en cada nodo y vuelven a arrancar y montarse donde estaban.</li>}
+      </ol>
+      {off.length > 0 ? (
+        <p className="tcl-alert" data-tone="crit">
+          {off.map((n) => n.host).join(", ")} no está conectado: un nodo apagado se quedaría con la CA anterior y fuera del clúster. Prendelo o sacalo antes de rotar.
+        </p>
+      ) : (
+        <p className="tcl-note">{tlsUsed ? "Es una parada controlada de un par de minutos: mientras tanto, SMB y NFS de estos volúmenes no responden." : "GlusterFS no usa TLS: los volúmenes siguen andando."} Las huellas de los nodos no cambian.</p>
+      )}
+    </Sheet>
   );
 }
 

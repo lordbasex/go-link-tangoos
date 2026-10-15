@@ -104,8 +104,22 @@ capture of brick traffic while writing a known marker has no plaintext, `openssl
 the cluster CA, and a client without a certificate is cut at the handshake.
 
 **Revocation.** Removing a node takes its CN out of every `auth.ssl-allow`, out of every firewall (next sync)
-and out of the pool, so its certificate opens nothing. There is no CRL yet (GlusterFS wants an OpenSSL hashed
-directory per volume); rotating the CA is a pending item.
+and out of the pool, so its certificate opens nothing. It still has the CA key, though, and could sign itself a
+certificate with another node's name. So the app marks it as pending until the CA is **rotated**
+(`cluster.ca.rotate`, ADR 0014). There is no CRL, because the removed node could sign one too.
+
+**CA rotation.** Rotation is a job you can start from any node, and it needs every node connected. It creates
+a new CA and signs a new certificate for each node's existing key, so the node fingerprints do not change. It
+then goes through three phases on every node, and between phases each node trusts both CAs, so the control
+channel never breaks between two nodes:
+
+1. `stage`: the new certificate, CA and key arrive.
+2. `switch`: the node presents the new certificate.
+3. `finalize`: the node trusts only the new CA and writes `/etc/ssl/glusterfs.*`.
+
+If `stage` fails, the nodes go back to the old CA. Once past `stage`, run the rotation again to finish it.
+If GlusterFS uses TLS, the job ends with the same controlled stop as turning TLS on, so glusterd and the
+bricks load the new certificates.
 
 ### 3.4 SMB groups with fixed GIDs
 
@@ -172,7 +186,6 @@ ZFS volumes like any other mounted volume.
 - Quota accounting on volumes with TLS and XFS bricks (GlusterFS 11 reports 0 used there in the lab), and the
   auxiliary quota mount that blocks `remove-brick commit` while quotas are on.
 
-- CA rotation and a CRL for removed nodes (today: `auth.ssl-allow` + firewall + pool).
 - Geo-replication; scheduled snapshots of cluster volumes.
 - ZFS datasets as bricks (hook in `brickForms`).
 - User IDs shared across nodes for SMB/NFS (today only group IDs are fixed).

@@ -737,6 +737,7 @@ Every method is admin-only. Long operations return `{job}` and report through `j
 | `cluster.invite.cancel` | `{host}` | `{}` |
 | `cluster.peer.prepare` | `{host, code}` | `{id, host, cn, fingerprint}`: join step 1 over the control channel (code MAC bound to the TLS certificate seen). `PEER_UNREACHABLE` without an invitation, `JOIN_CODE` wrong code (5 → the invitation closes), `JOIN_TAMPERED` channel mismatch |
 | `cluster.peer.confirm` | `{id, certify?}` | `{}`: step 2 after the user compared the fingerprint: signs `host`'s certificate with the cluster CA (created the first time), delivers it with the CA and runs `peer probe` (not with `certify`: the node is already a member). Adds its CN to `auth.ssl-allow` of TLS volumes. `JOIN_EXPIRED` after 10 min |
+| `cluster.ca.rotate` | `{}` | `{job}`: new cluster CA and certificates on every node (stage → switch → finalize, both CAs trusted in between), then the TLS controlled stop if GlusterFS uses TLS. Every node must be connected (ADR 0014). `cluster.status.tls` adds `caSince` and `revoke` (nodes removed since the last rotation) |
 | `cluster.tls.set` | `{enabled}` | `{job}`: controlled stop on every node (unmount, stop, `secure-access` + glusterd restart, `client.ssl`/`server.ssl`/`auth.ssl-allow`, start, remount). Every node must have its certificate |
 | `cluster.peer.remove` | `{host}` | `{}`: `peer detach` (fails while the node has bricks); its CN leaves every `auth.ssl-allow` |
 | `cluster.volume.create` | `{name, replica, arbiter?, preset?, options?, bricks: BrickSpec[], start}` | `{job}`: dedicated bricks are created on their nodes first (removed again if anything fails); with TLS on, the volume gets TLS before it starts. `PEER_JOINING` while a node is not "Peer in Cluster" |
@@ -806,7 +807,8 @@ glusterd restart; the key is redacted in the journal), `gluster.volume.tls` (onl
 **Control channel** (TCP 24010, HTTPS between tangod instances, behind the GlusterFS firewall):
 `POST /join/hello` and `POST /join/finish` (join, authenticated by the code MAC), and, with a client
 certificate from the cluster CA and a source address in the pool, `GET /v1/info`, `POST /v1/brick`,
-`POST /v1/tls`, `POST /v1/mounts`. Details in docs/17 §3.2.
+`POST /v1/tls`, `POST /v1/mounts`, and the CA rotation steps `POST /v1/pki/csr`, `POST /v1/pki/stage`
+(`{cert, ca, caKey}`), `POST /v1/pki/step` (`{step: switch|finalize|abort, secure}`). Details in docs/17 §3.2–3.3.
 ## 18. ZFS (ADR 0013)
 
 Optional: OpenZFS is installed on demand (contrib + DKMS). Every method except `storage.zfs.status` and

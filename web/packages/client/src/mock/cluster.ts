@@ -91,6 +91,9 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
   let invites: ClusterStatus["invites"] = [];
   let orphans: ClusterStatus["orphans"] = [];
   let secure = false;
+  let caGen = 1;
+  let caSince = "2026-09-28T14:02:11Z";
+  let revoke: ClusterStatus["tls"]["revoke"] = [];
   let nfs: ClusterStatus["nfs"] = {};
   const quotas: Record<string, ClusterQuota[]> = {};
   const snaps: Record<string, ClusterSnapshot[]> = {};
@@ -172,7 +175,7 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     volumes: structuredClone(volumes), orphans: [...orphans], mounts: [...mounts], allowed: installed ? allowed() : [], invites: [...invites],
     tangoVolumes: ctx.volumes().filter((v) => v.mount).map((v) => ({ name: v.name, mount: v.mount ?? "", free: v.size - v.used })),
     presets: PRESETS, options: OPTIONS,
-    tls: { ca: secure, caFingerprint: secure ? fp("ca") : "", signed: secure, fingerprint: fp(self), files: secure, secure },
+    tls: { ca: secure, caFingerprint: secure ? fp(`ca${caGen}`) : "", signed: secure, fingerprint: fp(self), files: secure, secure, caSince: secure ? caSince : undefined, revoke: [...revoke] },
     nodeInfo: Object.fromEntries(
       (installed ? nodes : []).map((n) => [
         n.host,
@@ -254,6 +257,19 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
           recompute(v);
         }
         changed();
+      });
+      return { job: j.id };
+    },
+    "cluster.ca.rotate": () => {
+      need();
+      if (!secure) throw new RpcError("NO_CA", "este clúster todavía no tiene CA: se crea al sumar el primer nodo");
+      const tlsVols = volumes.some((v) => v.tls);
+      const j = ctx.startJob("cluster.ca.rotate", "Rotando la CA del clúster", "Si GlusterFS usa TLS, los volúmenes se detienen un momento", 0, tlsVols ? 0.2 : 0.4, undefined, () => {
+        caGen++;
+        caSince = new Date().toISOString();
+        revoke = [];
+        changed();
+        ctx.notify("ok", "tango.cluster", "CA del clúster rotada", "Los certificados anteriores, incluidos los de los nodos que salieron, ya no sirven.");
       });
       return { job: j.id };
     },
@@ -360,6 +376,7 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
         throw new RpcError("OPERATION_FAILED", `GlusterFS: Peer ${host} hosts one or more bricks. If the peer is in not recoverable state then use either replace-brick or remove-brick command with force to remove all bricks from the peer and attempt the peer detach again.`);
       const i = nodes.findIndex((n) => n.host === host);
       if (i >= 0) nodes.splice(i, 1);
+      if (secure && !revoke.some((r) => r.name === host)) revoke = [...revoke, { name: host, at: new Date().toISOString() }];
       changed();
       return {};
     },
