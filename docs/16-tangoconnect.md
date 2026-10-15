@@ -91,7 +91,7 @@ make connect-web             # also: dist/connect-web binary (embed + security h
 ```
 
 Build variables: `VITE_SIGNAL_URL`, `VITE_BUNDLE_PUBKEY`. To test against a real NAS, signalhub
-must have `tangoos` in `ALLOWED_APPS` (otherwise: "app not allowed", which the portal explains).
+must have `go-link-tangoos` in `ALLOWED_APPS` (otherwise: "app not allowed", which the portal explains).
 
 Tests: `cd web && npx vitest run apps/connect` (9-digit code, IndexedDB, manifest signature with the
 Go vector, link proof with the Go vector, signaling with a fake signalhub, frames, routes) and
@@ -132,4 +132,4 @@ same headers as §6 (`connect-src 'self' wss://signal.go-link.org`). No cookies 
   last access is shown.
 - Tested end to end with a real browser against the lab NAS and a local development signalhub
   (`make e2e-connect`, tests/README.md); that run never uses the production signal server. Production
-  signalhub must have `tangoos` in `ALLOWED_APPS`.
+  signalhub must have `go-link-tangoos` in `ALLOWED_APPS`.

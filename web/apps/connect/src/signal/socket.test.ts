@@ -51,7 +51,7 @@ describe("joinSignal", () => {
     const hub = fakeHub((env) => (env.type === "reach" ? [{ type: "paired", remote: "nas-peer" }] : []));
     const { joinSignal } = await import("./socket");
     const p = await joinSignal({ mode: "reach", deviceId: "11111111-1111-4111-8111-111111111111" }, { signalUrl: "wss://x/ws", WebSocketImpl: hub.WS });
-    expect(hub.sent[0]).toMatchObject({ type: "reach", app: "tangoos", device_id: "11111111-1111-4111-8111-111111111111" });
+    expect(hub.sent[0]).toMatchObject({ type: "reach", app: "go-link-tangoos", device_id: "11111111-1111-4111-8111-111111111111" });
     expect(p.iceServers.length).toBe(1);
     const got: unknown[] = [];
     p.onPayload((x) => got.push(x));
