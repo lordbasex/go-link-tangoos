@@ -219,7 +219,7 @@ export interface RtcStats {
   channels: RtcChannelStats[];
 }
 
-export type Scenario = "healthy" | "degraded" | "busy" | "empty" | "migrate" | "lab";
+export type Scenario = "healthy" | "degraded" | "busy" | "empty" | "migrate" | "lab" | "cluster";
 
 export interface VolumePlan {
   plan_id: string;
@@ -334,3 +334,4 @@ export * from "./protocol-m4";
 export * from "./protocol-v1";
 export * from "./protocol-users";
 export * from "./protocol-connect";
+export * from "./protocol-cluster";
