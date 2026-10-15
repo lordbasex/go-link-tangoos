@@ -80,7 +80,7 @@ func TestISCSIPlan(t *testing.T) {
 	if err := ValidateTarget(zv); err != nil {
 		t.Fatal(err)
 	}
-	steps := Plan(zv)
+	steps = Plan(zv)
 	if !strings.HasSuffix(steps[0].Path, "core/iblock_0/vm-disk") || steps[1].Value != "udev_path=/dev/zvol/tank/zvol/vm-disk" {
 		t.Fatalf("iblock %+v", steps[:2])
 	}
