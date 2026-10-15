@@ -214,6 +214,15 @@ func cleanupPool(t *testing.T, name string, vols, serials []string) {
 	deletePool(t, a, name, serials)
 }
 
+func contains(s []string, x string) bool {
+	for _, v := range s {
+		if v == x {
+			return true
+		}
+	}
+	return false
+}
+
 func approx(got, want uint64, pct uint64) bool {
 	return got >= want*(100-pct)/100 && got <= want*(100+pct)/100
 }
@@ -246,7 +255,7 @@ func TestPoolHybridLUKSCache(t *testing.T) {
 	destructive(t)
 	a := admin(t)
 	disks := []string{"TANGO-S3", "TANGO-S6", "TANGO-M1"}
-	all := append(append([]string{}, disks...), "TANGO-M2")
+	all := append(append([]string{}, disks...), "TANGO-M2", "TANGO-D3")
 	cleanupPool(t, "pe2ehyb", []string{"pv3"}, all)
 	t.Cleanup(func() { cleanupPool(t, "pe2ehyb", []string{"pv3"}, all) })
 
@@ -359,6 +368,21 @@ func TestPoolHybridLUKSCache(t *testing.T) {
 			t.Fatalf("la caché sigue: %+v", got.Cache)
 		}
 		requireFree(t, a, c.disks...)
+	}
+
+	// Fila 16b: reemplazar M2 por D3 (16 GB): sale de los dos tramos y D3 entra con la misma partición.
+	var rp poolPlan
+	a.call("storage.pools.replacePlan", map[string]any{"pool": pl.ID, "failed": a.diskIDs("TANGO-M2")[0], "replacement": a.diskIDs("TANGO-D3")[0]}, &rp)
+	a.callErr("storage.pools.replacePlan", map[string]any{"pool": pl.ID, "failed": a.diskIDs("TANGO-M2")[0], "replacement": a.diskIDs("TANGO-C1")[0]}, "DEVICE_TOO_SMALL")
+	a.call("storage.pools.replace", confirm(rp.PlanID, rp.ConfirmToken, "pe2ehyb"), &r)
+	a.waitJob(r.Job, 20*time.Minute)
+	afterRepl := waitPoolHealthy(t, a, "pe2ehyb", 10*time.Minute)
+	if len(afterRepl.Disks) != 4 || !contains(afterRepl.Disks, a.diskIDs("TANGO-D3")[0]) || contains(afterRepl.Disks, a.diskIDs("TANGO-M2")[0]) {
+		t.Fatalf("después de reemplazar: %+v", afterRepl.Disks)
+	}
+	requireFree(t, a, "TANGO-M2")
+	if got := strings.TrimSpace(onNAS(t, "sha256sum /pv3/@shares/M-pv3/secreto.txt | cut -c1-64")); got != strings.TrimSpace(sum) {
+		t.Fatal("el archivo cambió con el reemplazo")
 	}
 
 	// Fila 17 (opcional): reinicio de la VM con la llave conectada → se desbloquea solo.

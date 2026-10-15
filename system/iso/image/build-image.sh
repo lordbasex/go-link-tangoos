@@ -38,7 +38,7 @@ keyboard-configuration,openssh-server,apt,eject,zstd,live-boot,live-boot-initram
 iproute2,iputils-ping,curl,less,nano
 
 # Lo que tangod usa en tiempo de ejecución además de los Depends del .deb (M2–M4).
-RUNTIME_PKGS="samba nfs-kernel-server"
+RUNTIME_PKGS="samba nfs-kernel-server xfsprogs"  # xfsprogs: volúmenes XFS de los grupos (ADR 0011); lvm2 y cryptsetup llegan como Depends del .deb
 
 # Solo en la capa del live (installer.squashfs): pantalla del instalador gráfico.
 # cage = compositor Wayland de una sola app; cog = navegador WPE WebKit para kiosco (el más chico

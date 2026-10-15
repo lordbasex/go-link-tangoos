@@ -190,6 +190,7 @@ partition "LLAVE", stands in for a USB key because the cloud kernel has no `usb-
 | Agent ops by hand (`pool.create` hybrid, `lv.create` Btrfs and encrypted XFS + key, lock/unlock with key and passphrase, passphrase change, read cache 1 SSD, read/write cache 2 SSDs, grow cached + encrypted volume, expand hybrid, replace disk, delete) | VM 108 | ok after the fixes below |
 | `TestPoolRAID5TwoVolumes` (row 11) | VM 108 | **pass** (44 s) |
 | `TestPoolHybridLUKSCache` with `TANGO_E2E_REBOOT=1` (rows 12–17) | VM 108 | **pass** (4 min 17 s, VM reboot included: unlocked by itself with the key plugged in) |
+| `TestPoolHybridLUKSCache` again with row 16b (replace M2 → D3 over RPC), no reboot | VM 108 | **pass** (2 min 37 s) |
 | `web/e2e/pools.spec.ts` (row 18: demo + real wizard, encrypted volume, lock/unlock, delete) | VM 108 | **pass** (45 s), screenshots `tests/e2e-ui/artifacts/pools-*.png` |
 
 Findings fixed while testing:

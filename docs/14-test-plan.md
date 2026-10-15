@@ -82,5 +82,6 @@ partition, stands in for a USB key: the cloud kernel has no `usb-storage`).
 | 14 | Expand hybrid with one more 4 GB disk | + M2 | plan 8 GB (RAID 5 × 4 + RAID 1), reshape, pool healthy, file intact (sha256) |
 | 15 | Grow the encrypted volume online | — | LV + LUKS + Btrfs grow |
 | 16 | SSD cache: read with 1 SSD, read/write with 2 (RAID 1) | C1, C1+C2 | HDD rejected, cache mode and disks in the volume, remove → SSDs free |
+| 16b | Replace a disk of the hybrid pool (M2 → D3) | + D3 | too small SSD → `DEVICE_TOO_SMALL`, rebuild of both tiers, M2 free, file intact |
 | 17 | VM reboot with the key plugged in (`TANGO_E2E_REBOOT=1`) | — | volume unlocked and mounted by itself, file intact, pool healthy |
 | 18 | UI: wizard (Hybrid-1 with mixed disks), encrypted volume, lock/unlock, delete (`web/e2e/pools.spec.ts`) | S3+S6+M1 | screenshots `pools-*.png`; plus the demo scenarios `pools`, `hybrid`, `locked` |
