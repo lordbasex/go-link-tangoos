@@ -58,6 +58,10 @@ type GlusterBrickLVArgs struct {
 	Vol  string `json:"vol"`
 	Size uint64 `json:"size"`
 	Thin bool   `json:"thin"`
+	// Self (delete): los nombres e IPs de este nodo. Si el volumen todavía existe, solo se
+	// borra el LV cuando ningún brick de este nodo lo usa (el agente no ve las IPs: no
+	// tiene red).
+	Self []string `json:"self,omitempty"`
 }
 
 // GlusterBrickLVResult es el brick listo.
@@ -73,6 +77,8 @@ type GlusterLVBrick struct {
 	Size    uint64 `json:"size"`
 	Thin    bool   `json:"thin"`
 	Mounted bool   `json:"mounted"`
+	// Snaps: LV de instantáneas de GlusterFS que salieron de este (restauraciones).
+	Snaps int `json:"snaps"`
 }
 
 // GlusterQuotaArgs: Op enable | disable | limit | remove | list.

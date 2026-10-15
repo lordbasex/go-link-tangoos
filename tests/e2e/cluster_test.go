@@ -84,6 +84,7 @@ type clStatus struct {
 	Nodes     []struct {
 		Host      string `json:"host"`
 		Connected bool   `json:"connected"`
+		State     string `json:"state"`
 		Self      bool   `json:"self"`
 		LatencyMs int    `json:"latencyMs"`
 	} `json:"nodes"`
@@ -227,7 +228,7 @@ func TestCluster(t *testing.T) {
 			}
 			return len(s.Nodes) == 1
 		})
-		e := n1.c.callErr("cluster.peer.add", map[string]string{"host": n2.ip}, "")
+		e := n1.c.callErr("cluster.peer.prepare", map[string]string{"host": n2.ip, "code": "AAAAA-BBBBB"}, "PEER_UNREACHABLE")
 		t.Logf("rechazado como se esperaba: %s %s", e.Code, e.Message)
 		if s := n2.c.cluster(); len(s.Nodes) != 1 {
 			t.Fatalf("n2 terminó en un clúster sin haber invitado: %+v", s.Nodes)
@@ -235,10 +236,8 @@ func TestCluster(t *testing.T) {
 	})
 
 	t.Run("unir con invitación de los dos lados", func(t *testing.T) {
-		n2.c.call("cluster.invite", map[string]string{"host": n1.ip}, nil)
-		n3.c.call("cluster.invite", map[string]string{"host": n1.ip}, nil)
-		n1.c.call("cluster.peer.add", map[string]string{"host": n2.ip}, nil)
-		n1.c.call("cluster.peer.add", map[string]string{"host": n3.ip}, nil)
+		joinNode(t, n1, n2, false)
+		joinNode(t, n1, n3, false)
 		n1.c.waitCluster("3 nodos conectados en n1", 2*time.Minute, func(s clStatus) bool { return len(s.Nodes) == 3 && connectedPeers(s) == 3 })
 		// n2 y n3 se abren entre sí solos (los nodos del clúster entran a la allow-list).
 		for _, n := range []*clusterNode{n2, n3} {

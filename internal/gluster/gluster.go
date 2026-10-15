@@ -100,7 +100,7 @@ func ValidBrick(b Brick, vol string) error {
 	if err := ValidHost(b.Host); err != nil {
 		return err
 	}
-	if brickVolume(b.Path) != vol {
+	if v := brickVolume(b.Path); v != vol && v != "*" {
 		return fmt.Errorf("brick %s: la ruta tiene que ser /volumeN/@gluster/%s o %s", b, vol, LVBrickPath(vol))
 	}
 	return nil

@@ -139,7 +139,11 @@ func (c *clusterAPI) localBrick(ctx context.Context, q ctlBrickReq) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	r, err := ag2.GlusterBrickLV(ctx, agentproto.GlusterBrickLVArgs{Op: q.Op, Pool: q.Pool, Vol: q.Vol, Size: q.Size, Thin: q.Thin})
+	args := agentproto.GlusterBrickLVArgs{Op: q.Op, Pool: q.Pool, Vol: q.Vol, Size: q.Size, Thin: q.Thin}
+	if q.Op == "delete" {
+		args.Self = c.selfNames()
+	}
+	r, err := ag2.GlusterBrickLV(ctx, args)
 	if err != nil {
 		return nil, agentErr(err)
 	}
@@ -190,6 +194,33 @@ func (c *clusterAPI) localMounts(ctx context.Context, q ctlMountsReq) ([]string,
 }
 
 // ---- Llamadas a un nodo (local o remoto) ------------------------------------------------
+
+// selfNames son los nombres con los que se conoce a este nodo (nombre e IPs).
+func (c *clusterAPI) selfNames() []string { return append([]string{c.self()}, localAddrs()...) }
+
+// lvOrphans son los LV de bricks de este nodo que ningún brick usa: de un volumen borrado,
+// o reemplazados, o que quedaron sin uso al restaurar una instantánea.
+func (c *clusterAPI) lvOrphans(st *agentproto.GlusterStatusResult) []agentproto.GlusterOrphan {
+	out := []agentproto.GlusterOrphan{}
+	names := c.selfNames()
+	for _, lb := range st.LVBricks {
+		used := false
+		for _, v := range st.Volumes {
+			if v.Name != lb.Vol {
+				continue
+			}
+			for _, b := range v.Bricks {
+				if b.Path == gluster.LVBrickPath(lb.Vol) && slices.Contains(names, b.Host) {
+					used = true
+				}
+			}
+		}
+		if !used {
+			out = append(out, agentproto.GlusterOrphan{Kind: "lv", TangoVolume: lb.Pool, Name: lb.Vol, Path: gluster.LVMountPath(lb.Vol)})
+		}
+	}
+	return out
+}
 
 func (c *clusterAPI) isSelf(host string) bool {
 	if host == c.self() {

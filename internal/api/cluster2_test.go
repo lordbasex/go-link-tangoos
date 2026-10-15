@@ -28,7 +28,9 @@ func (f *fakeCluster2) GlusterPeer(_ context.Context, a agentproto.GlusterPeerAr
 	f.probes = append(f.probes, a.Action+" "+a.Host)
 	return nil
 }
-func (*fakeCluster2) GlusterVolumeTLS(context.Context, agentproto.GlusterVolumeTLSArgs) error { return nil }
+func (*fakeCluster2) GlusterVolumeTLS(context.Context, agentproto.GlusterVolumeTLSArgs) error {
+	return nil
+}
 func (*fakeCluster2) GlusterBrickLV(context.Context, agentproto.GlusterBrickLVArgs) (*agentproto.GlusterBrickLVResult, error) {
 	return &agentproto.GlusterBrickLVResult{Path: "/srv/gluster/gv0/brick"}, nil
 }

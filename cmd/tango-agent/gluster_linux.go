@@ -366,15 +366,8 @@ func glusterStatus(ctx context.Context, self string) agentproto.GlusterStatusRes
 	// pide aparte cada tanto.
 	res.Volumes = vols
 	res.Orphans = glusterOrphans(vols)
-	known := map[string]bool{}
-	for _, v := range vols {
-		known[v.Name] = true
-	}
-	for _, lb := range res.LVBricks {
-		if !known[lb.Vol] {
-			res.Orphans = append(res.Orphans, agentproto.GlusterOrphan{Kind: "lv", TangoVolume: lb.Pool, Name: lb.Vol, Path: gluster.LVMountPath(lb.Vol)})
-		}
-	}
+	// Los LV de bricks huérfanos los calcula tangod (sabe con qué nombres e IPs se conoce a
+	// este nodo; el agente no tiene red).
 	return res
 }
 
@@ -595,6 +588,16 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 	if _, _, err := c.EnableUnitFilesContext(ctx, []string{unitPath}, false, true); err != nil {
 		return nil, agentproto.Errf(agentproto.CodeFailed, "systemd: %v", err)
 	}
+	// Un montaje que existe pero no responde (cliente FUSE colgado, por ejemplo después de
+	// cambiar el TLS) se rehace.
+	if isMountedAt(mnt) {
+		if _, err := os.Stat(mnt + "/."); err != nil {
+			ch := make(chan string, 1)
+			if _, err := c.StopUnitContext(ctx, unit, "replace", ch); err == nil {
+				_ = sdWait(ctx, ch, unit)
+			}
+		}
+	}
 	if !isMountedAt(mnt) {
 		ch := make(chan string, 1)
 		if _, err := c.StartUnitContext(ctx, unit, "replace", ch); err != nil {
@@ -609,6 +612,14 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 		if !isMountedAt(mnt) {
 			return nil, agentproto.Errf(agentproto.CodeFailed, "systemd montó %s pero no aparece", mnt)
 		}
+	}
+	// Recién montado, el cliente FUSE tarda un instante en conectar con los bricks (más con
+	// TLS): hasta entonces cualquier acceso da "transport endpoint is not connected".
+	for i := 0; i < 60; i++ {
+		if _, err := os.Stat(mnt + "/."); err == nil {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
 	}
 	if a.Share == "" {
 		return struct{}{}, nil

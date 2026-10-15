@@ -733,18 +733,27 @@ Every method is admin-only. Long operations return `{job}` and report through `j
 |---|---|---|
 | `cluster.status` | — | `ClusterStatus` |
 | `cluster.install` | — | `{job}`: nftables + firewall first, then `glusterfs-server`; also starts a stopped glusterd |
-| `cluster.invite` | `{host}` | `{host, addrs[], expires}`: this node accepts `host` for 15 minutes |
+| `cluster.invite` | `{host}` | `{host, addrs[], expires, code, fingerprint}`: this node accepts `host` for 15 minutes; `code` is the join code to type on `host`, `fingerprint` this node's key fingerprint to compare |
 | `cluster.invite.cancel` | `{host}` | `{}` |
-| `cluster.peer.add` | `{host}` | `{}`: opens this side and runs `peer probe`; `PEER_UNREACHABLE` if the other side did not invite |
-| `cluster.peer.remove` | `{host}` | `{}`: `peer detach` (fails while the node has bricks) |
-| `cluster.volume.create` | `{name, replica, arbiter?, preset?, options?, bricks:[{host, tangoVolume}], start}` | `{job}` |
+| `cluster.peer.prepare` | `{host, code}` | `{id, host, cn, fingerprint}`: join step 1 over the control channel (code MAC bound to the TLS certificate seen). `PEER_UNREACHABLE` without an invitation, `JOIN_CODE` wrong code (5 → the invitation closes), `JOIN_TAMPERED` channel mismatch |
+| `cluster.peer.confirm` | `{id, certify?}` | `{}`: step 2 after the user compared the fingerprint: signs `host`'s certificate with the cluster CA (created the first time), delivers it with the CA and runs `peer probe` (not with `certify`: the node is already a member). Adds its CN to `auth.ssl-allow` of TLS volumes. `JOIN_EXPIRED` after 10 min |
+| `cluster.tls.set` | `{enabled}` | `{job}`: controlled stop on every node (unmount, stop, `secure-access` + glusterd restart, `client.ssl`/`server.ssl`/`auth.ssl-allow`, start, remount). Every node must have its certificate |
+| `cluster.peer.remove` | `{host}` | `{}`: `peer detach` (fails while the node has bricks); its CN leaves every `auth.ssl-allow` |
+| `cluster.volume.create` | `{name, replica, arbiter?, preset?, options?, bricks: BrickSpec[], start}` | `{job}`: dedicated bricks are created on their nodes first (removed again if anything fails); with TLS on, the volume gets TLS before it starts. `PEER_JOINING` while a node is not "Peer in Cluster" |
 | `cluster.volume.action` | `{name, action: start\|stop\|delete}` | `{}` (`BUSY` if mounted on this node) |
 | `cluster.volume.options` | `{name, set: {key: value}, reset: [key]}` | `{}` |
 | `cluster.volume.heal` | `{name, full?}` | `{}` |
-| `cluster.volume.bricks` | `{name, op: add\|remove\|replace, replica?, bricks?, phase?, from?, to?}` | `{}` |
+| `cluster.volume.bricks` | `{name, op: add\|remove\|replace, replica?, bricks?, phase?, from?, to?}` | `{}` (raw paths; the UI uses the three methods below) |
+| `cluster.volume.bricks.add` | `{name, replica?, bricks: BrickSpec[]}` | `{job}`: one more replica set, or `replica` = current + 1 |
+| `cluster.volume.bricks.remove` | `{name, replica?, bricks: [{host, path}], phase: start\|status\|commit}` | `{task: Task\|null}`: data migrates on `start`; `status` reports progress; `commit` takes them out |
+| `cluster.volume.bricks.replace` | `{name, from: {host, path}, to: BrickSpec}` | `{job}`: `replace-brick … commit force`; the new copy fills by healing |
+| `cluster.volume.rebalance` | `{name, action: start\|status\|stop}` | `{task: Task\|null}` |
+| `cluster.volume.quota` | `{name, op: enable\|disable\|limit\|remove\|list, path?, limit?}` | `{quotas: Quota[]}` (the list after the change) |
+| `cluster.volume.snapshot` | `{name, op: create\|delete\|restore\|info, snap?, desc?}` | `{snapshots: Snapshot[]}`; `SNAPSHOT_UNSUPPORTED` unless every brick is a thin LV; `VOLUME_STARTED` on restore of a started volume |
+| `cluster.volume.nfs` | `{name, clients: [{host, access: rw\|ro}]}` | `{job}`: exports `/cluster/<name>` (mounted on this node) with `fsid` = volume UUID; `[]` removes it. `NOT_MOUNTED` |
 | `cluster.volume.info` | `{name}` | `{text}`: same text as `gluster volume info <name>` |
 | `cluster.volume.mount` | `{name, enabled, share?, comment?, rw?, ro?}` | `{job}`: `/cluster/<name>` (+ SMB share) |
-| `cluster.brick.cleanup` | `{tangoVolume, name}` | `{}`: deletes `/<tangoVolume>/@gluster/<name>` if that volume no longer exists |
+| `cluster.brick.cleanup` | `{kind?, tangoVolume, name}` | `{}`: deletes `/<tangoVolume>/@gluster/<name>` if that volume no longer exists; with `kind: "lv"` (`tangoVolume` = pool) removes the dedicated LV when no brick of this node uses it, plus the snapshot LVs left from it once the volume is gone |
 
 Topic `cluster.changed` carries a full `ClusterStatus` when anything changes (polled every 20 s by tangod).
 
@@ -760,17 +769,41 @@ interface ClusterStatus {
   tangoVolumes: { name; mount; free }[];   // where this node can hold a brick
   presets: { id; name; desc; replica?; options }[];
   options: { key; type: "bool"|"int"|"enum"|"percent"; min?; max?; enum?; global?; desc }[];
+  tls: { ca; caFingerprint; signed; fingerprint; files; secure };   // this node
+  nodeInfo: Record<host, { cn; fingerprint; names; secure; tangoVolumes; pools: { name; free }[] }>;
+  nfs: Record<volume, { host; access }[]>;
+  lvBricks: { vol; pool; size; thin; mounted; snaps }[];
+  pools: { name; free }[];                 // this node's storage pools (free = data PVs)
 }
+type BrickSpec = { host; kind: "dir"; tangoVolume } | { host; kind: "lv"; pool; size; thin? };
+interface Task { id; status /* in progress|completed|stopped|failed */; done; failed;
+  total: TaskNode; nodes: TaskNode[] }  // TaskNode: { node, files, size, lookups, failures, skipped, status, runtime }
+interface Quota { path; limit; softPercent; used; avail; softOver; hardOver }
+interface Snapshot { name; uuid; desc?; created; status }
 interface ClusterVolume {
   name; id; status /* Created|Started|Stopped */; type /* Replicate|Distributed-Replicate|Distribute */;
   replica; arbiter; sets; options: Record<string,string>; optOrder: string[];
   bricks: { host; path; hostUuid; arbiter?; online; port?; pid?; sizeTotal?; sizeFree?; fsName?;
-            healPending /* -1 = brick did not answer */; splitBrain; healStatus? }[];
+            healPending /* -1 = brick did not answer */; splitBrain; healStatus?;
+            kind? /* dir | lv | snap (restored from a snapshot) */ }[];
   sizeTotal; sizeFree; healPending; splitBrain; online;
+  tls /* client.ssl and server.ssl on */; quota /* features.quota on */;
 }
 ```
 
 Agent ops (`gluster.*`, pkg/agentproto/gluster.go) take typed arguments and build the
 `gluster --mode=script --xml` argv with internal/gluster: option keys come from an allow-list with typed values,
-hosts are IPs or lowercase DNS names, brick paths are `/volumeN/@gluster/<volume>`, and `force` is never sent on
+hosts are IPs or lowercase DNS names, brick paths are one of the brick forms (`/volumeN/@gluster/<volume>`,
+`/srv/gluster/<volume>/brick`, or a GlusterFS snapshot mount after a restore), and `force` is never sent on
 create. The agent has no network: tangod resolves names before `gluster.firewall`.
+
+Second-stage agent ops (pkg/agentproto/gluster2.go): `gluster.tls` (node certificate files, `secure-access`,
+glusterd restart; the key is redacted in the journal), `gluster.volume.tls` (only `client.ssl`, `server.ssl`,
+`auth.ssl-allow`, outside the user allow-list), `gluster.brick.lv` (create/delete a dedicated LV brick),
+`gluster.quota`, `gluster.rebalance`, `gluster.snapshot`; `gluster.mount` also takes `action: stop|start`
+(controlled stop, keeps the SMB share).
+
+**Control channel** (TCP 24010, HTTPS between tangod instances, behind the GlusterFS firewall):
+`POST /join/hello` and `POST /join/finish` (join, authenticated by the code MAC), and, with a client
+certificate from the cluster CA and a source address in the pool, `GET /v1/info`, `POST /v1/brick`,
+`POST /v1/tls`, `POST /v1/mounts`. Details in docs/17 §3.2.

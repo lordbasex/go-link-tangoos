@@ -307,6 +307,15 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 		if err := gluster.ValidOptions(opts); err != nil {
 			return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "%s", err.Error())
 		}
+		// Un nodo recién unido pasa unos segundos en "Accepted peer request": GlusterFS rechaza
+		// crear volúmenes hasta que todos están en "Peer in Cluster".
+		if st, err := c.agentStatus(ctx, true); err == nil {
+			for _, p := range st.Peers {
+				if !p.Self && p.State != "" && p.State != "Peer in Cluster" {
+					return nil, rtcrpc.Errorf("PEER_JOINING", "%s todavía se está uniendo al clúster (%s): probá en unos segundos", p.Host, p.State)
+				}
+			}
+		}
 		j := a.d.Jobs.Start("cluster.volume.create", "Creando el volumen "+q.Name, args.Layout.TypeName(len(args.Bricks)), func(ctx context.Context, h *jobs.Handle) error {
 			defer c.publish(context.WithoutCancel(ctx))
 			bricks, undo, err := c.resolveBricks(ctx, h, q.Name, q.Bricks)
@@ -462,7 +471,7 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 			if err != nil {
 				return nil, err
 			}
-			if _, err := ag2.GlusterBrickLV(ctx, agentproto.GlusterBrickLVArgs{Op: "delete", Pool: q.TangoVolume, Vol: q.Name}); err != nil {
+			if _, err := ag2.GlusterBrickLV(ctx, agentproto.GlusterBrickLVArgs{Op: "delete", Pool: q.TangoVolume, Vol: q.Name, Self: c.selfNames()}); err != nil {
 				return nil, agentErr(err)
 			}
 		} else if err := c.ag.GlusterBrickCleanup(ctx, agentproto.GlusterBrickCleanArgs{TangoVolume: strings.TrimPrefix(q.TangoVolume, "/"), Name: q.Name}); err != nil {
@@ -608,7 +617,7 @@ func (c *clusterAPI) status(ctx context.Context, fresh bool) (*ClusterStatus, er
 		return nil, agentErr(err)
 	}
 	out := &ClusterStatus{Installed: st.Installed, Running: st.Running, Version: st.Version, Error: st.Error, Self: c.self(),
-		SelfAddrs: localAddrs(), Volumes: c.withHeal(st.Volumes), Orphans: st.Orphans, Mounts: st.Mounts, Allowed: st.Allowed,
+		SelfAddrs: localAddrs(), Volumes: c.withHeal(st.Volumes), Orphans: append(append([]agentproto.GlusterOrphan{}, st.Orphans...), c.lvOrphans(st)...), Mounts: st.Mounts, Allowed: st.Allowed,
 		Invites: []clusterInvite{}, Nodes: []ClusterNode{}, TangoVolumes: []ClusterTangoVolume{},
 		Presets: gluster.Presets(), Options: gluster.Options(), TLS: c.tlsInfo(st), NodeInfo: map[string]*CtlInfo{},
 		NFS: map[string][]agentproto.NFSClient{}, LVBricks: st.LVBricks, Pools: c.localPools(ctx)}

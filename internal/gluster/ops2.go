@@ -35,7 +35,12 @@ type brickForm struct {
 var brickForms = []brickForm{
 	{"dir", btrfsBrickRe},
 	{"lv", regexp.MustCompile(`^/srv/gluster/([a-z][a-z0-9_]{0,31})/brick$`)},
+	// "snap": después de restaurar una instantánea, GlusterFS deja el volumen corriendo
+	// sobre los LV de la instantánea, que monta él mismo acá (la ruta no lleva el nombre).
+	{"snap", snapBrickRe},
 }
+
+var snapBrickRe = regexp.MustCompile(`^/run/gluster/snaps/[0-9a-f]{32}/brick[0-9]{1,3}/brick$`)
 
 // LVName es el nombre del LV de un brick dedicado (gb_<vol>).
 func LVName(vol string) string { return "gb_" + vol }
@@ -59,10 +64,14 @@ func BrickKind(path string) string {
 	return ""
 }
 
-// brickVolume devuelve el volumen del clúster de una ruta de brick ("" si no es válida).
+// brickVolume devuelve el volumen del clúster de una ruta de brick ("" si no es válida;
+// "*" para un brick restaurado de una instantánea, que vale para cualquier volumen).
 func brickVolume(path string) string {
 	for _, f := range brickForms {
 		if m := f.re.FindStringSubmatch(path); m != nil {
+			if len(m) < 2 {
+				return "*"
+			}
 			return m[1]
 		}
 	}

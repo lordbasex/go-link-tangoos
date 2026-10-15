@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,24 @@ import (
 // dedicado, cuotas, rebalance e instantáneas.
 
 func registerGluster2(r *agentproto.Registry, log *slog.Logger) {
+	// Al arrancar (por ejemplo después de una actualización) el ruleset se regenera con la
+	// versión actual de las reglas (puertos nuevos) y la misma allow-list.
+	if fileExists(gluster.FirewallFile) {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := writeGlusterFirewall(readGlusterAllowed()); err != nil {
+				log.Warn("gluster firewall", "err", err)
+				return
+			}
+			if fileExists(filepath.Join("/etc/systemd/system", gluster.FirewallUnitName)) {
+				if err := reloadUnit(ctx, gluster.FirewallUnitName); err != nil {
+					log.Warn("gluster firewall", "err", err)
+				}
+			}
+		}()
+	}
+
 	agentproto.Register(r, agentproto.OpGlusterTLS, validateGlusterTLS, func(ctx context.Context, a *agentproto.GlusterTLSArgs) (any, *agentproto.Error) {
 		if a.Cert != "" {
 			if err := os.MkdirAll(filepath.Dir(gluster.TLSCertFile), 0o755); err != nil {
@@ -261,14 +280,43 @@ func glusterBrickLVCreate(ctx context.Context, a *agentproto.GlusterBrickLVArgs,
 }
 
 func glusterBrickLVDelete(ctx context.Context, a *agentproto.GlusterBrickLVArgs) (any, *agentproto.Error) {
-	// Nunca el LV de un volumen que todavía existe en el clúster.
+	// Si el volumen todavía existe, solo se borra el LV cuando ningún brick de este nodo lo
+	// usa (por ejemplo después de reemplazarlo o de restaurar una instantánea). Las
+	// instantáneas que salieron de él solo se borran con el volumen ya borrado.
+	exists := false
 	if glusterInstalled() {
-		out, code, err := runGluster(ctx, "volume", "info", a.Vol)
+		info, code, err := runGluster(ctx, "volume", "info", a.Vol)
 		if err == nil {
-			if perr := gluster.ParseResult(out, code); perr == nil {
-				return nil, agentproto.Errf(agentproto.CodeBusy, "el volumen %s todavía existe en el clúster", a.Vol)
-			} else if !gluster.IsNotFound(perr) {
+			perr := gluster.ParseResult(info, code)
+			switch {
+			case perr == nil:
+				exists = true
+				vols, err := gluster.ParseVolumes(info, nil)
+				if err != nil {
+					return nil, glusterAgentErr(err)
+				}
+				for _, v := range vols {
+					for _, b := range v.Bricks {
+						if b.Path == gluster.LVBrickPath(a.Vol) && slices.Contains(a.Self, b.Host) {
+							return nil, agentproto.Errf(agentproto.CodeBusy, "el volumen %s todavía usa este brick (%s)", a.Vol, b.Host)
+						}
+					}
+				}
+			case !gluster.IsNotFound(perr):
 				return nil, glusterAgentErr(perr)
+			}
+		}
+	}
+	if !exists {
+		rows, _ := diskops.GlusterLVs(ctx)
+		for _, r := range rows {
+			if r.VG != a.Pool || r.Vol != a.Vol {
+				continue
+			}
+			for _, child := range r.Children {
+				if err := diskops.RemoveGlusterSnapLV(ctx, a.Pool, child); err != nil {
+					return nil, agentproto.Errf(agentproto.CodeBusy, "instantánea %s: %v", child, err)
+				}
 			}
 		}
 	}
@@ -289,7 +337,7 @@ func glusterLVBricks(ctx context.Context) []agentproto.GlusterLVBrick {
 		return out
 	}
 	for _, r := range rows {
-		out = append(out, agentproto.GlusterLVBrick{Vol: r.Vol, Pool: r.VG, Size: r.Size, Thin: r.Thin, Mounted: isMountedAt(gluster.LVMountPath(r.Vol))})
+		out = append(out, agentproto.GlusterLVBrick{Vol: r.Vol, Pool: r.VG, Size: r.Size, Thin: r.Thin, Mounted: isMountedAt(gluster.LVMountPath(r.Vol)), Snaps: len(r.Children)})
 	}
 	return out
 }

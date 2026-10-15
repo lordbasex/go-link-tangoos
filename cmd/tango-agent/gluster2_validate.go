@@ -90,6 +90,14 @@ func validateGlusterBrickLV(a *agentproto.GlusterBrickLVArgs) *agentproto.Error 
 			return agentproto.Errf(agentproto.CodeInvalidArgs, "tamaño del brick entre 256 MB y 1 PB")
 		}
 	case "delete":
+		if len(a.Self) > 32 {
+			return agentproto.Errf(agentproto.CodeInvalidArgs, "demasiados nombres")
+		}
+		for _, h := range a.Self {
+			if err := gluster.ValidHost(h); err != nil {
+				return badArgs(err)
+			}
+		}
 	default:
 		return agentproto.Errf(agentproto.CodeInvalidArgs, "operación inválida: %q", a.Op)
 	}
