@@ -68,3 +68,19 @@ No session → `UNAUTHENTICATED` on every non-public method; non-admin user → 
 on admin methods; path traversal/symlink escape in Files; payload with extra
 fields/unknown op to the agent; unauthorized peer on the agent socket; secrets absent from
 logs (`journalctl | grep` for test passwords); HTTP security headers; login rate limit.
+
+## Storage pools (ADR 0011) — `make e2e-storage` + Playwright
+
+Uses only free lab disks: S3, S6 (2 GB), M1, M2 (4 GB), C1 and C2 (2 GB virtual SSDs, `ssd=1`) and KEY (1 GB with a FAT
+partition, stands in for a USB key: the cloud kernel has no `usb-storage`).
+
+| # | Case | Disks | Checks |
+|---|---|---|---|
+| 11 | RAID 5 pool with two volumes (Btrfs 1.5 GB + ext4 1 GB) | S3+S6+M1 | plan note about hybrid RAID, `NO_SPACE` for a third, folder + upload + tangod restart, `POOL_NOT_EMPTY`, delete volumes and pool, disks free |
+| 12 | Hybrid-1 with 2 + 2 + 4 GB | S3+S6+M1 | tiers RAID 5 (4 GB) + reserved 2 GB, M1 with 2 GPT partitions `tg-<pool>-t*` |
+| 13 | Encrypted volume with passphrase + key file | KEY | lock (unmounted, `/dev/mapper` closed), wrong passphrase → `WRONG_PASSPHRASE`, unlock with the key, with the passphrase, change passphrase (old one rejected), no passphrase in journald, agent journal or `/var/lib/tango*` |
+| 14 | Expand hybrid with one more 4 GB disk | + M2 | plan 8 GB (RAID 5 × 4 + RAID 1), reshape, pool healthy, file intact (sha256) |
+| 15 | Grow the encrypted volume online | — | LV + LUKS + Btrfs grow |
+| 16 | SSD cache: read with 1 SSD, read/write with 2 (RAID 1) | C1, C1+C2 | HDD rejected, cache mode and disks in the volume, remove → SSDs free |
+| 17 | VM reboot with the key plugged in (`TANGO_E2E_REBOOT=1`) | — | volume unlocked and mounted by itself, file intact, pool healthy |
+| 18 | UI: wizard (Hybrid-1 with mixed disks), encrypted volume, lock/unlock, delete (`web/e2e/pools.spec.ts`) | S3+S6+M1 | screenshots `pools-*.png`; plus the demo scenarios `pools`, `hybrid`, `locked` |

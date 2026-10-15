@@ -10,7 +10,7 @@ TangoOS does the same:
  disk A ─┐
  disk B ─┼─ /dev/md/tango-vol1 (RAID1/5/6/10, mdadm, metadata 1.2)
  disk C ─┘        │
-              [optional dm-crypt, LUKS2: planned, not implemented]
+              [LVM + optional LUKS2: storage pools, ADR 0011 and below]
                    │
               Btrfs (single, metadata DUP) ── /volume1
                    ├─ @shares/Familia      (subvolume = shared folder)
@@ -37,9 +37,10 @@ there is no scheduled scrub yet, and native Btrfs RAID1 is not implemented.
 | Basic (1 disk) | ✅ | |
 | RAID1 (2 disks) | ✅ | |
 | RAID5 / RAID6 / RAID10 | | ✅ done in M2.1 (see below) |
-| SHR-style hybrid (disks of different sizes) | | M6. Disks are partitioned into equal-size "slices", one md is built per slice and they are joined with LVM. This is how SHR does it |
-| SSD cache (read) | | evaluate `dm-cache` / `bcache` |
-| Volume encryption (LUKS2) | | M4, unlock with a passphrase or a key file on USB. **Not implemented** |
+| Storage pools (LVM2): several volumes per pool, Btrfs/XFS/ext4, online grow | | ✅ done (ADR 0011, "Storage pools" below) |
+| Hybrid RAID, disks of different sizes (`hybrid1` / `hybrid2`) | | ✅ done: GPT partitions in equal-size tiers, one md per tier, joined with LVM; grows one disk at a time |
+| SSD cache | | ✅ done: lvmcache (`dm-cache`) per volume, read (writethrough, 1–2 SSDs) or read/write (writeback, 2 SSDs in RAID 1) |
+| Volume encryption (LUKS2) | | ✅ done: per volume in a pool, passphrase or key file on a removable device, unlocked by itself at boot when the key is plugged in |
 | iSCSI (LUN on a Btrfs file with `nodatacow`, or LV) | | M4. ✅ LUN on a Btrfs file (LIO over configfs) |
 | ZFS (pool as an alternative to md+Btrfs) | | M6, optional `tangoos-zfs` package |
 
@@ -168,3 +169,46 @@ matrix runs against the lab VM with `make e2e-storage` (`tests/e2e/storage_matri
 
 Quotas, volume encryption (LUKS2), native Btrfs RAID1 (ADR 0004), scheduled scrub, SHR-style hybrid,
 SSD cache, ZFS and replication.
+
+## Storage pools (ADR 0011): what the code does (implemented and tested in VM 108)
+
+- **Model:** disks → md (one array, or one per tier in hybrid RAID) → LVM PV → VG = storage pool → LV = volume →
+  [LUKS2] → Btrfs (default), XFS or ext4. The classic md + Btrfs volumes keep working and are listed as such;
+  from the UI, "Create volume" now creates inside a pool (the classic one is in the window menu).
+- **Names and tags:** the VG has the pool name and the tags `tangoos`, `tg.profile=<profile>`; its md arrays are
+  `<pool>_md<N>` (tier N) and `<pool>_cache<N>`; PVs are tagged `tg.role=data|cache`; LVs carry `tg.fs=`, `tg.enc=luks2`,
+  `tg.key=<FS UUID of the key device>`, `tg.slot=<LUKS slot>`, `tg.cache=read|readwrite`. Everything is on disk:
+  losing `/var/lib/tango` loses nothing.
+- **Hybrid RAID:** `internal/diskops/hybrid.go` computes the tiers (same rules in `web/packages/client/src/protocol-pools.ts`
+  for the wizard), `gpt.go` writes the GPT in Go (partition names `tg-<pool>-t<N>`, type Linux RAID). Before writing the
+  table, the zones of the future partitions are zeroed: otherwise udev reassembles an old md the moment the kernel publishes a
+  partition (found in the lab). Growing: the new disk gets partitions for every tier; 1 → 2 members creates a RAID 1, 2 → 3
+  converts RAID 1 → RAID 5 (`--grow --level=5`) and reshapes, ≥ 3 adds and reshapes; then `pvresize` or `vgextend`.
+  Replacing a disk fails/removes its partition in each md, partitions the new one the same way and adds it.
+- **Volumes:** `lvcreate` only on the data PVs (never on the cache SSDs), `mkfs`, `.mount` unit by filesystem UUID with
+  its `Type=`; Btrfs volumes get `@shares`, `@snapshots`, `@apps`. Grow online: `lvextend` + `cryptsetup resize` +
+  Btrfs resize ioctl / `xfs_growfs` / `resize2fs`. Shrinking is not offered. Deleting a pool volume (`storage.volumes.delete`)
+  unpublishes its folders, unmounts, closes LUKS, drops the cache and does `lvremove`: the disks stay in the pool.
+- **LUKS2:** `luksFormat --type luks2 --pbkdf argon2id`, opened as `/dev/mapper/tgc_<volume>` with `--disable-keyring`
+  (the volume key stays in the device-mapper table, readable only by root, so `cryptsetup resize` does not ask for the
+  passphrase again). Secrets go through stdin or an inherited pipe (`/dev/fd/3`), never argv or a temporary file; the agent
+  journals `lv.create` with the passphrase redacted; tangod never stores it and the audit log skips `passphrase` keys.
+  5 failed unlocks in 10 minutes → `RATE_LIMITED`. A locked volume keeps its `.mount` unit installed but not enabled.
+- **Key device:** any vfat, exFAT or ext4 filesystem outside the system disk, RAID and LVM, not mounted
+  (`storage.keyDevices.list`). The key is 4 KiB from `crypto/rand` in `tangoos-keys/<LUKS UUID>.key`, added as another
+  LUKS slot. The agent mounts the device with a transient systemd `.mount` (`/run/tangoos-key`) only while it reads or
+  writes the file: its seccomp filter has no `mount(2)`. `tangod` tries once per volume and key, every 10 s, to unlock
+  locked volumes whose key device is present (boot with the key plugged in → unlocked by itself).
+- **SSD cache:** `lvcreate` a cache volume on the SSD PV (or on the RAID 1 of two SSDs) and `lvconvert --type cache
+  --cachevol … --cachemode writethrough|writeback`. Removing it is `lvconvert --splitcache` (flushes dirty blocks) +
+  `lvremove` + `vgreduce` + `pvremove` + stop the md + wipe. Hit ratio and dirty blocks come from `lvs` (`cache_*` fields)
+  and are shown in the volume and the Storage widget. Growing a cached volume works with LVM 2.03.31 (tested).
+- **What tangod sees:** `pool.report` from the agent (LVM is exec + root), cached 3 s and invalidated after each operation,
+  joined with sysfs for md state. md arrays that belong to a pool are not listed as volumes; pool disks have `pool` and
+  `role`. Monitoring raises one redundancy alert per pool (`md:<pool id>:degraded`) and the space alerts per volume.
+- **Packages:** `lvm2`, `cryptsetup-bin`, `thin-provisioning-tools` (`cache_check`) are dependencies, `xfsprogs` recommended;
+  `/usr/lib/modules-load.d/tangoos.conf` loads `dm_crypt`, `dm_cache`, `dm_cache_smq` at boot (the agent runs with
+  `ProtectKernelModules=yes`, so LVM cannot `modprobe` them; found in the lab).
+- **Limits today:** an LV-backed iSCSI LUN is not offered (LUNs are still files on Btrfs); hybrid growth requires the new
+  disk to be at least as large as the largest one; one SSD cache per volume; the key file stays on the device when the key
+  slot is removed (it no longer opens anything).

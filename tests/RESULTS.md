@@ -173,3 +173,39 @@ In addition, `DownloadRange` (range downloads and downloads from snapshots) was 
 ## Lab state at the end
 
 `volume1` RAID 1 (D1+D2) and `volume2` RAID 5 (S1, S2, S4, S5) healthy · folders Familia, Fotos and TimeMachine · users `admin` and `sofia` (`e2etester` deleted with `users.delete`) · apps Jellyfin and Uptime Kuma running · no iSCSI targets · Familia's trash empty · free disks S3, S6, M1, M2, D3, D4 with no signatures. `open-iscsi` was left installed on the VM (used by the iSCSI suite). The NFS export of Familia to 172.17.0.46 predates this run (M4 test with VM 109).
+
+## Storage pools: LVM2, hybrid RAID, LUKS2, SSD cache (ADR 0011) — 2026-10-15
+
+Branch `feat/storage-pools`, VM 108 with Debian 13 (kernel 6.12 cloud), `lvm2` 2.03.31, `cryptsetup` 2.7.5. Free lab disks
+only; three virtual disks added for this suite (Proxmox `qm set 108`): C1 and C2 (2 GB, `ssd=1`) and KEY (1 GB, FAT
+partition "LLAVE", stands in for a USB key because the cloud kernel has no `usb-storage`).
+
+| Test | Where | Result |
+|---|---|---|
+| `go test ./internal/diskops` (hybrid tiers: 2+2+4, 2+4+4, 2+2+4+4, 1+10, 2+4+8+8, Hybrid-2 cases, 1 % merge, growth; GPT round trip 512/4096, rejects; names, tags, XFS/ext4/LUKS/FAT UUIDs) | Mac | ok |
+| `go test ./cmd/tango-agent` (validation of every new op, passphrase redacted for the journal) | Mac | ok |
+| `go test ./internal/storage` (pool volumes, locked state, cache hit ratio, pool disks, stale md node not listed) | Mac | ok |
+| `go test ./internal/api` (pool plan hybrid/RAID, names, `NO_SPACE`, passphrase not in any state file, 5 failed unlocks → `RATE_LIMITED`, auto-unlock once per key, cache rules, `POOL_NOT_EMPTY`) | Mac | ok |
+| `npm test` (same tier cases in TS + demo flows) | Mac | 108/108 |
+| Agent ops by hand (`pool.create` hybrid, `lv.create` Btrfs and encrypted XFS + key, lock/unlock with key and passphrase, passphrase change, read cache 1 SSD, read/write cache 2 SSDs, grow cached + encrypted volume, expand hybrid, replace disk, delete) | VM 108 | ok after the fixes below |
+| `TestPoolRAID5TwoVolumes` (row 11) | VM 108 | **pass** (44 s) |
+| `TestPoolHybridLUKSCache` with `TANGO_E2E_REBOOT=1` (rows 12–17) | VM 108 | **pass** (4 min 17 s, VM reboot included: unlocked by itself with the key plugged in) |
+| `web/e2e/pools.spec.ts` (row 18: demo + real wizard, encrypted volume, lock/unlock, delete) | VM 108 | **pass** (45 s), screenshots `tests/e2e-ui/artifacts/pools-*.png` |
+
+Findings fixed while testing:
+
+1. LVM only tags PVs that are already in a VG: tags are set after `vgcreate`/`vgextend`.
+2. An undone creation left md superblocks inside the future partitions; writing the same GPT again made udev reassemble the
+   old array (`Array name … is in use`). Now the partition zones are zeroed before writing the table, and undo zeroes the
+   superblocks.
+3. `cryptsetup resize` asked for the passphrase again (volume key in the kernel keyring of the process that opened it):
+   volumes are opened with `--disable-keyring`.
+4. `lvconvert --type cache` failed: LVM runs `modprobe dm-cache` and the agent has `ProtectKernelModules=yes`. The package now
+   ships `modules-load.d/tangoos.conf` (and the postinstall loads them once).
+5. An LV with two segments showed up twice in `pool.report`: rows are merged by VG/LV.
+6. After wiping a disk that had just left an md, the kernel kept showing its old partitions: `BLKRRPART` is retried.
+7. A failed `mdadm --create` leaves an empty md node: the inventory no longer lists it as a volume.
+
+Lab state at the end: `volume1` (D1+D2) and `volume2` (S1, S2, S4, S5) healthy and mounted; no pools left; S3, S6, M1, M2,
+D3, D4, C1, C2 free; KEY with its FAT partition (holds stale key files of deleted test volumes, harmless). VM 108 now has
+`lvm2`, `cryptsetup-bin`, `thin-provisioning-tools`, `xfsprogs` and `dosfstools` installed.

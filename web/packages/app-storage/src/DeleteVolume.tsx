@@ -93,10 +93,14 @@ export function DeleteVolume({ vol, disks, onClose }: { vol: Volume | null; disk
           <h2 className="tg-h2">{done ? `${vol.name} se eliminó` : failed ? `No se pudo eliminar ${vol.name}` : `Eliminando ${vol.name}…`}</h2>
           <p className="tg-muted">
             {done
-              ? "Los discos quedaron libres para un volumen nuevo."
+              ? vol.kind === "pool"
+                ? "Su espacio volvió al grupo de almacenamiento."
+                : "Los discos quedaron libres para un volumen nuevo."
               : failed
                 ? `${job?.detail ?? ""} El volumen puede haber quedado parcialmente desarmado: revisalo en Discos.`
-                : "Se desmonta, se quitan sus carpetas compartidas, se detiene el array y se limpian los discos."}
+                : vol.kind === "pool"
+                  ? "Se desmonta, se quitan sus carpetas compartidas y se borra el volumen lógico. Los discos siguen en el grupo."
+                  : "Se desmonta, se quitan sus carpetas compartidas, se detiene el array y se limpian los discos."}
           </p>
           {!done && !failed && (
             <div className="ts-wiz-progress">
