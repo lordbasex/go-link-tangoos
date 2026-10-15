@@ -276,7 +276,7 @@ func TestUnits(t *testing.T) {
 		t.Error(MountUnitName("gv_tel"))
 	}
 	r := FirewallRules([]string{"172.17.0.49", "172.17.0.50", "172.17.0.49", "fe80::2", "nope"})
-	for _, s := range []string{"elements = { 172.17.0.49, 172.17.0.50 }", "elements = { fe80::2 }", "tcp dport { 24007, 24008, 49152-60999 } drop", "delete table inet tango_gluster"} {
+	for _, s := range []string{"elements = { 172.17.0.49, 172.17.0.50 }", "elements = { fe80::2 }", "tcp dport { 24007, 24008, 49152-60999 } reject with tcp reset", "delete table inet tango_gluster"} {
 		if !strings.Contains(r, s) {
 			t.Errorf("reglas sin %q:\n%s", s, r)
 		}

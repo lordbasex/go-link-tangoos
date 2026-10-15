@@ -108,7 +108,8 @@ func FirewallRules(allowed []string) string {
 	b.WriteString("\t\tiif \"lo\" accept\n")
 	fmt.Fprintf(&b, "\t\ttcp dport %s ip saddr @peers4 accept\n", ports)
 	fmt.Fprintf(&b, "\t\ttcp dport %s ip6 saddr @peers6 accept\n", ports)
-	fmt.Fprintf(&b, "\t\ttcp dport %s drop\n", ports)
+	// reject y no drop: un nodo no invitado falla al instante en vez de esperar el timeout.
+	fmt.Fprintf(&b, "\t\ttcp dport %s reject with tcp reset\n", ports)
 	fmt.Fprintf(&b, "\t\tudp dport %d drop\n", PortGlusterd)
 	b.WriteString("\t}\n}\n")
 	return b.String()

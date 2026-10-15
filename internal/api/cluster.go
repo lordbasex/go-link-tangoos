@@ -1,0 +1,633 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"os"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/lordbasex/go-link-tangoos/internal/gluster"
+	"github.com/lordbasex/go-link-tangoos/internal/jobs"
+	"github.com/lordbasex/go-link-tangoos/pkg/agentproto"
+	"github.com/lordbasex/go-link-tangoos/pkg/rtcrpc"
+)
+
+// Clúster GlusterFS (protocol/README.md §16, ADR 0011). tangod decide quién puede
+// hablar con glusterd (invitaciones + nodos del clúster → firewall del agente),
+// resuelve nombres (el agente no tiene red), mide la latencia entre nodos y avisa de
+// split-brain, curación pendiente y nodos caídos.
+
+type clusterAgent interface {
+	GlusterInstall(ctx context.Context, a agentproto.GlusterInstallArgs) error
+	GlusterFirewall(ctx context.Context, allowed []string) error
+	GlusterStatus(ctx context.Context, self string) (*agentproto.GlusterStatusResult, error)
+	GlusterPeer(ctx context.Context, a agentproto.GlusterPeerArgs) error
+	GlusterVolumeCreate(ctx context.Context, a agentproto.GlusterVolumeCreateArgs) error
+	GlusterVolumeAction(ctx context.Context, a agentproto.GlusterVolumeActionArgs) error
+	GlusterVolumeOptions(ctx context.Context, a agentproto.GlusterVolumeOptionsArgs) error
+	GlusterHeal(ctx context.Context, a agentproto.GlusterHealArgs) error
+	GlusterBricks(ctx context.Context, a agentproto.GlusterBricksArgs) error
+	GlusterMount(ctx context.Context, a agentproto.GlusterMountArgs) error
+	GlusterBrickCleanup(ctx context.Context, a agentproto.GlusterBrickCleanArgs) error
+}
+
+// InviteTTL es cuánto queda abierta una invitación (la confirmación de este lado).
+const InviteTTL = 15 * time.Minute
+
+type clusterInvite struct {
+	Host    string    `json:"host"`
+	Addrs   []string  `json:"addrs"`
+	Expires time.Time `json:"expires"`
+}
+
+type clusterAPI struct {
+	m  *m4API
+	ag clusterAgent
+
+	mu      sync.Mutex
+	invites map[string]clusterInvite // host → invitación
+	latency map[string]int           // host → ms (-1 sin respuesta)
+	alerted map[string]bool          // avisos ya mandados (se limpian al resolverse)
+	pending map[string]int           // vueltas seguidas con curación pendiente
+	last    string                   // último estado publicado (para cluster.changed)
+}
+
+// ClusterNode es un nodo como lo ve la app (el peer de GlusterFS + latencia).
+type ClusterNode struct {
+	gluster.Peer
+	LatencyMs int `json:"latencyMs"`
+}
+
+// ClusterTangoVolume es un volumen de este NAS donde puede ir un brick.
+type ClusterTangoVolume struct {
+	Name  string `json:"name"`
+	Mount string `json:"mount"`
+	Free  uint64 `json:"free"`
+}
+
+// ClusterStatus es la respuesta de cluster.status.
+type ClusterStatus struct {
+	Installed    bool                          `json:"installed"`
+	Running      bool                          `json:"running"`
+	Version      string                        `json:"version,omitempty"`
+	Error        string                        `json:"error,omitempty"`
+	Self         string                        `json:"self"`
+	SelfAddrs    []string                      `json:"selfAddrs"`
+	Nodes        []ClusterNode                 `json:"nodes"`
+	Volumes      []gluster.Volume              `json:"volumes"`
+	Orphans      []agentproto.GlusterOrphan    `json:"orphans"`
+	Mounts       []agentproto.GlusterMountInfo `json:"mounts"`
+	Allowed      []string                      `json:"allowed"`
+	Invites      []clusterInvite               `json:"invites"`
+	TangoVolumes []ClusterTangoVolume          `json:"tangoVolumes"`
+	Presets      []gluster.Preset              `json:"presets"`
+	Options      []gluster.Option              `json:"options"`
+}
+
+func (m *m4API) registerCluster(r *rtcrpc.Router) {
+	ag, ok := m.d.Agent.(clusterAgent)
+	if !ok {
+		return
+	}
+	c := &clusterAPI{m: m, ag: ag, invites: map[string]clusterInvite{}, latency: map[string]int{}, alerted: map[string]bool{}, pending: map[string]int{}}
+	a := m.a
+	admin := func(fn func(ctx context.Context, p json.RawMessage) (any, error)) rtcrpc.HandlerFunc {
+		return func(ctx context.Context, s *rtcrpc.Session, p json.RawMessage) (any, error) {
+			if err := a.requireAdmin(s); err != nil {
+				return nil, err
+			}
+			return fn(ctx, p)
+		}
+	}
+	decode := func(p json.RawMessage, v any) error {
+		dec := json.NewDecoder(strings.NewReader(string(p)))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(v); err != nil {
+			return rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "parámetros inválidos: %v", err)
+		}
+		return nil
+	}
+
+	r.Handle("cluster.status", admin(func(ctx context.Context, _ json.RawMessage) (any, error) {
+		return c.status(ctx)
+	}))
+	r.Handle("cluster.install", admin(func(ctx context.Context, _ json.RawMessage) (any, error) {
+		j := a.d.Jobs.Start("cluster.install", "Instalando GlusterFS", "", func(ctx context.Context, h *jobs.Handle) error {
+			defer c.publish(context.WithoutCancel(ctx))
+			return m.queued(h, func() error {
+				if err := c.ag.GlusterInstall(ctx, agentproto.GlusterInstallArgs{OpID: h.ID(), Allowed: c.desiredAllowed(nil)}); err != nil {
+					return agentErr(err)
+				}
+				return m.follow(ctx, h)
+			})
+		}, nil)
+		return map[string]string{"job": j.ID}, nil
+	}))
+
+	// Invitar: este nodo acepta que el otro le hable (la mitad de la confirmación).
+	r.Handle("cluster.invite", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q struct {
+			Host string `json:"host"`
+		}
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		inv, err := c.invite(ctx, q.Host)
+		if err != nil {
+			return nil, err
+		}
+		return inv, c.syncFirewall(ctx, nil)
+	}))
+	r.Handle("cluster.invite.cancel", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q struct {
+			Host string `json:"host"`
+		}
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		c.mu.Lock()
+		delete(c.invites, q.Host)
+		c.mu.Unlock()
+		return struct{}{}, c.syncFirewall(ctx, nil)
+	}))
+
+	// Agregar un nodo: abre este lado y hace el peer probe. El otro nodo tiene que
+	// haberlo invitado (si no, su firewall corta la conexión y el probe falla).
+	r.Handle("cluster.peer.add", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q struct {
+			Host string `json:"host"`
+		}
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		if _, err := c.invite(ctx, q.Host); err != nil {
+			return nil, err
+		}
+		if err := c.syncFirewall(ctx, nil); err != nil {
+			return nil, err
+		}
+		if err := c.ag.GlusterPeer(ctx, agentproto.GlusterPeerArgs{Action: "probe", Host: q.Host}); err != nil {
+			if strings.Contains(err.Error(), "Probe returned with Transport endpoint is not connected") || strings.Contains(err.Error(), "not connected") {
+				return nil, rtcrpc.Errorf("PEER_UNREACHABLE", "%s no respondió: invitá a este NAS desde la app Clúster de %s y probá de nuevo", q.Host, q.Host)
+			}
+			return nil, agentErr(err)
+		}
+		c.publish(ctx)
+		return struct{}{}, nil
+	}))
+	r.Handle("cluster.peer.remove", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q struct {
+			Host string `json:"host"`
+		}
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		if err := c.ag.GlusterPeer(ctx, agentproto.GlusterPeerArgs{Action: "detach", Host: q.Host}); err != nil {
+			return nil, agentErr(err)
+		}
+		c.mu.Lock()
+		delete(c.invites, q.Host)
+		c.mu.Unlock()
+		err := c.syncFirewall(ctx, nil)
+		c.publish(ctx)
+		return struct{}{}, err
+	}))
+
+	r.Handle("cluster.volume.create", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q struct {
+			Name    string            `json:"name"`
+			Replica int               `json:"replica"`
+			Arbiter bool              `json:"arbiter"`
+			Preset  string            `json:"preset"`
+			Options map[string]string `json:"options"`
+			Bricks  []struct {
+				Host        string `json:"host"`
+				TangoVolume string `json:"tangoVolume"`
+			} `json:"bricks"`
+			Start bool `json:"start"`
+		}
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		opts := map[string]string{}
+		if q.Preset != "" {
+			pr, ok := gluster.PresetByID(q.Preset)
+			if !ok {
+				return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "preset desconocido: %q", q.Preset)
+			}
+			for k, v := range pr.Options {
+				opts[k] = v
+			}
+		}
+		for k, v := range q.Options {
+			opts[k] = v
+		}
+		args := agentproto.GlusterVolumeCreateArgs{Name: q.Name, Layout: gluster.Layout{Replica: q.Replica, Arbiter: q.Arbiter}, Options: opts, Start: q.Start}
+		for _, b := range q.Bricks {
+			args.Bricks = append(args.Bricks, gluster.Brick{Host: b.Host, Path: gluster.BrickPath(b.TangoVolume, q.Name)})
+		}
+		if err := gluster.ValidateCreate(args.Name, args.Layout, args.Bricks); err != nil {
+			return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "%s", err.Error())
+		}
+		if err := gluster.ValidOptions(opts); err != nil {
+			return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "%s", err.Error())
+		}
+		j := a.d.Jobs.Start("cluster.volume.create", "Creando el volumen "+q.Name, args.Layout.TypeName(len(args.Bricks)), func(ctx context.Context, h *jobs.Handle) error {
+			defer c.publish(context.WithoutCancel(ctx))
+			h.Update(0.2, "Creando los bricks en cada nodo")
+			if err := c.ag.GlusterVolumeCreate(ctx, args); err != nil {
+				return agentErr(err)
+			}
+			return nil
+		}, nil)
+		return map[string]string{"job": j.ID}, nil
+	}))
+
+	r.Handle("cluster.volume.action", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q agentproto.GlusterVolumeActionArgs
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		if err := c.ag.GlusterVolumeAction(ctx, q); err != nil {
+			return nil, agentErr(err)
+		}
+		c.publish(ctx)
+		return struct{}{}, nil
+	}))
+	r.Handle("cluster.volume.options", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q agentproto.GlusterVolumeOptionsArgs
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		if err := c.ag.GlusterVolumeOptions(ctx, q); err != nil {
+			return nil, agentErr(err)
+		}
+		c.publish(ctx)
+		return struct{}{}, nil
+	}))
+	r.Handle("cluster.volume.heal", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q agentproto.GlusterHealArgs
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		if err := c.ag.GlusterHeal(ctx, q); err != nil {
+			return nil, agentErr(err)
+		}
+		return struct{}{}, nil
+	}))
+	r.Handle("cluster.volume.bricks", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q agentproto.GlusterBricksArgs
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		if err := c.ag.GlusterBricks(ctx, q); err != nil {
+			return nil, agentErr(err)
+		}
+		c.publish(ctx)
+		return struct{}{}, nil
+	}))
+	r.Handle("cluster.volume.info", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q struct {
+			Name string `json:"name"`
+		}
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		st, err := c.ag.GlusterStatus(ctx, c.self())
+		if err != nil {
+			return nil, agentErr(err)
+		}
+		for _, v := range st.Volumes {
+			if v.Name == q.Name {
+				return map[string]string{"text": gluster.InfoText(v)}, nil
+			}
+		}
+		return nil, rtcrpc.Errorf("CLUSTER_VOLUME_NOT_FOUND", "no existe el volumen %s", q.Name)
+	}))
+
+	// Montar en /cluster/<vol> y, opcional, compartirlo por SMB.
+	r.Handle("cluster.volume.mount", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q struct {
+			Name    string   `json:"name"`
+			Enabled bool     `json:"enabled"`
+			Share   string   `json:"share"`
+			Comment string   `json:"comment"`
+			RW      []string `json:"rw"`
+			RO      []string `json:"ro"`
+		}
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		if q.Share != "" {
+			for _, sh := range a.listShares(ctx) {
+				if strings.EqualFold(sh.Name, q.Share) {
+					return nil, rtcrpc.Errorf("SHARE_EXISTS", "ya hay una carpeta compartida llamada %s", sh.Name)
+				}
+			}
+		}
+		args := agentproto.GlusterMountArgs{Name: q.Name, Enabled: q.Enabled, Share: q.Share, Comment: q.Comment, RW: q.RW, RO: q.RO}
+		if q.Enabled {
+			args.Backups = c.backupServers(ctx)
+		}
+		title := "Montando " + q.Name
+		if !q.Enabled {
+			title = "Desmontando " + q.Name
+		}
+		j := a.d.Jobs.Start("cluster.volume.mount", title, "/cluster/"+q.Name, func(ctx context.Context, h *jobs.Handle) error {
+			defer c.publish(context.WithoutCancel(ctx))
+			if err := c.ag.GlusterMount(ctx, args); err != nil {
+				return agentErr(err)
+			}
+			return nil
+		}, nil)
+		return map[string]string{"job": j.ID}, nil
+	}))
+	r.Handle("cluster.brick.cleanup", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
+		var q struct {
+			TangoVolume string `json:"tangoVolume"`
+			Name        string `json:"name"`
+		}
+		if err := decode(p, &q); err != nil {
+			return nil, err
+		}
+		if err := c.ag.GlusterBrickCleanup(ctx, agentproto.GlusterBrickCleanArgs{TangoVolume: strings.TrimPrefix(q.TangoVolume, "/"), Name: q.Name}); err != nil {
+			return nil, agentErr(err)
+		}
+		c.publish(ctx)
+		return struct{}{}, nil
+	}))
+
+	go c.loop()
+}
+
+func (c *clusterAPI) self() string {
+	h, _ := os.Hostname()
+	return strings.ToLower(h)
+}
+
+// listShares es la lista de carpetas compartidas (para no repetir nombres).
+func (a *API) listShares(ctx context.Context) []Share {
+	if a.storage == nil {
+		return nil
+	}
+	return a.storage.shares(ctx)
+}
+
+// resolve devuelve las IP de un nodo (una IP se devuelve tal cual).
+func resolve(ctx context.Context, host string) ([]string, error) {
+	if err := gluster.ValidHost(host); err != nil {
+		return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "%s", err.Error())
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return []string{ip.String()}, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil || len(ips) == 0 {
+		return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "no se encontró %s en la red (usá su IP o agregalo a /etc/hosts)", host)
+	}
+	var out []string
+	for _, ip := range ips {
+		if !ip.IP.IsLoopback() {
+			out = append(out, ip.IP.String())
+		}
+	}
+	return out, nil
+}
+
+func (c *clusterAPI) invite(ctx context.Context, host string) (clusterInvite, error) {
+	addrs, err := resolve(ctx, host)
+	if err != nil {
+		return clusterInvite{}, err
+	}
+	inv := clusterInvite{Host: host, Addrs: addrs, Expires: time.Now().Add(InviteTTL).UTC()}
+	c.mu.Lock()
+	c.invites[host] = inv
+	c.mu.Unlock()
+	return inv, nil
+}
+
+// desiredAllowed: invitaciones vigentes + nodos del clúster (resueltos).
+func (c *clusterAPI) desiredAllowed(st *agentproto.GlusterStatusResult) []string {
+	set := map[string]bool{}
+	now := time.Now()
+	c.mu.Lock()
+	for h, inv := range c.invites {
+		if now.After(inv.Expires) {
+			delete(c.invites, h)
+			continue
+		}
+		for _, a := range inv.Addrs {
+			set[a] = true
+		}
+	}
+	c.mu.Unlock()
+	if st != nil {
+		for _, p := range st.Peers {
+			if p.Self {
+				continue
+			}
+			for _, h := range append([]string{p.Host}, p.Hostnames...) {
+				if addrs, err := resolve(context.Background(), h); err == nil {
+					for _, a := range addrs {
+						set[a] = true
+					}
+				}
+			}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for a := range set {
+		out = append(out, a)
+	}
+	v4, v6 := gluster.SplitAddrs(out)
+	return append(v4, v6...)
+}
+
+// syncFirewall lleva la allow-list del agente a la deseada (si GlusterFS ya está).
+func (c *clusterAPI) syncFirewall(ctx context.Context, st *agentproto.GlusterStatusResult) error {
+	if st == nil {
+		var err error
+		if st, err = c.ag.GlusterStatus(ctx, c.self()); err != nil {
+			return agentErr(err)
+		}
+	}
+	if !st.Installed {
+		return nil
+	}
+	want := c.desiredAllowed(st)
+	have := append([]string{}, st.Allowed...)
+	v4, v6 := gluster.SplitAddrs(have)
+	if slices.Equal(want, append(v4, v6...)) {
+		return nil
+	}
+	if err := c.ag.GlusterFirewall(ctx, want); err != nil {
+		return agentErr(err)
+	}
+	return nil
+}
+
+func (c *clusterAPI) backupServers(ctx context.Context) []string {
+	st, err := c.ag.GlusterStatus(ctx, c.self())
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range st.Peers {
+		if !p.Self {
+			out = append(out, p.Host)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (c *clusterAPI) status(ctx context.Context) (*ClusterStatus, error) {
+	st, err := c.ag.GlusterStatus(ctx, c.self())
+	if err != nil {
+		return nil, agentErr(err)
+	}
+	out := &ClusterStatus{Installed: st.Installed, Running: st.Running, Version: st.Version, Error: st.Error, Self: c.self(),
+		SelfAddrs: localAddrs(), Volumes: st.Volumes, Orphans: st.Orphans, Mounts: st.Mounts, Allowed: st.Allowed,
+		Invites: []clusterInvite{}, Nodes: []ClusterNode{}, TangoVolumes: []ClusterTangoVolume{},
+		Presets: gluster.Presets(), Options: gluster.Options()}
+	c.mu.Lock()
+	now := time.Now()
+	for _, inv := range c.invites {
+		if now.Before(inv.Expires) {
+			out.Invites = append(out.Invites, inv)
+		}
+	}
+	for _, p := range st.Peers {
+		lat, ok := c.latency[p.Host]
+		if p.Self {
+			lat = 0
+		} else if !ok {
+			lat = -1
+		}
+		out.Nodes = append(out.Nodes, ClusterNode{Peer: p, LatencyMs: lat})
+	}
+	c.mu.Unlock()
+	sort.Slice(out.Invites, func(i, j int) bool { return out.Invites[i].Host < out.Invites[j].Host })
+	if inv := c.m.a.d.Inventory; inv != nil {
+		if vols, err := inv.Volumes(ctx); err == nil {
+			for _, v := range vols {
+				if v.Mount != "" {
+					out.TangoVolumes = append(out.TangoVolumes, ClusterTangoVolume{Name: v.Name, Mount: v.Mount, Free: v.Size - v.Used})
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+func localAddrs() []string {
+	var out []string
+	ifs, _ := net.InterfaceAddrs()
+	for _, a := range ifs {
+		if n, ok := a.(*net.IPNet); ok && !n.IP.IsLoopback() && !n.IP.IsLinkLocalUnicast() {
+			out = append(out, n.IP.String())
+		}
+	}
+	return out
+}
+
+// publish manda cluster.changed si el estado cambió.
+func (c *clusterAPI) publish(ctx context.Context) {
+	st, err := c.status(ctx)
+	if err != nil {
+		return
+	}
+	b, _ := json.Marshal(st)
+	c.mu.Lock()
+	changed := string(b) != c.last
+	c.last = string(b)
+	c.mu.Unlock()
+	if changed {
+		c.m.a.d.Hub.Publish("cluster.changed", st)
+	}
+}
+
+// loop: firewall al día, latencia y avisos. Solo trabaja si GlusterFS está instalado.
+func (c *clusterAPI) loop() {
+	t := time.NewTicker(20 * time.Second)
+	defer t.Stop()
+	for range t.C {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		c.tick(ctx)
+		cancel()
+	}
+}
+
+func (c *clusterAPI) tick(ctx context.Context) {
+	st, err := c.ag.GlusterStatus(ctx, c.self())
+	if err != nil || !st.Installed {
+		return
+	}
+	if err := c.syncFirewall(ctx, st); err != nil {
+		c.m.a.d.Log.Warn("cluster: firewall", "err", err)
+	}
+	if !st.Running {
+		return
+	}
+	lat := map[string]int{}
+	for _, p := range st.Peers {
+		if p.Self {
+			continue
+		}
+		start := time.Now()
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(p.Host, strconv.Itoa(gluster.PortGlusterd)), 2*time.Second)
+		if err != nil {
+			lat[p.Host] = -1
+			continue
+		}
+		_ = conn.Close()
+		lat[p.Host] = int(time.Since(start).Milliseconds())
+	}
+	c.mu.Lock()
+	c.latency = lat
+	c.mu.Unlock()
+	c.alerts(st)
+	c.publish(ctx)
+}
+
+// alerts avisa una vez por problema y vuelve a avisar si se repite después de resolverse.
+func (c *clusterAPI) alerts(st *agentproto.GlusterStatusResult) {
+	notify := func(key, level, title, body string, active bool) {
+		c.mu.Lock()
+		was := c.alerted[key]
+		c.alerted[key] = active
+		c.mu.Unlock()
+		if active && !was {
+			c.m.a.Notify(Notice{Level: level, App: "tango.cluster", Title: title, Body: body,
+				Action: &Action{Label: "Abrir Clúster", App: "tango.cluster"}})
+		}
+	}
+	for _, p := range st.Peers {
+		if !p.Self {
+			notify("peer:"+p.Host, "warning", "Nodo del clúster sin conexión", fmt.Sprintf("%s no responde. Los volúmenes siguen andando mientras haya quórum.", p.Host), !p.Connected)
+		}
+	}
+	for _, v := range st.Volumes {
+		notify("split:"+v.Name, "error", "Split-brain en "+v.Name, fmt.Sprintf("%d archivos tienen versiones distintas en cada copia y GlusterFS no puede elegir sola. Revisalos en la app Clúster.", v.SplitBrain), v.SplitBrain > 0)
+		c.mu.Lock()
+		if v.HealPending > 0 {
+			c.pending[v.Name]++
+		} else {
+			c.pending[v.Name] = 0
+		}
+		long := c.pending[v.Name] >= 9 // ~3 minutos seguidos
+		c.mu.Unlock()
+		notify("heal:"+v.Name, "warning", "Curación pendiente en "+v.Name, fmt.Sprintf("%d entradas siguen sin copiarse a todas las réplicas.", v.HealPending), long)
+		offline := len(v.Bricks) - v.Online
+		notify("bricks:"+v.Name, "warning", "Bricks sin conexión en "+v.Name, fmt.Sprintf("%d de %d bricks no responden.", offline, len(v.Bricks)), v.Status == "Started" && offline > 0)
+	}
+}
