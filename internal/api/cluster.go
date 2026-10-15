@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/lordbasex/go-link-tangoos/internal/clusterpki"
 	"github.com/lordbasex/go-link-tangoos/internal/gluster"
 	"github.com/lordbasex/go-link-tangoos/internal/jobs"
 	"github.com/lordbasex/go-link-tangoos/pkg/agentproto"
@@ -47,6 +48,13 @@ type clusterInvite struct {
 	Host    string    `json:"host"`
 	Addrs   []string  `json:"addrs"`
 	Expires time.Time `json:"expires"`
+	// Code es el código de unión que muestra este NAS (lo escribe el otro). Fingerprint es
+	// la huella de la clave de este NAS: el otro la muestra al unirlo, para comparar.
+	Code        string `json:"code,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	// Joined es la huella de la CA del clúster al que se unió por esta invitación.
+	Joined string `json:"joined,omitempty"`
+	Fails  int    `json:"-"`
 }
 
 type clusterAPI struct {
@@ -72,6 +80,10 @@ type clusterAPI struct {
 
 	// heal: último `heal info` por volumen (lo pide el bucle; tarda segundos).
 	heal map[string][]gluster.HealBrick
+
+	pki   *clusterPKI             // CA y certificado de este nodo (cluster_ctl.go)
+	joins map[string]*clusterJoin // uniones preparadas esperando la confirmación de la huella
+	infos map[string]*CtlInfo     // lo que cuenta cada nodo por el canal de control
 }
 
 const (
@@ -115,21 +127,26 @@ type ClusterTangoVolume struct {
 
 // ClusterStatus es la respuesta de cluster.status.
 type ClusterStatus struct {
-	Installed    bool                          `json:"installed"`
-	Running      bool                          `json:"running"`
-	Version      string                        `json:"version,omitempty"`
-	Error        string                        `json:"error,omitempty"`
-	Self         string                        `json:"self"`
-	SelfAddrs    []string                      `json:"selfAddrs"`
-	Nodes        []ClusterNode                 `json:"nodes"`
-	Volumes      []gluster.Volume              `json:"volumes"`
-	Orphans      []agentproto.GlusterOrphan    `json:"orphans"`
-	Mounts       []agentproto.GlusterMountInfo `json:"mounts"`
-	Allowed      []string                      `json:"allowed"`
-	Invites      []clusterInvite               `json:"invites"`
-	TangoVolumes []ClusterTangoVolume          `json:"tangoVolumes"`
-	Presets      []gluster.Preset              `json:"presets"`
-	Options      []gluster.Option              `json:"options"`
+	Installed    bool                              `json:"installed"`
+	Running      bool                              `json:"running"`
+	Version      string                            `json:"version,omitempty"`
+	Error        string                            `json:"error,omitempty"`
+	Self         string                            `json:"self"`
+	SelfAddrs    []string                          `json:"selfAddrs"`
+	Nodes        []ClusterNode                     `json:"nodes"`
+	Volumes      []gluster.Volume                  `json:"volumes"`
+	Orphans      []agentproto.GlusterOrphan        `json:"orphans"`
+	Mounts       []agentproto.GlusterMountInfo     `json:"mounts"`
+	Allowed      []string                          `json:"allowed"`
+	Invites      []clusterInvite                   `json:"invites"`
+	TangoVolumes []ClusterTangoVolume              `json:"tangoVolumes"`
+	Presets      []gluster.Preset                  `json:"presets"`
+	Options      []gluster.Option                  `json:"options"`
+	TLS          ClusterTLSInfo                    `json:"tls"`
+	NodeInfo     map[string]*CtlInfo               `json:"nodeInfo"`
+	NFS          map[string][]agentproto.NFSClient `json:"nfs"`
+	LVBricks     []agentproto.GlusterLVBrick       `json:"lvBricks"`
+	Pools        []CtlPool                         `json:"pools"`
 }
 
 func (m *m4API) registerCluster(r *rtcrpc.Router) {
@@ -137,7 +154,12 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 	if !ok {
 		return
 	}
-	c := &clusterAPI{m: m, ag: ag, invites: map[string]clusterInvite{}, latency: map[string]int{}, alerted: map[string]bool{}, pending: map[string]int{}, heal: map[string][]gluster.HealBrick{}}
+	c := &clusterAPI{m: m, ag: ag, invites: map[string]clusterInvite{}, latency: map[string]int{}, alerted: map[string]bool{}, pending: map[string]int{}, heal: map[string][]gluster.HealBrick{},
+		joins: map[string]*clusterJoin{}, infos: map[string]*CtlInfo{}}
+	if m.a.d.StateDir != "" {
+		c.pki = newClusterPKI(m.a.d.StateDir)
+	}
+	m.cluster = c
 	a := m.a
 	admin := func(fn func(ctx context.Context, p json.RawMessage) (any, error)) rtcrpc.HandlerFunc {
 		return func(ctx context.Context, s *rtcrpc.Session, p json.RawMessage) (any, error) {
@@ -184,6 +206,13 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 		if err != nil {
 			return nil, err
 		}
+		if c.pki != nil {
+			inv.Code = clusterpki.NewJoinCode()
+			inv.Fingerprint = c.pki.nodeFingerprint()
+			c.mu.Lock()
+			c.invites[q.Host] = inv
+			c.mu.Unlock()
+		}
 		return inv, c.syncFirewall(ctx, nil)
 	}))
 	r.Handle("cluster.invite.cancel", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
@@ -199,30 +228,9 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 		return struct{}{}, c.syncFirewall(ctx, nil)
 	}))
 
-	// Agregar un nodo: abre este lado y hace el peer probe. El otro nodo tiene que
-	// haberlo invitado (si no, su firewall corta la conexión y el probe falla).
-	r.Handle("cluster.peer.add", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
-		var q struct {
-			Host string `json:"host"`
-		}
-		if err := decode(p, &q); err != nil {
-			return nil, err
-		}
-		if _, err := c.invite(ctx, q.Host); err != nil {
-			return nil, err
-		}
-		if err := c.syncFirewall(ctx, nil); err != nil {
-			return nil, err
-		}
-		if err := c.ag.GlusterPeer(ctx, agentproto.GlusterPeerArgs{Action: "probe", Host: q.Host}); err != nil {
-			if strings.Contains(err.Error(), "Probe returned with Transport endpoint is not connected") || strings.Contains(err.Error(), "not connected") {
-				return nil, rtcrpc.Errorf("PEER_UNREACHABLE", "%s no respondió: invitá a este NAS desde la app Clúster de %s y probá de nuevo", q.Host, q.Host)
-			}
-			return nil, agentErr(err)
-		}
-		c.publish(ctx)
-		return struct{}{}, nil
-	}))
+	// Agregar un nodo: cluster.peer.prepare (código → huella) y cluster.peer.confirm
+	// (cluster2.go). No hay forma de sumar un nodo sin el código que muestra el invitado.
+
 	r.Handle("cluster.peer.remove", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
 		var q struct {
 			Host string `json:"host"`
@@ -230,29 +238,39 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 		if err := decode(p, &q); err != nil {
 			return nil, err
 		}
+		// El CN del nodo que sale (si responde) para sacarlo de auth.ssl-allow.
+		drop := ""
+		if c.pki != nil && c.pki.signed() {
+			if info, err := c.nodeInfo(ctx, q.Host); err == nil {
+				drop = info.CN
+			}
+		}
 		if err := c.ag.GlusterPeer(ctx, agentproto.GlusterPeerArgs{Action: "detach", Host: q.Host}); err != nil {
 			return nil, agentErr(err)
 		}
 		c.mu.Lock()
 		delete(c.invites, q.Host)
+		delete(c.infos, q.Host)
 		c.mu.Unlock()
 		err := c.syncFirewall(ctx, nil)
+		if c.pki != nil && c.pki.signed() {
+			if e := c.syncSSLAllow(ctx, nil, drop); e != nil && err == nil {
+				err = e
+			}
+		}
 		c.publish(ctx)
 		return struct{}{}, err
 	}))
 
 	r.Handle("cluster.volume.create", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
 		var q struct {
-			Name    string            `json:"name"`
-			Replica int               `json:"replica"`
-			Arbiter bool              `json:"arbiter"`
-			Preset  string            `json:"preset"`
-			Options map[string]string `json:"options"`
-			Bricks  []struct {
-				Host        string `json:"host"`
-				TangoVolume string `json:"tangoVolume"`
-			} `json:"bricks"`
-			Start bool `json:"start"`
+			Name    string             `json:"name"`
+			Replica int                `json:"replica"`
+			Arbiter bool               `json:"arbiter"`
+			Preset  string             `json:"preset"`
+			Options map[string]string  `json:"options"`
+			Bricks  []ClusterBrickSpec `json:"bricks"`
+			Start   bool               `json:"start"`
 		}
 		if err := decode(p, &q); err != nil {
 			return nil, err
@@ -270,11 +288,20 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 		for k, v := range q.Options {
 			opts[k] = v
 		}
-		args := agentproto.GlusterVolumeCreateArgs{Name: q.Name, Layout: gluster.Layout{Replica: q.Replica, Arbiter: q.Arbiter}, Options: opts, Start: q.Start}
+		args := agentproto.GlusterVolumeCreateArgs{Name: q.Name, Layout: gluster.Layout{Replica: q.Replica, Arbiter: q.Arbiter}, Options: opts}
+		// Validación previa con rutas provisorias (los LV dedicados todavía no existen).
+		var draft []gluster.Brick
 		for _, b := range q.Bricks {
-			args.Bricks = append(args.Bricks, gluster.Brick{Host: b.Host, Path: gluster.BrickPath(b.TangoVolume, q.Name)})
+			path := gluster.BrickPath(b.TangoVolume, q.Name)
+			if b.Kind == "lv" {
+				path = gluster.LVBrickPath(q.Name)
+				if b.Pool == "" || b.Size == 0 {
+					return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "brick dedicado en %s: falta el grupo o el tamaño", b.Host)
+				}
+			}
+			draft = append(draft, gluster.Brick{Host: b.Host, Path: path})
 		}
-		if err := gluster.ValidateCreate(args.Name, args.Layout, args.Bricks); err != nil {
+		if err := gluster.ValidateCreate(args.Name, args.Layout, draft); err != nil {
 			return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "%s", err.Error())
 		}
 		if err := gluster.ValidOptions(opts); err != nil {
@@ -282,9 +309,28 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 		}
 		j := a.d.Jobs.Start("cluster.volume.create", "Creando el volumen "+q.Name, args.Layout.TypeName(len(args.Bricks)), func(ctx context.Context, h *jobs.Handle) error {
 			defer c.publish(context.WithoutCancel(ctx))
-			h.Update(0.2, "Creando los bricks en cada nodo")
+			bricks, undo, err := c.resolveBricks(ctx, h, q.Name, q.Bricks)
+			if err != nil {
+				return err
+			}
+			args.Bricks = bricks
+			h.Update(0.5, "Creando el volumen en el clúster")
 			if err := c.ag.GlusterVolumeCreate(ctx, args); err != nil {
+				undo()
 				return agentErr(err)
+			}
+			// Con TLS en el clúster, el volumen nace con TLS de E/S y solo para sus nodos.
+			if st, err := c.agentStatus(ctx, true); err == nil && st.TLS.Secure {
+				h.Update(0.75, "Aplicando TLS al volumen")
+				if err := c.syncSSLAllowNew(ctx, q.Name); err != nil {
+					return err
+				}
+			}
+			if q.Start {
+				h.Update(0.85, "Arrancando el volumen")
+				if err := c.ag.GlusterVolumeAction(ctx, agentproto.GlusterVolumeActionArgs{Name: q.Name, Action: "start"}); err != nil {
+					return agentErr(err)
+				}
 			}
 			return nil
 		}, nil)
@@ -404,19 +450,32 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 	}))
 	r.Handle("cluster.brick.cleanup", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
 		var q struct {
+			Kind        string `json:"kind"` // "" (carpeta) | lv (TangoVolume = grupo)
 			TangoVolume string `json:"tangoVolume"`
 			Name        string `json:"name"`
 		}
 		if err := decode(p, &q); err != nil {
 			return nil, err
 		}
-		if err := c.ag.GlusterBrickCleanup(ctx, agentproto.GlusterBrickCleanArgs{TangoVolume: strings.TrimPrefix(q.TangoVolume, "/"), Name: q.Name}); err != nil {
+		if q.Kind == "lv" {
+			ag2, err := c.ag2()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := ag2.GlusterBrickLV(ctx, agentproto.GlusterBrickLVArgs{Op: "delete", Pool: q.TangoVolume, Vol: q.Name}); err != nil {
+				return nil, agentErr(err)
+			}
+		} else if err := c.ag.GlusterBrickCleanup(ctx, agentproto.GlusterBrickCleanArgs{TangoVolume: strings.TrimPrefix(q.TangoVolume, "/"), Name: q.Name}); err != nil {
 			return nil, agentErr(err)
 		}
 		c.publish(ctx)
 		return struct{}{}, nil
 	}))
 
+	c.register2(r, admin, decode)
+	if c.pki != nil && m.d.ClusterCtlAddr != "" {
+		go c.serveCtl(m.d.ClusterCtlAddr)
+	}
 	go c.loop()
 }
 
@@ -551,7 +610,16 @@ func (c *clusterAPI) status(ctx context.Context, fresh bool) (*ClusterStatus, er
 	out := &ClusterStatus{Installed: st.Installed, Running: st.Running, Version: st.Version, Error: st.Error, Self: c.self(),
 		SelfAddrs: localAddrs(), Volumes: c.withHeal(st.Volumes), Orphans: st.Orphans, Mounts: st.Mounts, Allowed: st.Allowed,
 		Invites: []clusterInvite{}, Nodes: []ClusterNode{}, TangoVolumes: []ClusterTangoVolume{},
-		Presets: gluster.Presets(), Options: gluster.Options()}
+		Presets: gluster.Presets(), Options: gluster.Options(), TLS: c.tlsInfo(st), NodeInfo: map[string]*CtlInfo{},
+		NFS: map[string][]agentproto.NFSClient{}, LVBricks: st.LVBricks, Pools: c.localPools(ctx)}
+	if out.LVBricks == nil {
+		out.LVBricks = []agentproto.GlusterLVBrick{}
+	}
+	c.m.mu.Lock()
+	for k, v := range c.m.cfg.NFS.Cluster {
+		out.NFS[k] = v
+	}
+	c.m.mu.Unlock()
 	c.mu.Lock()
 	now := time.Now()
 	for _, inv := range c.invites {
@@ -570,6 +638,11 @@ func (c *clusterAPI) status(ctx context.Context, fresh bool) (*ClusterStatus, er
 	}
 	c.mu.Unlock()
 	sort.Slice(out.Invites, func(i, j int) bool { return out.Invites[i].Host < out.Invites[j].Host })
+	c.mu.Lock()
+	for k, v := range c.infos {
+		out.NodeInfo[k] = v
+	}
+	c.mu.Unlock()
 	if inv := c.m.a.d.Inventory; inv != nil {
 		if vols, err := inv.Volumes(ctx); err == nil {
 			for _, v := range vols {
@@ -691,6 +764,7 @@ func (c *clusterAPI) tick(ctx context.Context) {
 		}
 	}
 	c.mu.Unlock()
+	c.refreshNodeInfo(ctx, st)
 	withHeal := *st
 	withHeal.Volumes = c.withHeal(st.Volumes)
 	c.alerts(&withHeal)
