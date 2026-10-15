@@ -144,8 +144,12 @@ gone).
   `--timeout` so the app never hangs.
 - A node that just joined spends a few seconds in "Accepted peer request"; volume creation waits for
   "Peer in Cluster" on every node (`PEER_JOINING`).
-- Quotas: GlusterFS enforces them a few seconds late (`features.hard-timeout`) and **not for root**; quota
-  commands run outside the agent sandbox because they use an auxiliary mount.
+- Quotas: GlusterFS 11 only *accounts* by default (`feature.simple-quota-pass-through=true`); TangoOS turns
+  enforcement on when quotas are enabled. Limits apply a few seconds late (`features.hard-timeout`) and not to
+  root. Verified on a folder brick without TLS (writes stop at the limit); **on the lab volume with TLS and XFS
+  bricks GlusterFS did not account usage** (limit, list and remove work, enforcement does not) — see §6. With
+  quotas on, glusterd sometimes cannot unmount its auxiliary quota mount and a later `remove-brick commit` fails:
+  turn quotas off before removing bricks. Quota commands run outside the agent sandbox (auxiliary mount).
 - Snapshots need every brick on a thin LV. Restoring needs the volume stopped (`VOLUME_STARTED`), consumes the
   snapshot and moves the volume onto the snapshot LVs (`snap` bricks). The restored root comes back without its
   permissions: mount it again with its SMB share to re-apply them. GlusterFS does not reliably remove bricks
@@ -159,6 +163,9 @@ gone).
 - Deleting a volume leaves the data in each brick (orphans, above). A node with bricks cannot be detached.
 
 ## 6. Pending
+
+- Quota accounting on volumes with TLS and XFS bricks (GlusterFS 11 reports 0 used there in the lab), and the
+  auxiliary quota mount that blocks `remove-brick commit` while quotas are on.
 
 - CA rotation and a CRL for removed nodes (today: `auth.ssl-allow` + firewall + pool).
 - Geo-replication; scheduled snapshots of cluster volumes.

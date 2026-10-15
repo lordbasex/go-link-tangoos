@@ -138,7 +138,7 @@ test("clúster real: resumen, nodos con TLS y un volumen con bricks dedicados", 
   await expect(page.getByText("TLS prendido")).toBeVisible();
   await snap(page, "real-nodos-tls");
   await side(page, process.env.CLUSTER_VOLUME ?? "gv_lv").click();
-  await expect(page.getByText("Volumen dedicado").first()).toBeVisible();
+  await expect(win(page).locator(".tcl-path").first()).toBeVisible();
   await snap(page, "real-volumen");
   await win(page).getByRole("button", { name: "Ver como gluster volume info" }).click();
   await expect(page.getByLabel("Salida de gluster volume info")).toContainText("auth.ssl-allow");

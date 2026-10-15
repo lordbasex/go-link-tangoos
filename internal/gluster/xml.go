@@ -24,6 +24,12 @@ func (e *Error) Error() string {
 	return e.Msg
 }
 
+// IsBusy dice si otro nodo tenía tomado el lock del clúster (se puede reintentar).
+func IsBusy(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && (strings.Contains(e.Msg, "Another transaction is in progress") || strings.Contains(e.Msg, "Locking failed"))
+}
+
 // IsNotFound dice si GlusterFS respondió que el volumen no existe.
 func IsNotFound(err error) bool {
 	var e *Error

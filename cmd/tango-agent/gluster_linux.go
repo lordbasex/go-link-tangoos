@@ -105,13 +105,29 @@ func glusterAgentErr(err error) *agentproto.Error {
 	return agentproto.Errf(agentproto.CodeFailed, "%v", err)
 }
 
-// glusterDo corre una operación sin datos y traduce el error.
+// glusterDo corre una operación sin datos y traduce el error. Si otro nodo tiene tomado el
+// lock del clúster (por ejemplo leyendo el estado), GlusterFS responde "Another transaction
+// is in progress": se reintenta unas veces.
 func glusterDo(ctx context.Context, args []string) error {
-	out, code, err := runGluster(ctx, args...)
-	if err != nil {
-		return err
+	var err error
+	for i := 0; i < 10; i++ {
+		var out []byte
+		var code int
+		out, code, err = runGluster(ctx, args...)
+		if err != nil {
+			return err
+		}
+		err = gluster.ParseResult(out, code)
+		if err == nil || !gluster.IsBusy(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(time.Duration(500+300*i) * time.Millisecond):
+		}
 	}
-	return gluster.ParseResult(out, code)
+	return err
 }
 
 func registerGluster(r *agentproto.Registry, jobs *asyncJobs, log *slog.Logger) {
