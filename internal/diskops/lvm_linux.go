@@ -61,16 +61,23 @@ func validLVMTag(tag string) error {
 	return nil
 }
 
-// PVCreate inicializa un volumen físico y le pone la etiqueta de rol (data | cache).
-func PVCreate(ctx context.Context, dev, role string) error {
+// PVCreate inicializa un volumen físico.
+func PVCreate(ctx context.Context, dev string) error {
+	if err := validDevPath(dev); err != nil {
+		return err
+	}
+	_, err := lvm(ctx, "pvcreate", "--yes", "--force", dev)
+	return err
+}
+
+// PVTag pone la etiqueta de rol (data | cache) a un PV que ya está en un grupo (LVM solo
+// etiqueta PV que pertenecen a un volume group).
+func PVTag(ctx context.Context, dev, role string) error {
 	if err := validDevPath(dev); err != nil {
 		return err
 	}
 	if role != "data" && role != "cache" {
 		return errors.New("rol de PV inválido")
-	}
-	if _, err := lvm(ctx, "pvcreate", "--yes", "--force", dev); err != nil {
-		return err
 	}
 	_, err := lvm(ctx, "pvchange", "--addtag", TagRole+role, dev)
 	return err
@@ -384,7 +391,14 @@ func LVMReport(ctx context.Context) ([]VGRow, []PVRow, []LVRow, error) {
 		outP = append(outP, PVRow{Dev: r["pv_name"], VG: r["vg_name"], Size: u64(r["pv_size"]), Free: u64(r["pv_free"]), Tags: tagList(r["pv_tags"])})
 	}
 	var outL []LVRow
+	seen := map[string]int{} // un LV con varios segmentos sale en varias filas
 	for _, r := range lvs {
+		key := r["vg_name"] + "/" + r["lv_name"]
+		if i, ok := seen[key]; ok {
+			outL[i].Devices += "," + r["devices"]
+			continue
+		}
+		seen[key] = len(outL)
 		outL = append(outL, LVRow{Name: r["lv_name"], VG: r["vg_name"], UUID: r["lv_uuid"], Attr: r["lv_attr"], Segtype: r["segtype"],
 			Pool: r["pool_lv"], Size: u64(r["lv_size"]), Tags: tagList(r["lv_tags"]), CacheMode: r["cache_mode"],
 			CacheTotal: u64(r["cache_total_blocks"]), CacheUsed: u64(r["cache_used_blocks"]), CacheDirty: u64(r["cache_dirty_blocks"]),

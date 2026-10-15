@@ -42,7 +42,9 @@ func LUKSFormat(ctx context.Context, dev, passphrase, label string) error {
 }
 
 // LUKSOpen abre dev como /dev/mapper/<name> con una frase o el contenido de un archivo
-// de clave (key).
+// de clave (key). Con --disable-keyring la clave del volumen queda en la tabla de
+// device-mapper (solo root la ve, como en LUKS1): así "cryptsetup resize" agranda el
+// volumen sin volver a pedir la frase.
 func LUKSOpen(ctx context.Context, dev, name string, key []byte) error {
 	if err := validDevPath(dev); err != nil {
 		return err
@@ -50,7 +52,7 @@ func LUKSOpen(ctx context.Context, dev, name string, key []byte) error {
 	if len(key) == 0 {
 		return ErrWrongKey
 	}
-	_, err := runStdin(ctx, string(key), "cryptsetup", "open", "--type", "luks2", "--key-file=-", dev, name)
+	_, err := runStdin(ctx, string(key), "cryptsetup", "open", "--type", "luks2", "--disable-keyring", "--key-file=-", dev, name)
 	if err != nil && cryptExit(err) == 2 {
 		return ErrWrongKey
 	}

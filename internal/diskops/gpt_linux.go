@@ -58,6 +58,22 @@ func WritePartitions(ctx context.Context, dev string, parts []GPTPart) error {
 		f.Close()
 		return err
 	}
+	// Antes de que existan las particiones, borrar lo que pueda quedar en sus zonas
+	// (superbloques md al comienzo y al final, etiqueta de LVM, LUKS): si no, udev
+	// reensambla un md viejo apenas el kernel publica la partición.
+	for _, p := range parts {
+		head := min(p.Size, 4*mib)
+		if _, err := f.WriteAt(make([]byte, head), int64(p.Start)); err != nil {
+			f.Close()
+			return fmt.Errorf("limpiar la zona de una partición: %w", err)
+		}
+		if p.Size > 8*mib {
+			if _, err := f.WriteAt(make([]byte, mib), int64(p.Start+p.Size-mib)); err != nil {
+				f.Close()
+				return fmt.Errorf("limpiar la zona de una partición: %w", err)
+			}
+		}
+	}
 	if _, err := f.WriteAt(img.Head, 0); err != nil {
 		f.Close()
 		return fmt.Errorf("escribir la GPT: %w", err)

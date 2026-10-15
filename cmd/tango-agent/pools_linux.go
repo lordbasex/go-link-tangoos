@@ -549,12 +549,22 @@ func (p *pools) create(ctx context.Context, step stepFn, a *agentproto.PoolCreat
 		}
 	}
 	var created []string // md creados (para deshacer)
+	var pvs []string
 	undo := func() {
 		bg := context.Background()
 		_ = diskops.VGRemove(bg, a.Name)
+		for _, pv := range pvs {
+			_ = diskops.PVRemove(bg, pv)
+		}
 		for _, md := range created {
 			if k, err := diskops.MDOf(md); err == nil {
-				_ = diskops.StopMD(bg, k)
+				members := slavesOf(k)
+				if err := diskops.StopMD(bg, k); err != nil {
+					p.log.Warn("no se pudo detener el md al deshacer", "md", md, "err", err)
+				}
+				for _, m := range members {
+					_ = diskops.ZeroSuperblock(bg, "/dev/"+m)
+				}
 			}
 			_ = diskops.RemoveMDConfLine(md)
 		}
@@ -574,7 +584,6 @@ func (p *pools) create(ctx context.Context, step stepFn, a *agentproto.PoolCreat
 			}
 		}
 	}
-	var pvs []string
 	for n, t := range tiers {
 		if t.Level == "unused" {
 			continue
@@ -608,7 +617,7 @@ func (p *pools) create(ctx context.Context, step stepFn, a *agentproto.PoolCreat
 	}
 	step(0.7, "Creando el grupo de almacenamiento (LVM)")
 	for _, pv := range pvs {
-		if err := diskops.PVCreate(ctx, pv, "data"); err != nil {
+		if err := diskops.PVCreate(ctx, pv); err != nil {
 			undo()
 			return nil, fmt.Errorf("pvcreate %s: %w", pv, err)
 		}
@@ -616,6 +625,12 @@ func (p *pools) create(ctx context.Context, step stepFn, a *agentproto.PoolCreat
 	if err := diskops.VGCreate(ctx, a.Name, a.Profile, pvs); err != nil {
 		undo()
 		return nil, fmt.Errorf("vgcreate: %w", err)
+	}
+	for _, pv := range pvs {
+		if err := diskops.PVTag(ctx, pv, "data"); err != nil {
+			undo()
+			return nil, fmt.Errorf("etiquetar %s: %w", pv, err)
+		}
 	}
 	pi, pe := p.findPool(ctx, a.Name)
 	if pe != nil {
@@ -851,11 +866,14 @@ func (p *pools) expandHybrid(ctx context.Context, step stepFn, pi *agentproto.Po
 			if s, err := diskops.MDSuperOf(newPart); err == nil {
 				_ = diskops.WriteMDConf(name, s)
 			}
-			if err := diskops.PVCreate(ctx, "/dev/"+created, "data"); err != nil {
+			if err := diskops.PVCreate(ctx, "/dev/"+created); err != nil {
 				return fmt.Errorf("pvcreate: %w", err)
 			}
 			if err := diskops.VGExtend(ctx, pi.Name, "/dev/"+created); err != nil {
 				return fmt.Errorf("vgextend: %w", err)
+			}
+			if err := diskops.PVTag(ctx, "/dev/"+created, "data"); err != nil {
+				return fmt.Errorf("etiquetar: %w", err)
 			}
 		}
 	}
@@ -990,7 +1008,8 @@ func (p *pools) replace(ctx context.Context, step stepFn, a *agentproto.PoolRepl
 			step(1, "Grupo sano")
 			return agentproto.MDReplaceResult{Removed: a.Failed, Added: a.Replacement.DevID}, nil
 		}
-		step(0.2+0.8*(1-float64(pending)/float64(len(tiersMD)))+0.8*prog/float64(len(tiersMD))/float64(max(pending, 1)), "Reconstruyendo el grupo")
+		done := float64(len(tiersMD) - pending)
+		step(0.2+0.8*(done+prog/float64(pending))/float64(len(tiersMD)), "Reconstruyendo el grupo")
 		if time.Since(idle) > 30*time.Second {
 			return nil, errors.New("md no empezó a reconstruir")
 		}
@@ -1626,13 +1645,17 @@ func (p *pools) createCache(ctx context.Context, step stepFn, a *agentproto.Cach
 		}
 	}
 	step(0.35, "Sumando las SSD al grupo")
-	if err := diskops.PVCreate(ctx, pv, "cache"); err != nil {
+	if err := diskops.PVCreate(ctx, pv); err != nil {
 		undo()
 		return nil, fmt.Errorf("pvcreate: %w", err)
 	}
 	if err := diskops.VGExtend(ctx, pi.Name, pv); err != nil {
 		undo()
 		return nil, fmt.Errorf("vgextend: %w", err)
+	}
+	if err := diskops.PVTag(ctx, pv, "cache"); err != nil {
+		undo()
+		return nil, fmt.Errorf("etiquetar: %w", err)
 	}
 	step(0.6, "Enganchando la caché al volumen")
 	if err := diskops.CacheAttach(ctx, pi.Name, a.Name, pv, a.Mode); err != nil {

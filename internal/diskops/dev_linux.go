@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -110,8 +111,7 @@ func Wipe(dev, wantFingerprint string) error {
 	if err := f.Sync(); err != nil {
 		return err
 	}
-	// Que el kernel relea la tabla de particiones (ya no hay ninguna).
-	_, _, _ = unix.Syscall(unix.SYS_IOCTL, f.Fd(), unix.BLKRRPART, 0)
+	rereadPartitions(f)
 	return nil
 }
 
@@ -136,8 +136,20 @@ func WipeMember(dev string) error {
 	if err := f.Sync(); err != nil {
 		return err
 	}
-	_, _, _ = unix.Syscall(unix.SYS_IOCTL, f.Fd(), unix.BLKRRPART, 0)
+	rereadPartitions(f)
 	return nil
+}
+
+// rereadPartitions pide al kernel que relea la tabla de particiones (ya no hay ninguna).
+// udev puede tener abierta una partición un instante (sobre todo recién salida de un
+// md): se reintenta unos segundos, si no el kernel sigue mostrando particiones viejas.
+func rereadPartitions(f *os.File) {
+	for range 20 {
+		if _, _, e := unix.Syscall(unix.SYS_IOCTL, f.Fd(), unix.BLKRRPART, 0); e == 0 {
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 }
 
 // ErrChanged indica que el disco cambió desde el plan.
