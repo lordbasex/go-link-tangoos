@@ -937,6 +937,15 @@ func (z *zfsAPI) inUse(ctx context.Context, p storage.ZfsPool) error {
 			return rtcrpc.Errorf("VOLUME_BUSY", "%s tiene apps instaladas: desinstalalas primero", m)
 		}
 	}
+	// Un zvol tomado por un destino iSCSI deja colgado zpool destroy/export (LIO lo
+	// tiene abierto): primero hay que borrar el destino.
+	if m4 := z.s.a.m4; m4 != nil {
+		for _, zv := range p.Zvols {
+			if m4.zvolInUse(zv.Device) {
+				return rtcrpc.Errorf("VOLUME_BUSY", "el destino iSCSI que usa %s tiene que borrarse primero", zv.Name)
+			}
+		}
+	}
 	return nil
 }
 

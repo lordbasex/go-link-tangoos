@@ -83,8 +83,10 @@ func registerM21(r *agentproto.Registry, paths smart.Paths, env diskops.Env, job
 	})
 
 	agentproto.Register(r, agentproto.OpSharePerms, validateSharePerms, func(ctx context.Context, a *agentproto.SharePermsArgs) (any, *agentproto.Error) {
-		if e := mountedBtrfs(env, a.Mount); e != nil {
-			return nil, e
+		if _, zfsVol := zfsVolumeOf(env, a.Mount); !zfsVol { // en ZFS los permisos son iguales (acltype=posixacl)
+			if e := mountedBtrfs(env, a.Mount); e != nil {
+				return nil, e
+			}
 		}
 		path := filepath.Join(a.Mount, "@shares", a.Share)
 		if fi, err := os.Stat(path); err != nil || !fi.IsDir() {

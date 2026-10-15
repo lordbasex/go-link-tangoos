@@ -66,8 +66,10 @@ func zfsResolve(p string) string {
 	}
 	name := filepath.Base(real)
 	if _, err := os.Stat(filepath.Join("/sys/class/block", name, "partition")); err == nil {
-		if parent, err := filepath.EvalSymlinks(filepath.Join("/sys/class/block", name, "..")); err == nil {
-			return filepath.Base(parent)
+		// /sys/class/block/sdj1 → /sys/devices/…/block/sdj/sdj1: el padre es el disco.
+		// (EvalSymlinks primero: filepath.Join(…, "..") es léxico.)
+		if real, err := filepath.EvalSymlinks(filepath.Join("/sys/class/block", name)); err == nil {
+			return filepath.Base(filepath.Dir(real))
 		}
 	}
 	return name

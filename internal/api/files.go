@@ -1171,9 +1171,11 @@ func byteRange(size int64, offset, length *int64) (int64, int64, error) {
 // /vol/@shares/<Carpeta>/.zfs/snapshot/<nombre> y el worker abre la raíz sin seguir
 // enlaces.
 func snapshotDir(p string) string {
+	// Readlink y no EvalSymlinks: tangod no tiene permiso de recorrer la carpeta (es de
+	// sus usuarios); el worker la abre con el UID de quien pide.
 	if fi, err := os.Lstat(p); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		if r, err := filepath.EvalSymlinks(p); err == nil {
-			return r
+		if target, err := os.Readlink(p); err == nil && !filepath.IsAbs(target) {
+			return filepath.Join(filepath.Dir(p), target)
 		}
 	}
 	return p

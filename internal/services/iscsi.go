@@ -100,6 +100,11 @@ func Plan(t agentproto.ISCSITarget) []Step {
 	steps := []Step{
 		{Mkdir: true, Path: bs},
 		{Path: path.Join(bs, "control"), Value: control},
+	}
+	if t.Zvol != "" { // udev_path también como atributo (lo muestran targetcli y el estado)
+		steps = append(steps, Step{Path: path.Join(bs, "udev_path"), Value: t.Zvol})
+	}
+	steps = append(steps, []Step{
 		{Path: path.Join(bs, "wwn", "vpd_unit_serial"), Value: "tango-" + t.Name},
 		{Path: path.Join(bs, "enable"), Value: "1"},
 		{Mkdir: true, Path: tgt},
@@ -110,7 +115,7 @@ func Plan(t agentproto.ISCSITarget) []Step {
 		{Path: path.Join(tpg, "attrib", "generate_node_acls"), Value: "1"},
 		{Path: path.Join(tpg, "attrib", "demo_mode_write_protect"), Value: "0"},
 		{Path: path.Join(tpg, "attrib", "cache_dynamic_acls"), Value: "1"},
-	}
+	}...)
 	if t.CHAPUser != "" {
 		steps = append(steps,
 			Step{Path: path.Join(tpg, "attrib", "authentication"), Value: "1"},
