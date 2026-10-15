@@ -79,11 +79,11 @@ declare module "./protocol" {
   interface Disk {
     /** Grupo de almacenamiento al que pertenece (Pool.id). */
     pool?: string;
-    role?: "data" | "cache";
+    role?: "data" | "cache" | "log";
   }
   interface Volume {
     /** "pool" = volumen dentro de un grupo; sin valor = volumen clásico (md + Btrfs). */
-    kind?: "classic" | "pool";
+    kind?: "classic" | "pool" | "zfs";
     pool?: string;
     encrypted?: boolean;
     locked?: boolean;

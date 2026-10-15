@@ -85,6 +85,13 @@ export const PROFILES: ProfileInfo[] = [
     usable: (s) => (s.length - 2) * min(s),
     poolOnly: true,
   },
+  // Formas de vdev de ZFS (§18): solo en pools ZFS, nunca en el asistente clásico.
+  { id: "mirror", label: "Espejo ZFS", description: "Cada dato en todos los discos.", tolerance: "Soporta la falla de todos los discos menos uno.", min: 2, check: (n) => (n >= 2 ? null : "Elegí al menos 2 discos"), usable: (s) => min(s), poolOnly: true },
+  { id: "raidz1", label: "RAIDZ1", description: "Paridad simple.", tolerance: "Soporta la falla de 1 disco.", min: 3, check: (n) => (n >= 3 ? null : "Elegí al menos 3 discos"), usable: (s) => (s.length - 1) * min(s), poolOnly: true },
+  { id: "raidz2", label: "RAIDZ2", description: "Doble paridad.", tolerance: "Soporta la falla de 2 discos a la vez.", min: 4, check: (n) => (n >= 4 ? null : "Elegí al menos 4 discos"), usable: (s) => (s.length - 2) * min(s), poolOnly: true },
+  { id: "raidz3", label: "RAIDZ3", description: "Triple paridad.", tolerance: "Soporta la falla de 3 discos a la vez.", min: 5, check: (n) => (n >= 5 ? null : "Elegí al menos 5 discos"), usable: (s) => (s.length - 3) * min(s), poolOnly: true },
+  { id: "stripe", label: "ZFS sin redundancia", description: "Suma la capacidad de los discos.", tolerance: "No soporta la falla de ningún disco.", min: 1, check: (n) => (n >= 1 ? null : "Elegí al menos 1 disco"), usable: (s) => s.reduce((a, b) => a + b, 0), poolOnly: true },
+  { id: "mixed", label: "ZFS mixto", description: "Vdevs de formas distintas.", tolerance: "Según cada vdev.", min: 1, check: () => null, usable: (s) => s.reduce((a, b) => a + b, 0), poolOnly: true },
 ];
 
 export const profileInfo = (p: VolumeProfile) => PROFILES.find((x) => x.id === p) ?? PROFILES[0];

@@ -471,7 +471,9 @@ func helperZfsImport(ctx context.Context, a *agentproto.ZfsImportArgs) error {
 		}
 		if !a.ReadOnly {
 			for _, d := range p.Datasets {
-				if vol, ok := volumeOfDataset(p.Name, d); ok {
+				// Solo si quedó montado: un volumen cifrado sin desbloquear no se monta y el
+				// directorio terminaría en el disco del sistema, debajo del punto de montaje.
+				if vol, ok := volumeOfDataset(p.Name, d); ok && isMountedAt("/"+vol) {
 					_ = os.MkdirAll("/"+vol+"/@snapshots", 0o755)
 				}
 			}
@@ -647,6 +649,10 @@ func zfsMountTree(ctx context.Context, ds string) error {
 			!strings.Contains(err.Error(), "already mounted") && !strings.Contains(err.Error(), "canmount") {
 			return err
 		}
+	}
+	// Un volumen importado bloqueado no tenía @snapshots: se crea ahora que está montado.
+	if pool, vol, ok := strings.Cut(ds, "/"); ok && zfs.ValidPoolName(pool) == nil && isMountedAt("/"+vol) {
+		_ = os.MkdirAll("/"+vol+"/@snapshots", 0o755)
 	}
 	return nil
 }
