@@ -1,5 +1,5 @@
 // Configuración del portal (docs/16-tangoconnect.md).
-export const APP = "tangoos"; // namespace en signalhub (ALLOWED_APPS)
+export const APP = "go-link-tangoos"; // namespace en signalhub (ALLOWED_APPS)
 
 export const SIGNAL_URL: string = import.meta.env.VITE_SIGNAL_URL || "wss://signal.go-link.org/ws?v=1";
 

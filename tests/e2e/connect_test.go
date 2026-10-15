@@ -23,7 +23,7 @@ import (
 //
 //	TANGO_E2E_SIGNAL  URL del signalhub (por defecto ws://172.17.0.5:8090/ws?v=1, el de la Mac)
 //
-// Nunca usa el de producción (signal.go-link.org rechaza app=tangoos hasta que se
+// Nunca usa el de producción (signal.go-link.org rechaza app=go-link-tangoos hasta que se
 // habilite en ALLOWED_APPS). Al terminar deja TangoConnect apagado y con la URL por defecto.
 
 func devSignal() string {

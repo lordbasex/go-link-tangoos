@@ -79,7 +79,7 @@ export function humanSignalError(e: unknown): string {
     "device not connected": "Tu NAS no está conectado a TangoConnect ahora. Revisá que esté encendido y con internet.",
     "invalid or expired invite": "Este enlace ya no existe: venció, lo revocaron o el NAS está apagado.",
     "rate limit exceeded": "Demasiados intentos seguidos. Esperá un minuto y probá de nuevo.",
-    "app not allowed": "El servidor de señalización todavía no acepta TangoOS (falta «tangoos» en ALLOWED_APPS).",
+    "app not allowed": "El servidor de señalización todavía no acepta TangoOS (falta «go-link-tangoos» en ALLOWED_APPS).",
     "signaling server unreachable": "No pudimos llegar al servidor de señalización. Revisá tu conexión.",
     "request timed out": "El servidor de señalización no respondió a tiempo.",
     disconnected: "Se cortó la conexión con el servidor de señalización.",
