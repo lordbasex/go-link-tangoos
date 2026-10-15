@@ -656,3 +656,70 @@ development: a local instance with no restriction. No accounts: codes + device t
   bundle file; `connectLinkProof()` and `parseShareURL()` in `protocol-connect.ts`.
 - **Production:** signalhub needs `ALLOWED_APPS=go-link,go-link-tangoos` and `ALLOWED_ORIGINS` with `https://tangoos.go-link.org`.
   There is no need to raise `MAX_ROOMS_PER_SESSION` (rooms are not used).
+
+## 16. Storage pools: LVM, hybrid RAID, LUKS2, SSD cache (ADR 0011)
+
+```jsonc
+// Pools (= LVM volume groups over md). Same plan → token → typed name flow as §7 for anything that erases disks.
+storage.pools.list        null → Pool[]
+storage.pools.plan        {"name","profile":"basic|raid1|raid5|raid6|raid10|hybrid1|hybrid2","disks":["<Disk.id>",…]} → PoolPlan
+storage.pools.create      {"plan_id","confirm_token","typed_name"} → {"job"}
+storage.pools.expandPlan  {"pool","add":["<Disk.id>",…]} → PoolPlan        // raid5/6/10: md --grow; hybrid: one more member per tier
+storage.pools.expand      {"plan_id","confirm_token","typed_name"} → {"job"}
+storage.pools.replacePlan {"pool","failed":"<Disk.id>|null","replacement":"<Disk.id>"} → PoolPlan (with summary.rebuild as §11)
+storage.pools.replace     {"plan_id","confirm_token","typed_name"} → {"job"}
+storage.pools.deletePlan  {"pool"} → DeletePlan                              // only pools without volumes: POOL_NOT_EMPTY
+storage.pools.delete      {"plan_id","confirm_token","typed_name"} → {"job"}
+// Volumes inside a pool (they only take free space of the pool: no disk is erased, no token)
+storage.poolVolumes.create {"pool","name","size","fs":"btrfs|xfs|ext4","encryption":null|{"passphrase","keyDevice":"<fs UUID>|null"}} → {"job"}
+storage.poolVolumes.resize {"volume","size"} → {"job"}                      // grow only (online)
+// storage.volumes.deletePlan / delete (§8) also delete pool volumes (lvremove; the pool keeps its disks)
+storage.volumes.unlock     {"volume","passphrase"?:string,"useKeyDevice"?:bool} → {}
+storage.volumes.lock       {"volume"} → {}                                   // unmount + cryptsetup close
+storage.volumes.passphrase {"volume","old","new"} → {}
+storage.volumes.keyDevice  {"volume","passphrase","device":"<fs UUID>|null"} → {}  // null removes the key slot
+storage.keyDevices.list    null → KeyDevice[]                                 // {uuid, fs, label, size, disk}
+// SSD cache (lvmcache) of one volume
+storage.cache.plan         {"volume","disks":["<Disk.id>",…],"mode":"read|readwrite"} → PoolPlan
+storage.cache.create       {"plan_id","confirm_token","typed_name"} → {"job"}
+storage.cache.remove       {"volume"} → {"job"}                               // flushes and frees the SSDs
+// events: storage.changed {"what":"pools"|"volumes"|"disks"}
+```
+
+Types:
+
+```ts
+type PoolProfile = "basic" | "raid1" | "raid5" | "raid6" | "raid10" | "hybrid1" | "hybrid2";
+interface Pool {
+  id: string;            // LVM VG UUID
+  name: string;
+  profile: PoolProfile;
+  state: "healthy" | "degraded" | "building" | "readonly";
+  size: Bytes; allocated: Bytes; free: Bytes;
+  disks: string[];       // data disks (Disk.id)
+  cacheDisks: string[];
+  tiers: PoolTier[];     // one for raid/basic, one per size tier for hybrid
+  volumes: string[];     // Volume.id
+  task?: "rebuild" | "reshape" | "resync"; progress?: number;
+}
+interface PoolTier { index: number; size: Bytes /* per member */; members: string[]; level: "basic"|"raid1"|"raid5"|"raid6"|"raid10"|"unused"; usable: Bytes; state?: string; progress?: number }
+interface PoolPlan extends VolumePlan { summary: VolumePlan["summary"] & { profile: PoolProfile; tiers: PoolTier[]; unused: Bytes; rebuild?: {from, to, estimatedSec} } }
+// Volume (§6) gains: kind?: "classic"|"pool"; pool?: Pool.id; fs: "btrfs"|"xfs"|"ext4";
+//   encrypted?: boolean; locked?: boolean (state "locked"); keyDevice?: string|null;
+//   cache?: { mode: "read"|"readwrite"; disks: string[]; size: Bytes; used: Bytes; dirty: Bytes;
+//             readHits: number; readMisses: number; writeHits: number; writeMisses: number; hitRatio: number|null }
+// Disk (§6) gains: pool?: Pool.id; role?: "data"|"cache".
+```
+
+Rules and errors:
+
+- Pool names follow volume names (`^[a-z][a-z0-9]{0,23}$`) and are unique among pools and volumes.
+  `POOL_EXISTS`, `POOL_NOT_FOUND`, `POOL_NOT_EMPTY`, `NO_SPACE` (size > free), `VOLUME_LOCKED`,
+  `WRONG_PASSPHRASE`, `KEY_DEVICE_MISSING`, `CACHE_EXISTS`, `NOT_SSD`, `NOT_SUPPORTED` (shrinking, expanding
+  basic/raid1 pools, resizing a cached volume: remove the cache first).
+- Disk counts: basic 1; raid1 2; raid5 ≥ 3; raid6 ≥ 4; raid10 even ≥ 4; hybrid1 ≥ 2; hybrid2 ≥ 4.
+- `size` is rounded down to 4 MiB extents; `"size": 0` means "all the free space".
+- The passphrase (≥ 10 characters) is never logged, journaled or audited; `WRONG_PASSPHRASE` after 5 failed
+  unlocks in 10 minutes becomes `RATE_LIMITED`.
+- Cache: `read` takes 1 SSD (or 2 → RAID 1); `readwrite` needs exactly 2 SSDs (RAID 1). Disks with
+  `kind:"hdd"` → `NOT_SSD`.
