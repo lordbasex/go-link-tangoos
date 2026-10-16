@@ -281,6 +281,15 @@ func TestUnits(t *testing.T) {
 			t.Errorf("reglas sin %q:\n%s", s, r)
 		}
 	}
+	// Las respuestas a conexiones salientes pasan antes del reject (puertos efímeros).
+	if i, j := strings.Index(r, "ct state established,related accept"), strings.Index(r, "reject with tcp reset"); i < 0 || i > j {
+		t.Errorf("falta aceptar las conexiones establecidas antes del reject:\n%s", r)
+	}
+	for _, s := range []string{} {
+		if !strings.Contains(r, s) {
+			t.Errorf("reglas sin %q:\n%s", s, r)
+		}
+	}
 	if strings.Contains(FirewallRules(nil), "elements") {
 		t.Error("set vacío sin elements")
 	}

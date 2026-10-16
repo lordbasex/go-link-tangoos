@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/lordbasex/go-link-tangoos/internal/diskops"
+	"github.com/lordbasex/go-link-tangoos/internal/services"
 	"github.com/lordbasex/go-link-tangoos/internal/smart"
 	"github.com/lordbasex/go-link-tangoos/pkg/agentproto"
 )
@@ -153,6 +154,8 @@ func registerPools(r *agentproto.Registry, paths smart.Paths, env diskops.Env, j
 	agentproto.Register(r, agentproto.OpLUKSLock, validateLUKSLock, p.lock)
 	agentproto.Register(r, agentproto.OpLUKSPassphrase, validateLUKSPassphrase, p.passphrase)
 	agentproto.Register(r, agentproto.OpLUKSKeyDevice, validateLUKSKeyDevice, p.keyDevice)
+	agentproto.Register(r, agentproto.OpPoolLUNCreate, validatePoolLUN, p.lunCreate)
+	agentproto.Register(r, agentproto.OpPoolLUNDelete, validatePoolLUN, p.lunDelete)
 	agentproto.Register(r, agentproto.OpKeyDevList, nil, func(context.Context, *agentproto.NoArgs) (any, *agentproto.Error) {
 		return agentproto.KeyDevListResult{Devices: p.keyDevices()}, nil
 	})
@@ -367,6 +370,10 @@ func (p *pools) report(ctx context.Context) (*agentproto.PoolReport, error) {
 			}
 		}
 		for _, lv := range lvs {
+			if name, ok := strings.CutPrefix(lv.Name, diskops.ISCSILVPrefix); ok && lv.VG == vg.Name && name != "thin" {
+				pi.LUNs = append(pi.LUNs, agentproto.PoolLUN{Name: name, Dev: diskops.ISCSILVDev(vg.Name, name), Size: lv.Size, Thin: lv.Segtype == "thin"})
+				continue
+			}
 			if lv.VG != vg.Name || !lvVisible(lv.Name) {
 				continue
 			}
@@ -1724,6 +1731,65 @@ func (p *pools) removeCache(ctx context.Context, step stepFn, a *agentproto.Cach
 	step(0.1, "Vaciando la caché (los bloques sucios vuelven a los discos)")
 	if err := p.dropCache(ctx, pi, a.Name); err != nil {
 		return nil, err
+	}
+	return struct{}{}, nil
+}
+
+// ---- LUN de iSCSI en un LV ------------------------------------------------------------
+
+func validatePoolLUN(a *agentproto.PoolLUNArgs) *agentproto.Error {
+	if err := diskops.ValidPoolName(a.Pool); err != nil {
+		return agentproto.Errf(agentproto.CodeInvalidArgs, "%v", err)
+	}
+	if err := services.ValidTargetName(a.Name); err != nil {
+		return agentproto.Errf(agentproto.CodeInvalidArgs, "%v", err)
+	}
+	if a.Size > 64<<40 {
+		return agentproto.Errf(agentproto.CodeInvalidArgs, "el tamaño debe estar entre 64 MB y 64 TB")
+	}
+	return nil
+}
+
+func (p *pools) lunCreate(ctx context.Context, a *agentproto.PoolLUNArgs) (any, *agentproto.Error) {
+	if a.Size < 64<<20 {
+		return nil, agentproto.Errf(agentproto.CodeInvalidArgs, "el tamaño debe estar entre 64 MB y 64 TB")
+	}
+	pi, e := p.findPool(ctx, a.Pool)
+	if e != nil {
+		return nil, e
+	}
+	for _, l := range pi.LUNs {
+		if l.Name == a.Name {
+			return nil, agentproto.Errf(agentproto.CodeExists, "ya existe el LUN %s en %s", a.Name, a.Pool)
+		}
+	}
+	pvs, free := dataPVs(pi)
+	need := diskops.AlignExtent(a.Size)
+	if a.Thin {
+		need = diskops.AlignExtent(a.Size + a.Size/4) // el pool thin se agranda en size + 25 %
+	}
+	if need > free {
+		return nil, agentproto.Errf("NO_SPACE", "no entra en el grupo %s: quedan %d bytes libres", a.Pool, free)
+	}
+	if err := diskops.ISCSILVCreate(ctx, a.Pool, a.Name, a.Size, a.Thin, pvs); err != nil {
+		p.log.Warn("pool.lun.create", "pool", a.Pool, "name", a.Name, "err", err, "output", execOutput(err))
+		return nil, agentproto.Errf(agentproto.CodeFailed, "no se pudo crear el volumen lógico: %v", firstLineOf(err.Error()))
+	}
+	if err := diskops.WaitDev(ctx, diskops.ISCSILVDev(a.Pool, a.Name)); err != nil {
+		return nil, agentproto.Errf(agentproto.CodeFailed, "%v", err)
+	}
+	return agentproto.PoolLUN{Name: a.Name, Dev: diskops.ISCSILVDev(a.Pool, a.Name), Size: diskops.AlignExtent(a.Size), Thin: a.Thin}, nil
+}
+
+func (p *pools) lunDelete(ctx context.Context, a *agentproto.PoolLUNArgs) (any, *agentproto.Error) {
+	if _, err := os.Stat(diskops.ISCSILVDev(a.Pool, a.Name)); err != nil {
+		return struct{}{}, nil
+	}
+	if err := diskops.ISCSILVRemove(ctx, a.Pool, a.Name); err != nil {
+		if strings.Contains(err.Error(), "in use") || strings.Contains(err.Error(), "open") {
+			return nil, agentproto.Errf(agentproto.CodeBusy, "el LUN %s está en uso", a.Name)
+		}
+		return nil, agentproto.Errf(agentproto.CodeFailed, "no se pudo borrar el volumen lógico: %v", firstLineOf(err.Error()))
 	}
 	return struct{}{}, nil
 }

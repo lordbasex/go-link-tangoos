@@ -1,0 +1,11 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!-- TangoOS: la app de escritorio encuentra el NAS en la red local (ADR 0018). -->
+<service-group>
+  <name replace-wildcards="yes">%h</name>
+  <service>
+    <type>_tangoos._tcp</type>
+    <port>443</port>
+    <txt-record>path=/</txt-record>
+  </service>
+</service-group>

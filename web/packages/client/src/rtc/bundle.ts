@@ -1,6 +1,7 @@
 // Canal `bundle` (protocol/README.md §15): el NAS sirve los archivos de su escritorio
 // como frames [u32 id BE][u64 offset BE][datos]. El cargador del portal pide cada
 // archivo con bundle.get y verifica su sha256 contra el manifiesto firmado.
+import { t } from "../i18n";
 
 type Pending = { size: number; got: number; buf: Uint8Array<ArrayBuffer>; resolve: (b: Uint8Array<ArrayBuffer>) => void; reject: (e: Error) => void };
 
@@ -46,7 +47,7 @@ export class BundleReceiver {
     });
   }
 
-  failAll(e = new Error("se cortó la conexión")) {
+  failAll(e = new Error(t("se cortó la conexión"))) {
     for (const p of this.pending.values()) p.reject(e);
     this.pending.clear();
     this.early.clear();

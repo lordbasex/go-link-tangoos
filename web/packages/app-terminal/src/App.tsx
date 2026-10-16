@@ -6,7 +6,7 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import type { ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Copy, ClipboardPaste, RotateCcw, ShieldAlert } from "lucide-react";
-import { RpcError, useIsReal, useTransport } from "@tango/client";
+import { RpcError, t, tr, useIsReal, useTransport } from "@tango/client";
 import type { TermSession } from "@tango/client";
 import { WindowToolbar, prefs, toast, useWindowMenus } from "@tango/shell";
 import type { AppProps } from "@tango/shell";
@@ -56,7 +56,7 @@ function isDark() {
 }
 
 export default function TerminalApp({ win }: AppProps) {
-  const t = useTransport();
+  const tp = useTransport();
   const real = useIsReal("term.open");
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<XTerm | null>(null);
@@ -98,8 +98,8 @@ export default function TerminalApp({ win }: AppProps) {
     setErr(null);
 
     (async () => {
-      if (!t.terminals) throw new RpcError("NOT_IMPLEMENTED", "Este transporte no soporta terminales");
-      s = await t.terminals.open(x.cols, x.rows);
+      if (!tp.terminals) throw new RpcError("NOT_IMPLEMENTED", "Este transporte no soporta terminales");
+      s = await tp.terminals.open(x.cols, x.rows);
       if (disposed) return s.close();
       session.current = s;
       setState("open");
@@ -108,7 +108,7 @@ export default function TerminalApp({ win }: AppProps) {
       offs.push(
         s.onExit((reason) => {
           setState("closed");
-          x.write(`\r\n\x1b[2m[${reason === "disconnected" ? "Se cortó la conexión con el NAS" : "Sesión terminada"}]\x1b[0m\r\n`);
+          x.write(`\r\n\x1b[2m[${reason === "disconnected" ? t("Se cortó la conexión con el NAS") : t("Sesión terminada")}]\x1b[0m\r\n`);
         }),
       );
       const d = x.onData((data) => s?.write(data));
@@ -117,7 +117,7 @@ export default function TerminalApp({ win }: AppProps) {
     })().catch((e: unknown) => {
       if (disposed) return;
       setState("error");
-      setErr(e instanceof RpcError ? (e.code === "PERMISSION_DENIED" ? "La terminal es solo para administradores." : e.message) : String(e));
+      setErr(e instanceof RpcError ? (e.code === "PERMISSION_DENIED" ? t("La terminal es solo para administradores.") : e.message) : tr(String(e)));
     });
 
     const ro = new ResizeObserver(() => {
@@ -139,7 +139,7 @@ export default function TerminalApp({ win }: AppProps) {
       x.dispose();
       term.current = null;
     };
-  }, [t, gen]);
+  }, [tp, gen]);
 
   // Tema según claro/oscuro.
   useEffect(() => {
@@ -152,7 +152,7 @@ export default function TerminalApp({ win }: AppProps) {
 
   const copySel = () => {
     const sel = term.current?.getSelection();
-    if (!sel) return toast({ level: "info", title: "No hay texto seleccionado", app: "tango.terminal" });
+    if (!sel) return toast({ level: "info", title: t("No hay texto seleccionado"), app: "tango.terminal" });
     void navigator.clipboard?.writeText(sel);
   };
   const paste = async () => {
@@ -161,7 +161,7 @@ export default function TerminalApp({ win }: AppProps) {
       if (txt) session.current?.write(txt);
       term.current?.focus();
     } catch {
-      toast({ level: "info", title: "Pegá con el teclado", body: "Este navegador no deja leer el portapapeles desde un botón: usá Ctrl+Shift+V o ⌘V.", app: "tango.terminal" });
+      toast({ level: "info", title: t("Pegá con el teclado"), body: t("Este navegador no deja leer el portapapeles desde un botón: usá Ctrl+Shift+V o ⌘V."), app: "tango.terminal" });
     }
   };
 
@@ -171,11 +171,11 @@ export default function TerminalApp({ win }: AppProps) {
       {
         label: "Shell",
         items: [
-          { label: "Nueva sesión", action: () => setGen((g) => g + 1) },
+          { label: t("Nueva sesión"), action: () => setGen((g) => g + 1) },
           { separator: true },
-          { label: "Copiar", action: copySel },
-          { label: "Pegar", action: () => void paste() },
-          { label: "Limpiar pantalla", action: () => term.current?.clear() },
+          { label: t("Copiar"), action: copySel },
+          { label: t("Pegar"), action: () => void paste() },
+          { label: t("Limpiar pantalla"), action: () => term.current?.clear() },
         ],
       },
     ],
@@ -186,28 +186,28 @@ export default function TerminalApp({ win }: AppProps) {
     <div className="tterm">
       <WindowToolbar win={win}>
         <span className="tg-tb-title">Terminal</span>
-        <span className="tterm-admin" title="Todo lo que hagas acá queda en el registro de auditoría">
-          <ShieldAlert size={13} /> Administrador · auditada
+        <span className="tterm-admin" title={t("Todo lo que hagas acá queda en el registro de auditoría")}>
+          <ShieldAlert size={13} /> {t("Administrador · auditada")}
         </span>
         <span className="tg-tb-spacer" />
         {!real && <DemoBadge />}
-        <IconButton icon={Copy} label="Copiar selección" onClick={copySel} />
-        <IconButton icon={ClipboardPaste} label="Pegar" onClick={() => void paste()} />
-        <IconButton icon={RotateCcw} label="Nueva sesión" onClick={() => setGen((g) => g + 1)} />
+        <IconButton icon={Copy} label={t("Copiar selección")} onClick={copySel} />
+        <IconButton icon={ClipboardPaste} label={t("Pegar")} onClick={() => void paste()} />
+        <IconButton icon={RotateCcw} label={t("Nueva sesión")} onClick={() => setGen((g) => g + 1)} />
       </WindowToolbar>
       <div className="tterm-body">
         <div className="tterm-host" ref={host} />
         {state === "error" && (
           <div className="tterm-overlay">
             <ShieldAlert size={30} />
-            <strong>No se pudo abrir la terminal</strong>
+            <strong>{t("No se pudo abrir la terminal")}</strong>
             <p>{err}</p>
-            <Button onClick={() => setGen((g) => g + 1)}>Reintentar</Button>
+            <Button onClick={() => setGen((g) => g + 1)}>{t("Reintentar")}</Button>
           </div>
         )}
         {state === "closed" && (
           <div className="tterm-reopen">
-            <Button onClick={() => setGen((g) => g + 1)}>Abrir una sesión nueva</Button>
+            <Button onClick={() => setGen((g) => g + 1)}>{t("Abrir una sesión nueva")}</Button>
           </div>
         )}
       </div>

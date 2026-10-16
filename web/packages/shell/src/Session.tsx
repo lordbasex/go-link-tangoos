@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, HardDrive, Power, RotateCcw } from "lucide-react";
-import { RpcError, login, loginTotp, useIsReal, useLive, useTransport } from "@tango/client";
+import { ArrowRight, Globe, HardDrive, Power, RotateCcw } from "lucide-react";
+import { LANGS, RpcError, getLang, locale, login, loginTotp, setLang, t, tr, useIsReal, useLive, useTransport } from "@tango/client";
 import type { SessionUser, User } from "@tango/client";
 import { DemoBadge } from "@tango/ui";
 import { ui } from "./store";
@@ -48,7 +48,7 @@ export function Avatar({ user, size = 96 }: { user: Pick<User, "full" | "color">
 }
 
 export function Login({ locked }: { locked?: boolean }) {
-  const t = useTransport();
+  const tp = useTransport();
   const users = useLive("auth.users", undefined).data ?? [];
   const real = useIsReal("auth.login");
   const current = ui.use((s) => s.user);
@@ -72,7 +72,7 @@ export function Login({ locked }: { locked?: boolean }) {
     setBusy(true);
     setErr(null);
     try {
-      const u = await login(t, user.name, pw);
+      const u = await login(tp, user.name, pw);
       setPw("");
       if (u === "totp") {
         setStep("totp"); // §13: contraseña bien, falta el código
@@ -81,7 +81,7 @@ export function Login({ locked }: { locked?: boolean }) {
       }
       enter(u);
     } catch (x) {
-      setErr((x as Error).message);
+      setErr(tr((x as Error).message));
       setPw("");
       shake();
       setBusy(false);
@@ -100,7 +100,7 @@ export function Login({ locked }: { locked?: boolean }) {
     setBusy(true);
     setErr(null);
     try {
-      enter(await loginTotp(t, code));
+      enter(await loginTotp(tp, code));
     } catch (x) {
       const e = x as RpcError;
       setErr(e.message);
@@ -113,8 +113,8 @@ export function Login({ locked }: { locked?: boolean }) {
   return (
     <div className="tg-login">
       <div className="tg-login-clock">
-        <div className="tg-login-date">{cap(now.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }))}</div>
-        <div className="tg-login-time">{now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}</div>
+        <div className="tg-login-date">{cap(now.toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" }))}</div>
+        <div className="tg-login-time">{now.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}</div>
       </div>
       {user && step === "totp" && (
         <form className="tg-login-card" ref={card} onSubmit={(e) => e.preventDefault()}>
@@ -122,10 +122,10 @@ export function Login({ locked }: { locked?: boolean }) {
           <div className="tg-login-name">{user.full}</div>
           <TotpEntry busy={busy} onCode={submitCode} />
           <div className="tg-login-hint" role="status">
-            {err ?? "Escribí el código de 6 dígitos de tu app de autenticación."}
+            {err ?? t("Escribí el código de 6 dígitos de tu app de autenticación.")}
           </div>
           <button type="button" className="tg-login-back" onClick={() => (setStep("password"), setErr(null))}>
-            Volver
+            {t("Volver")}
           </button>
         </form>
       )}
@@ -134,13 +134,13 @@ export function Login({ locked }: { locked?: boolean }) {
           <Avatar user={user} />
           <div className="tg-login-name">{user.full}</div>
           <div className="tg-login-field">
-            <input type="password" autoFocus placeholder={locked ? "Contraseña para desbloquear" : "Contraseña"} value={pw} onChange={(e) => setPw(e.target.value)} aria-label="Contraseña" aria-invalid={!!err} />
-            <button type="submit" aria-label="Entrar" disabled={busy}>
+            <input type="password" autoFocus placeholder={locked ? t("Contraseña para desbloquear") : t("Contraseña")} value={pw} onChange={(e) => setPw(e.target.value)} aria-label={t("Contraseña")} aria-invalid={!!err} />
+            <button type="submit" aria-label={t("Entrar")} disabled={busy}>
               <ArrowRight size={14} strokeWidth={2.4} />
             </button>
           </div>
           <div className="tg-login-hint" role="status">
-            {err ?? (locked ? "Pantalla bloqueada. Tus ventanas siguen abiertas." : real ? "" : "Demo: cualquier contraseña entra, «error» falla.")}
+            {err ?? (locked ? t("Pantalla bloqueada. Tus ventanas siguen abiertas.") : real ? "" : t("Demo: cualquier contraseña entra, «error» falla."))}
           </div>
           {!locked && users.length > 1 && (
             <div className="tg-login-users">
@@ -161,10 +161,11 @@ export function Login({ locked }: { locked?: boolean }) {
           {!real && <> · <DemoBadge /></>}
         </span>
         <span className="tg-login-power">
-          <button type="button" disabled aria-label="Reiniciar">
+          {!locked && <LangSwitch />}
+          <button type="button" disabled aria-label={t("Reiniciar")}>
             <RotateCcw size={15} />
           </button>
-          <button type="button" disabled aria-label="Apagar">
+          <button type="button" disabled aria-label={t("Apagar")}>
             <Power size={15} />
           </button>
         </span>
@@ -174,6 +175,17 @@ export function Login({ locked }: { locked?: boolean }) {
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Cambio de idioma antes de entrar: muestra el otro idioma (la página se vuelve a cargar). */
+function LangSwitch() {
+  const other = LANGS.find((l) => l.id !== getLang()) ?? LANGS[0];
+  return (
+    <button type="button" className="tg-login-lang" lang={other.id} onClick={() => setLang(other.id)} title={t("Idioma")}>
+      <Globe size={13} />
+      {other.name}
+    </button>
+  );
+}
 
 /**
  * Código de verificación: 6 casillas que avanzan solas (también acepta pegar el código
@@ -210,19 +222,19 @@ function TotpEntry({ busy, onCode }: { busy: boolean; onCode: (code: string) => 
     return (
       <>
         <div className="tg-login-field">
-          <input autoFocus placeholder="xxxxx-xxxxx" value={rc} onChange={(e) => setRc(e.target.value)} aria-label="Código de recuperación" onKeyDown={(e) => e.key === "Enter" && rc.trim() && onCode(rc.trim())} />
-          <button type="button" aria-label="Entrar" disabled={busy || !rc.trim()} onClick={() => onCode(rc.trim())}>
+          <input autoFocus placeholder="xxxxx-xxxxx" value={rc} onChange={(e) => setRc(e.target.value)} aria-label={t("Código de recuperación")} onKeyDown={(e) => e.key === "Enter" && rc.trim() && onCode(rc.trim())} />
+          <button type="button" aria-label={t("Entrar")} disabled={busy || !rc.trim()} onClick={() => onCode(rc.trim())}>
             <ArrowRight size={14} strokeWidth={2.4} />
           </button>
         </div>
         <button type="button" className="tg-login-back" onClick={() => setRecovery(false)}>
-          Usar la app de autenticación
+          {t("Usar la app de autenticación")}
         </button>
       </>
     );
   return (
     <>
-      <div className="tg-otp" role="group" aria-label="Código de verificación">
+      <div className="tg-otp" role="group" aria-label={t("Código de verificación")}>
         {digits.map((d, i) => (
           <input
             key={i}
@@ -234,7 +246,7 @@ function TotpEntry({ busy, onCode }: { busy: boolean; onCode: (code: string) => 
             maxLength={6}
             value={d}
             disabled={busy}
-            aria-label={`Dígito ${i + 1}`}
+            aria-label={t("Dígito {n}", { n: i + 1 })}
             onChange={(e) => set(i, e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Backspace" && !digits[i] && i > 0) refs.current[i - 1]?.focus();
@@ -249,7 +261,7 @@ function TotpEntry({ busy, onCode }: { busy: boolean; onCode: (code: string) => 
         ))}
       </div>
       <button type="button" className="tg-login-back" onClick={() => setRecovery(true)}>
-        Usar un código de recuperación
+        {t("Usar un código de recuperación")}
       </button>
     </>
   );

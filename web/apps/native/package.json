@@ -1,0 +1,21 @@
+{
+  "name": "@tango/native",
+  "private": true,
+  "version": "0.3.0",
+  "description": "TangoOS para escritorio: abre el escritorio de tu NAS en una ventana propia",
+  "author": "TangoOS",
+  "license": "MIT",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build:main": "vite build -c vite.main.config.ts",
+    "build:launcher": "tsc -p tsconfig.json --noEmit && vite build -c vite.launcher.config.ts",
+    "build": "npm run build:main && npm run build:launcher",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && sh scripts/package.sh"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "bonjour-service": "1.4.4"
+  }
+}

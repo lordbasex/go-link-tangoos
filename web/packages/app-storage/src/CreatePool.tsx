@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, CheckCircle2, Clock, HardDrive, Layers, RotateCcw, XOctagon } from "lucide-react";
-import { POOL_PROFILES, RpcError, fmtBytes, poolLayout, poolProfileLabel, tiersUnused, tiersUsable, useJobs, useTransport } from "@tango/client";
+import { POOL_PROFILES, RpcError, fmtBytes, poolLayout, poolProfileLabel, t, tiersUnused, tiersUsable, tn, tr, useJobs, useTransport } from "@tango/client";
 import type { Disk, Pool, PoolPlan, PoolProfile, Volume } from "@tango/client";
 import { Button, Progress, Sheet, TextInput } from "@tango/ui";
 import { toast } from "@tango/shell";
@@ -8,22 +8,22 @@ import { useCountdown } from "./CreateVolume";
 import { TierDiagram } from "./Tiers";
 import { ineligibleReason } from "./util";
 
-const STEPS = ["Discos", "Protección", "Nombre", "Revisión"];
+const STEPS = [t("Discos"), t("Protección"), t("Nombre"), t("Revisión")];
 
 const errorText: Record<string, string> = {
-  PLAN_EXPIRED: "El plan venció. Lo volvemos a armar con el estado actual de los discos.",
-  CONFIRMATION_MISMATCH: "La confirmación no coincide con el plan. Volvé a escribir el nombre del grupo.",
-  DEVICE_CHANGED: "Un disco cambió desde que armaste el plan. Volvé a revisarlo.",
-  DEVICE_NOT_ELIGIBLE: "Uno de los discos ya no se puede usar. Volvé a elegir los discos.",
-  POOL_EXISTS: "Ya existe un grupo o un volumen con ese nombre. Elegí otro.",
-  VOLUME_EXISTS: "Ya existe un volumen con ese nombre. Elegí otro.",
+  PLAN_EXPIRED: t("El plan venció. Lo volvemos a armar con el estado actual de los discos."),
+  CONFIRMATION_MISMATCH: t("La confirmación no coincide con el plan. Volvé a escribir el nombre del grupo."),
+  DEVICE_CHANGED: t("Un disco cambió desde que armaste el plan. Volvé a revisarlo."),
+  DEVICE_NOT_ELIGIBLE: t("Uno de los discos ya no se puede usar. Volvé a elegir los discos."),
+  POOL_EXISTS: t("Ya existe un grupo o un volumen con ese nombre. Elegí otro."),
+  VOLUME_EXISTS: t("Ya existe un volumen con ese nombre. Elegí otro."),
 };
 
-const diskLabel = (d: Disk) => `${d.bay ? `Bahía ${d.bay}` : "Interno"} · ${d.model}`;
+const diskLabel = (d: Disk) => `${d.bay ? t("Bahía {n}", { n: d.bay }) : t("Interno")} · ${d.model}`;
 
 /** Asistente: discos → protección (RAID o híbrido, con el reparto en tramos) → nombre → plan con confirmación. */
 export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { open: boolean; onClose: () => void; disks: Disk[]; vols: Volume[]; pools: Pool[]; onCreated?: (name: string) => void }) {
-  const t = useTransport();
+  const rpc = useTransport();
   const jobs = useJobs();
   const [step, setStep] = useState(0);
   const [sel, setSel] = useState<string[]>([]);
@@ -84,14 +84,14 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
     setError(null);
     setConfirm("");
     try {
-      setPlan(await t.call("storage.pools.plan", { name, profile, disks: sel }));
+      setPlan(await rpc.call("storage.pools.plan", { name, profile, disks: sel }));
     } catch (e) {
       setError(toError(e));
     } finally {
       setPlanning(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, name, profile, sel]);
+  }, [rpc, name, profile, sel]);
 
   useEffect(() => {
     if (step === 3) void makePlan();
@@ -106,7 +106,7 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
     setBusy(true);
     setError(null);
     try {
-      const r = await t.call("storage.pools.create", { plan_id: plan.plan_id, confirm_token: plan.confirm_token, typed_name: confirm });
+      const r = await rpc.call("storage.pools.create", { plan_id: plan.plan_id, confirm_token: plan.confirm_token, typed_name: confirm });
       setJobId(r.job);
     } catch (e) {
       const err = toError(e);
@@ -118,7 +118,7 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
   };
 
   const close = () => {
-    if (jobId && !done) toast({ level: "info", title: `El grupo ${name} se sigue creando`, body: "Podés ver el progreso en Actividad." });
+    if (jobId && !done) toast({ level: "info", title: t("El grupo {name} se sigue creando", { name }), body: t("Podés ver el progreso en Actividad.") });
     onClose();
   };
 
@@ -137,24 +137,24 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
                   onCreated(name);
                 }}
               >
-                Crear un volumen en {name}…
+                {t("Crear un volumen en {name}…", { name })}
               </Button>
             )}
             <Button variant="primary" onClick={close}>
-              {done || failed ? "Cerrar" : "Seguir en segundo plano"}
+              {done || failed ? t("Cerrar") : t("Seguir en segundo plano")}
             </Button>
           </>
         }
       >
         <div className="ts-wiz-done">
           {done ? <CheckCircle2 size={44} className="ts-ok-icon" /> : failed ? <XOctagon size={44} className="ts-crit-icon" /> : <Layers size={40} className="ts-muted-icon" />}
-          <h2 className="tg-h2">{done ? `El grupo ${name} está listo` : failed ? `No se pudo crear el grupo ${name}` : `Creando el grupo ${name}…`}</h2>
+          <h2 className="tg-h2">{done ? t("El grupo {name} está listo", { name }) : failed ? t("No se pudo crear el grupo {name}", { name }) : t("Creando el grupo {name}…", { name })}</h2>
           <p className="tg-muted">
             {done
-              ? `${fmtBytes(plan?.summary.usable ?? 0)} para repartir en volúmenes. Creá el primero: Btrfs para carpetas compartidas, con cifrado si querés.`
+              ? t("{size} para repartir en volúmenes. Creá el primero: Btrfs para carpetas compartidas, con cifrado si querés.", { size: fmtBytes(plan?.summary.usable ?? 0) })
               : failed
-                ? `La tarea falló. ${job?.detail ?? ""} Los discos quedaron libres.`
-                : "Se particionan los discos, se arman los RAID de cada tramo y se crea el grupo (LVM). La sincronización inicial sigue en segundo plano."}
+                ? `${t("La tarea falló.")} ${tr(job?.detail)} ${t("Los discos quedaron libres.")}`
+                : t("Se particionan los discos, se arman los RAID de cada tramo y se crea el grupo (LVM). La sincronización inicial sigue en segundo plano.")}
           </p>
           {!done && !failed && (
             <div className="ts-wiz-progress">
@@ -179,27 +179,27 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
               <AlertTriangle size={14} /> {error.text}
               {(error.code === "PLAN_EXPIRED" || error.code === "DEVICE_CHANGED") && (
                 <Button variant="plain" onClick={() => void makePlan()}>
-                  <RotateCcw size={12} /> Volver a revisar
+                  <RotateCcw size={12} /> {t("Volver a revisar")}
                 </Button>
               )}
             </span>
           )}
-          <Button onClick={step === 0 ? close : () => setStep(step - 1)}>{step === 0 ? "Cancelar" : "Atrás"}</Button>
+          <Button onClick={step === 0 ? close : () => setStep(step - 1)}>{step === 0 ? t("Cancelar") : t("Atrás")}</Button>
           {step < 3 ? (
             <Button variant="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
-              Continuar
+              {t("Continuar")}
             </Button>
           ) : (
             <Button variant="danger" disabled={!canNext || busy || planning} onClick={create}>
-              Borrar discos y crear el grupo
+              {t("Borrar discos y crear el grupo")}
             </Button>
           )}
         </>
       }
     >
       <div className="ts-wiz-head">
-        <h2 className="tg-h2">Crear grupo de almacenamiento</h2>
-        <ol className="ts-steps" aria-label="Pasos">
+        <h2 className="tg-h2">{t("Crear grupo de almacenamiento")}</h2>
+        <ol className="ts-steps" aria-label={t("Pasos")}>
           {STEPS.map((s, i) => (
             <li key={s} data-state={i < step ? "done" : i === step ? "current" : "todo"} aria-current={i === step ? "step" : undefined}>
               <span>{i < step ? <Check size={11} strokeWidth={3} /> : i + 1}</span>
@@ -212,24 +212,24 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
       {step === 0 && (
         <>
           <p className="tg-muted ts-wiz-lead">
-            Un grupo junta discos con su protección; después creás volúmenes dentro, del tamaño que quieras. Los discos pueden ser de distinto tamaño.
+            {t("Un grupo junta discos con su protección; después creás volúmenes dentro, del tamaño que quieras. Los discos pueden ser de distinto tamaño.")}
           </p>
           <div className="ts-pick-bar">
             <span className="tg-num">
               {sel.length ? (
                 <>
-                  Seleccionados: <b>{sel.length}</b> · {fmtBytes(chosen.reduce((a, d) => a + d.size, 0))} en total
+                  {t("Seleccionados:")} <b>{sel.length}</b> · {t("{size} en total", { size: fmtBytes(chosen.reduce((a, d) => a + d.size, 0)) })}
                 </>
               ) : (
-                `${eligible.length} ${eligible.length === 1 ? "disco libre" : "discos libres"}`
+                tn(eligible.length, "{n} disco libre", "{n} discos libres")
               )}
             </span>
             <span className="ts-pick-actions">
               <Button variant="plain" disabled={!eligible.length || sel.length === eligible.length} onClick={() => setSel(eligible.map((d) => d.id))}>
-                Todos los libres
+                {t("Todos los libres")}
               </Button>
               <Button variant="plain" disabled={!sel.length} onClick={() => setSel([])}>
-                Ninguno
+                {t("Ninguno")}
               </Button>
             </span>
           </div>
@@ -244,7 +244,7 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
                   <span className="ts-pick-text">
                     <strong>{diskLabel(d)}</strong>
                     <small>
-                      {fmtBytes(d.size)} · {d.kind === "hdd" ? "HDD" : d.kind === "ssd" ? "SSD" : "NVMe"} · serie {d.serial}
+                      {fmtBytes(d.size)} · {d.kind === "hdd" ? "HDD" : d.kind === "ssd" ? "SSD" : "NVMe"} · {t("serie {serial}", { serial: d.serial })}
                     </small>
                     {reason && <em>{reason}</em>}
                   </span>
@@ -258,15 +258,15 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
       {step === 1 && (
         <>
           <p className="tg-muted ts-wiz-lead">
-            El RAID híbrido reparte cada disco en tramos del tamaño de los otros discos y arma un RAID por tramo: así se aprovechan discos de distinto tamaño, y el grupo crece sumando de a un disco.
+            {t("El RAID híbrido reparte cada disco en tramos del tamaño de los otros discos y arma un RAID por tramo: así se aprovechan discos de distinto tamaño, y el grupo crece sumando de a un disco.")}
           </p>
-          <div className="ts-profiles ts-profiles-pool" role="radiogroup" aria-label="Protección">
+          <div className="ts-profiles ts-profiles-pool" role="radiogroup" aria-label={t("Protección")}>
             {POOL_PROFILES.map((info) => {
               const why = info.check(sel.length);
               return (
                 <button key={info.id} type="button" role="radio" aria-checked={profile === info.id} className="ts-profile" disabled={!!why} onClick={() => setProfile(info.id)}>
                   <strong>
-                    {info.label} {info.id === "hybrid1" && <span className="ts-soon">recomendado</span>}
+                    {info.label} {info.id === "hybrid1" && <span className="ts-soon">{t("recomendado")}</span>}
                   </strong>
                   <small>{info.description}</small>
                   <small className="ts-tolerance" data-none={info.id === "basic" || undefined}>
@@ -282,12 +282,12 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
               <TierDiagram tiers={tiers} disks={chosen.map((d) => ({ id: d.id, label: diskLabel(d), size: d.size }))} />
               {tiersUnused(tiers) > 0 && (
                 <p className="ts-note">
-                  {fmtBytes(tiersUnused(tiers))} quedan reservados: con {poolProfileLabel(profile)} se suman al grupo cuando agregues otro disco igual o más grande que el mayor.
-                  {!profile.startsWith("hybrid") && " Con RAID híbrido se aprovecharían desde ya."}
+                  {t("{size} quedan reservados: con {profile} se suman al grupo cuando agregues otro disco igual o más grande que el mayor.", { size: fmtBytes(tiersUnused(tiers)), profile: poolProfileLabel(profile) })}
+                  {!profile.startsWith("hybrid") && ` ${t("Con RAID híbrido se aprovecharían desde ya.")}`}
                 </p>
               )}
               <p className="ts-note">
-                Capacidad útil estimada: <b className="tg-num">{fmtBytes(tiersUsable(tiers))}</b> antes del sistema de archivos.
+                {t("Capacidad útil estimada:")} <b className="tg-num">{fmtBytes(tiersUsable(tiers))}</b> {t("antes del sistema de archivos.")}
               </p>
             </>
           )}
@@ -297,9 +297,9 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
       {step === 2 && (
         <div className="ts-form">
           <label className="ts-field">
-            <span>Nombre del grupo</span>
-            <TextInput value={name} onChange={(e) => setName(e.target.value.toLowerCase())} aria-label="Nombre del grupo" />
-            <small>{nameOk || !name ? "Minúsculas y números (hasta 24). Los volúmenes del grupo llevan su propio nombre." : "Ese nombre no está disponible o no es válido."}</small>
+            <span>{t("Nombre del grupo")}</span>
+            <TextInput value={name} onChange={(e) => setName(e.target.value.toLowerCase())} aria-label={t("Nombre del grupo")} />
+            <small>{nameOk || !name ? t("Minúsculas y números (hasta 24). Los volúmenes del grupo llevan su propio nombre.") : t("Ese nombre no está disponible o no es válido.")}</small>
           </label>
         </div>
       )}
@@ -309,11 +309,11 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
           <div className="ts-danger">
             <AlertTriangle size={18} />
             <div>
-              <strong>Se van a borrar estos discos</strong>
-              <p>Todo lo que contienen se pierde. TangoOS vuelve a verificar la identidad de cada disco justo antes de empezar.</p>
+              <strong>{t("Se van a borrar estos discos")}</strong>
+              <p>{t("Todo lo que contienen se pierde. TangoOS vuelve a verificar la identidad de cada disco justo antes de empezar.")}</p>
             </div>
           </div>
-          {planning && !plan && <p className="tg-muted ts-wiz-lead">Armando el plan con el estado actual de los discos…</p>}
+          {planning && !plan && <p className="tg-muted ts-wiz-lead">{t("Armando el plan con el estado actual de los discos…")}</p>}
           {plan && (
             <>
               <div className="ts-erase">
@@ -324,12 +324,12 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
                       <HardDrive size={18} strokeWidth={1.6} />
                       <div>
                         <strong>
-                          {local?.bay ? `Bahía ${local.bay}` : "Disco"} · {d.model}
+                          {local?.bay ? t("Bahía {n}", { n: local.bay }) : t("Disco")} · {d.model}
                         </strong>
                         <small>
-                          Serie {d.serial} · {fmtBytes(d.size)}
+                          {t("Serie {serial} · {size}", { serial: d.serial, size: fmtBytes(d.size) })}
                         </small>
-                        <small className="ts-erase-content">Contenido: {d.content}</small>
+                        <small className="ts-erase-content">{t("Contenido: {content}", { content: tr(d.content) })}</small>
                       </div>
                     </div>
                   );
@@ -338,24 +338,24 @@ export function CreatePool({ open, onClose, disks, vols, pools, onCreated }: { o
               <TierDiagram tiers={plan.summary.tiers} disks={plan.summary.disks.map((d) => ({ id: d.id, label: d.model, size: d.size }))} height={96} />
               {plan.summary.notes?.map((n) => (
                 <p key={n} className="ts-note">
-                  {n}
+                  {tr(n)}
                 </p>
               ))}
               <div className="ts-summary">
                 <span>
-                  <Layers size={13} /> {poolProfileLabel(plan.summary.profile)} · {fmtBytes(plan.summary.usable)} útiles
+                  <Layers size={13} /> {poolProfileLabel(plan.summary.profile)} · {t("{size} útiles", { size: fmtBytes(plan.summary.usable) })}
                 </span>
                 {left !== null && (
                   <span className="ts-plan-exp" data-soon={left < 60 || undefined}>
-                    <Clock size={12} /> Este plan vence en {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
+                    <Clock size={12} /> {t("Este plan vence en {time}", { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` })}
                   </span>
                 )}
               </div>
               <label className="ts-field">
                 <span>
-                  Para confirmar, escribí <code>{plan.summary.name}</code>
+                  {t("Para confirmar, escribí")} <code>{plan.summary.name}</code>
                 </span>
-                <TextInput value={confirm} onChange={(e) => setConfirm(e.target.value)} aria-label={`Escribí ${plan.summary.name} para confirmar`} autoComplete="off" />
+                <TextInput value={confirm} onChange={(e) => setConfirm(e.target.value)} aria-label={t("Escribí {name} para confirmar", { name: plan.summary.name })} autoComplete="off" />
               </label>
             </>
           )}

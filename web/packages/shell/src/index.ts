@@ -1,3 +1,4 @@
+import "./i18n.en";
 import "./shell.css";
 export * from "./store";
 export { Desktop, WindowToolbar, useWindowMenus, shortcutLabel } from "./Desktop";

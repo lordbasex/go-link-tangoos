@@ -28,6 +28,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -62,6 +63,7 @@ type Request struct {
 	Confirm  string  `json:"confirm"` // tiene que repetir Disk: confirma que se borra
 	Hostname string  `json:"hostname"`
 	Keyboard string  `json:"keyboard"`
+	Timezone string  `json:"timezone,omitempty"` // Área/Ciudad de tzdata; vacío = la de la imagen
 	Net      Network `json:"net"`
 }
 
@@ -75,6 +77,45 @@ const (
 
 // Keyboards permitidos (XKBLAYOUT).
 var Keyboards = []string{"latam", "es", "us", "br", "pt", "gb", "fr", "de", "it"}
+
+// ZoneTab es la lista de zonas horarias de tzdata (Debian: paquete tzdata, en la imagen).
+var ZoneTab = "/usr/share/zoneinfo/zone1970.tab"
+
+// fallbackZones: si la imagen no trae zone1970.tab (o en desarrollo).
+var fallbackZones = []string{"America/Argentina/Buenos_Aires", "America/Bogota", "America/Caracas", "America/Chicago",
+	"America/Denver", "America/Guatemala", "America/La_Paz", "America/Lima", "America/Los_Angeles", "America/Mexico_City",
+	"America/Montevideo", "America/New_York", "America/Panama", "America/Santiago", "America/Sao_Paulo", "America/Asuncion",
+	"America/Guayaquil", "America/Santo_Domingo", "America/Puerto_Rico", "America/Toronto", "Atlantic/Canary",
+	"Atlantic/Azores", "Europe/Berlin", "Europe/Lisbon", "Europe/London", "Europe/Madrid", "Europe/Paris", "Europe/Rome",
+	"Africa/Luanda", "Africa/Maputo", "Asia/Tokyo", "Australia/Sydney", "UTC"}
+
+var zoneRe = regexp.MustCompile(`^[A-Z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+){0,2}$`)
+
+// Timezones son las zonas que se pueden elegir (ordenadas), siempre con UTC.
+func Timezones() []string {
+	b, err := os.ReadFile(ZoneTab)
+	if err != nil {
+		out := slices.Clone(fallbackZones)
+		slices.Sort(out)
+		return out
+	}
+	set := map[string]bool{"UTC": true}
+	for _, l := range strings.Split(string(b), "\n") {
+		if l == "" || strings.HasPrefix(l, "#") {
+			continue
+		}
+		f := strings.Split(l, "\t")
+		if len(f) >= 3 && zoneRe.MatchString(f[2]) {
+			set[f[2]] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for z := range set {
+		out = append(out, z)
+	}
+	slices.Sort(out)
+	return out
+}
 
 var hostRe = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
 
@@ -346,7 +387,7 @@ func (s *Server) handleDisks(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "DISKS", err.Error())
 		return
 	}
-	writeJSON(w, map[string]any{"disks": disks, "keyboards": Keyboards})
+	writeJSON(w, map[string]any{"disks": disks, "keyboards": Keyboards, "timezones": Timezones()})
 }
 
 // Validate revisa la elección y devuelve los argumentos del motor (sin shell: argv).
@@ -364,6 +405,12 @@ func Validate(req Request, disks []Disk) ([]string, error) {
 		return nil, errors.New("distribución de teclado desconocida")
 	}
 	args := []string{"--disk", req.Disk, "--yes", "--hostname", strings.ToLower(req.Hostname), "--keyboard", req.Keyboard, "--no-reboot", "--progress"}
+	if req.Timezone != "" {
+		if !zoneRe.MatchString(req.Timezone) || !slices.Contains(Timezones(), req.Timezone) {
+			return nil, errors.New("zona horaria desconocida")
+		}
+		args = append(args, "--timezone", req.Timezone)
+	}
 	switch req.Net.Mode {
 	case "dhcp", "":
 	case "static":

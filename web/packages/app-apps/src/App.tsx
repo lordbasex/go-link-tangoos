@@ -2,7 +2,7 @@ import "./apps.css";
 import { useEffect, useMemo, useState } from "react";
 import { Briefcase, ChevronLeft, Container, Film, House, Image, Network, Package, Shield, Sparkles, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { appCategories, useIsReal, useLive, useTransport } from "@tango/client";
+import { appCategories, t, tr, useIsReal, useLive, useTransport } from "@tango/client";
 import type { AppCategory, CatalogApp, InstalledApp } from "@tango/client";
 import { DemoBadge, IconButton, SearchField, SidebarItem } from "@tango/ui";
 import { WindowToolbar, openApp, toast, useWindowMenus } from "@tango/shell";
@@ -40,7 +40,7 @@ export interface AppsCtx {
 }
 
 export default function AppsApp({ win }: AppProps) {
-  const t = useTransport();
+  const tp = useTransport();
   const real = useIsReal("apps.catalog");
   const docker = useLive("apps.docker.status", undefined, ["apps.changed"]);
   const catalog = useLive("apps.catalog", undefined, ["apps.changed"]).data ?? [];
@@ -63,8 +63,8 @@ export default function AppsApp({ win }: AppProps) {
     jobs,
     openDetail: (id) => setDetail(id),
     launch: (a) => {
-      if (!a.url) return toast({ level: "info", title: `${a.name} no tiene interfaz web` });
-      void appUrl(t, a).then((url) => url && openApp("tango.appview", { url, title: a.name, icon: a.icon }));
+      if (!a.url) return toast({ level: "info", title: t("{name} no tiene interfaz web", { name: a.name }) });
+      void appUrl(tp, a).then((url) => url && openApp("tango.appview", { url, title: a.name, icon: a.icon }));
     },
     run: (key, p, failTitle) => {
       p.then(
@@ -80,10 +80,10 @@ export default function AppsApp({ win }: AppProps) {
       {
         label: "Apps",
         items: [
-          { label: "Descubrir", checked: view.kind === "discover", action: () => (setDetail(null), setView({ kind: "discover" })) },
-          { label: "Instaladas", checked: view.kind === "installed", action: () => (setDetail(null), setView({ kind: "installed" })) },
+          { label: t("Descubrir"), checked: view.kind === "discover", action: () => (setDetail(null), setView({ kind: "discover" })) },
+          { label: t("Instaladas"), checked: view.kind === "installed", action: () => (setDetail(null), setView({ kind: "installed" })) },
           { separator: true },
-          { label: "Ajustes de Docker", action: () => (setDetail(null), setView({ kind: "docker" })) },
+          { label: t("Ajustes de Docker"), action: () => (setDetail(null), setView({ kind: "docker" })) },
         ],
       },
     ],
@@ -99,36 +99,36 @@ export default function AppsApp({ win }: AppProps) {
     const n = q.trim().toLowerCase();
     let list = catalog;
     if (view.kind === "category") list = list.filter((a) => a.category === view.cat);
-    if (n) list = list.filter((a) => `${a.name} ${a.description} ${a.category}`.toLowerCase().includes(n));
+    if (n) list = list.filter((a) => `${a.name} ${a.description} ${a.category} ${tr(a.description)} ${t(a.category)}`.toLowerCase().includes(n));
     return list;
   }, [catalog, view, q]);
 
   const detailApp = detail ? catalog.find((a) => a.id === detail) : undefined;
-  const title = detailApp ? detailApp.name : view.kind === "discover" ? "Descubrir" : view.kind === "installed" ? "Instaladas" : view.kind === "docker" ? "Ajustes de Docker" : view.cat;
+  const title = detailApp ? detailApp.name : view.kind === "discover" ? t("Descubrir") : view.kind === "installed" ? t("Instaladas") : view.kind === "docker" ? t("Ajustes de Docker") : t(view.cat);
   const showHero = !docker.loading && !dockerReady && view.kind !== "docker";
 
   return (
     <div className="tg-app tapp" style={{ ["--side" as string]: `${SIDE}px` }}>
-      <nav className="tg-app-side tg-sidebar" aria-label="Secciones">
-        <h4>Centro de apps</h4>
-        <SidebarItem icon={Sparkles} label="Descubrir" current={!detail && view.kind === "discover"} onClick={() => go({ kind: "discover" })} />
-        <SidebarItem icon={Package} label="Instaladas" current={!detail && view.kind === "installed"} meta={installed.length || undefined} onClick={() => go({ kind: "installed" })} />
-        <h4>Categorías</h4>
+      <nav className="tg-app-side tg-sidebar" aria-label={t("Secciones")}>
+        <h4>{t("Centro de apps")}</h4>
+        <SidebarItem icon={Sparkles} label={t("Descubrir")} current={!detail && view.kind === "discover"} onClick={() => go({ kind: "discover" })} />
+        <SidebarItem icon={Package} label={t("Instaladas")} current={!detail && view.kind === "installed"} meta={installed.length || undefined} onClick={() => go({ kind: "installed" })} />
+        <h4>{t("Categorías")}</h4>
         {appCategories.map((c) => (
-          <SidebarItem key={c} icon={categoryIcon[c]} label={c} current={!detail && view.kind === "category" && view.cat === c} meta={catalog.filter((a) => a.category === c).length || undefined} onClick={() => go({ kind: "category", cat: c })} />
+          <SidebarItem key={c} icon={categoryIcon[c]} label={t(c)} current={!detail && view.kind === "category" && view.cat === c} meta={catalog.filter((a) => a.category === c).length || undefined} onClick={() => go({ kind: "category", cat: c })} />
         ))}
-        <h4>Sistema</h4>
-        <SidebarItem icon={Container} label="Ajustes de Docker" current={!detail && view.kind === "docker"} onClick={() => go({ kind: "docker" })} />
+        <h4>{t("Sistema")}</h4>
+        <SidebarItem icon={Container} label={t("Ajustes de Docker")} current={!detail && view.kind === "docker"} onClick={() => go({ kind: "docker" })} />
       </nav>
       <div className="tg-app-main">
         <WindowToolbar win={win} inset={SIDE}>
-          {detail && <IconButton icon={ChevronLeft} label="Atrás" onClick={() => setDetail(null)} />}
+          {detail && <IconButton icon={ChevronLeft} label={t("Atrás")} onClick={() => setDetail(null)} />}
           <span className="tg-tb-title">{title}</span>
           <span className="tg-tb-spacer" />
           {!real && <DemoBadge />}
           {!detail && (view.kind === "discover" || view.kind === "category") && (
             <div className="tapp-search">
-              <SearchField value={q} onChange={setQ} placeholder="Buscar apps" />
+              <SearchField value={q} onChange={setQ} placeholder={t("Buscar apps")} />
             </div>
           )}
         </WindowToolbar>
@@ -136,15 +136,15 @@ export default function AppsApp({ win }: AppProps) {
           {detailApp ? (
             <Detail app={detailApp} ctx={ctx} onUninstalled={() => setDetail(null)} />
           ) : showHero ? (
-            <DockerHero jobs={jobs} run={ctx.run} install={() => t.call("apps.docker.install", undefined)} />
+            <DockerHero jobs={jobs} run={ctx.run} install={() => tp.call("apps.docker.install", undefined)} />
           ) : view.kind === "docker" ? (
-            <DockerSettings status={docker.data} jobs={jobs} run={ctx.run} install={() => t.call("apps.docker.install", undefined)} />
+            <DockerSettings status={docker.data} jobs={jobs} run={ctx.run} install={() => tp.call("apps.docker.install", undefined)} />
           ) : view.kind === "installed" ? (
             <Installed ctx={ctx} onBrowse={() => go({ kind: "discover" })} />
           ) : (
             <div className="tg-app-pad tapp-stack">
               {view.kind === "discover" && !q && catalog.length > 0 && <Featured app={catalog.find((a) => !installed.some((i) => i.id === a.id)) ?? catalog[0]} ctx={ctx} />}
-              <AppGrid apps={filtered} ctx={ctx} heading={view.kind === "discover" && !q ? "Todas las apps" : undefined} query={q} />
+              <AppGrid apps={filtered} ctx={ctx} heading={view.kind === "discover" && !q ? t("Todas las apps") : undefined} query={q} />
             </div>
           )}
         </div>

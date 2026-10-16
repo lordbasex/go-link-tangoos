@@ -1,7 +1,9 @@
+import "./i18n.en";
 import "./widgets.css";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as RKeyboardEvent, MouseEvent as RMouseEvent, PointerEvent as RPointerEvent } from "react";
 import { Minus, Plus } from "lucide-react";
+import { t } from "@tango/client";
 import { openApp, showContextMenu } from "@tango/shell";
 import { catalog, sizeUnits } from "./widgets";
 import type { WidgetDef } from "./widgets";
@@ -229,9 +231,9 @@ export function Widgets() {
       e.preventDefault();
       e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [
-        ...(w.app ? [{ label: `Abrir ${w.app.name}`, action: () => openApp(w.app!.id) }, { separator: true }] : []),
-        { label: `Quitar «${w.name}»`, action: () => remove(w.id) },
-        { label: editing ? "Terminar de editar" : "Editar widgets…", action: () => setEditing((v) => !v) },
+        ...(w.app ? [{ label: t("Abrir {name}", { name: w.app.name }), action: () => openApp(w.app!.id) }, { separator: true }] : []),
+        { label: t("Quitar «{name}»", { name: w.name }), action: () => remove(w.id) },
+        { label: editing ? t("Terminar de editar") : t("Editar widgets…"), action: () => setEditing((v) => !v) },
       ]);
     },
     [editing, remove],
@@ -253,15 +255,15 @@ export function Widgets() {
       {editing && (
         <div className="tw-editbar">
           <button type="button" className="tw-pill" onClick={() => setGallery((g) => !g)} aria-expanded={gallery}>
-            <Plus size={14} strokeWidth={2.6} /> Agregar widgets
+            <Plus size={14} strokeWidth={2.6} /> {t("Agregar widgets")}
           </button>
           <button type="button" className="tw-pill" data-primary onClick={() => (setEditing(false), setGallery(false))}>
-            Listo
+            {t("Listo")}
           </button>
           {gallery && (
-            <div className="tw-gallery" role="dialog" aria-label="Agregar widgets">
-              <div className="tw-gallery-title">Agregar widgets</div>
-              {layout.removed.length === 0 && <div className="tw-gallery-empty">Todos los widgets ya están en el escritorio.</div>}
+            <div className="tw-gallery" role="dialog" aria-label={t("Agregar widgets")}>
+              <div className="tw-gallery-title">{t("Agregar widgets")}</div>
+              {layout.removed.length === 0 && <div className="tw-gallery-empty">{t("Todos los widgets ya están en el escritorio.")}</div>}
               {layout.removed.map((id) => {
                 const w = byId.get(id)!;
                 return (
@@ -332,13 +334,13 @@ const WidgetFrame = memo(function WidgetFrame({
       data-clickable={def.app && !editing ? true : undefined}
       role={def.app && !editing ? "button" : "group"}
       tabIndex={0}
-      aria-label={def.app && !editing ? `${def.name}: abrir ${def.app.name}` : def.name}
+      aria-label={def.app && !editing ? t("{widget}: abrir {app}", { widget: def.name, app: def.app.name }) : def.name}
       onPointerDown={onPointerDown}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
     >
       {editing && (
-        <button type="button" className="tw-remove" aria-label={`Quitar ${def.name}`} onClick={() => onRemove(def.id)}>
+        <button type="button" className="tw-remove" aria-label={t("Quitar {name}", { name: def.name })} onClick={() => onRemove(def.id)}>
           <Minus size={13} strokeWidth={3} />
         </button>
       )}

@@ -87,9 +87,9 @@ func run(c config, log *slog.Logger) error {
 	registerM4(reg, m4jobs, log)      // M4: sistema, servicios, actualizaciones (m4_linux.go)
 	registerUPS(reg, m4jobs)          // UPS por USB con NUT (ups_linux.go), misma cola que M4
 	registerGluster(reg, m4jobs, log) // clúster GlusterFS (gluster_linux.go, protocol/README.md §17)
-	prevHook := fdHook                // term.spawn también responde con un fd (el PTY)
+	prevHook := fdHook                // term.spawn (el PTY) y zfs.repl.send/recv (un pipe) también responden con un fd
 	fdHook = func(ctx context.Context, c *net.UnixConn, req *agentproto.Request, l *slog.Logger) bool {
-		return termHook(ctx, c, req, l) || (prevHook != nil && prevHook(ctx, c, req, l))
+		return termHook(ctx, c, req, l) || replHook(ctx, c, req, l) || (prevHook != nil && prevHook(ctx, c, req, l))
 	}
 	srv := &server{reg: reg, allowed: allowed, log: log, journal: j}
 

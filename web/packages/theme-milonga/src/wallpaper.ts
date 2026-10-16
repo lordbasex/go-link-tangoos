@@ -1,6 +1,8 @@
 // Wallpapers propios, generados: el Río de la Plata y el skyline porteño con el Obelisco.
 // Se rasterizan una vez como data-URL SVG (el navegador los cachea), no se repintan al mover ventanas.
 
+import { t } from "@tango/client";
+
 export type WallpaperId = "atardecer" | "noche" | "amanecer" | "dinamico";
 
 interface Palette {
@@ -158,8 +160,8 @@ export function wallpaperURL(id: WallpaperId, now = new Date()): string {
 }
 
 export const wallpapers: { id: WallpaperId; name: string; dark: boolean }[] = [
-  { id: "atardecer", name: "Atardecer en el Río", dark: true },
-  { id: "noche", name: "Noche porteña", dark: true },
-  { id: "amanecer", name: "Amanecer", dark: false },
-  { id: "dinamico", name: "Dinámico (según la hora)", dark: true },
+  { id: "atardecer", name: t("Atardecer en el Río"), dark: true },
+  { id: "noche", name: t("Noche porteña"), dark: true },
+  { id: "amanecer", name: t("Amanecer"), dark: false },
+  { id: "dinamico", name: t("Dinámico (según la hora)"), dark: true },
 ];

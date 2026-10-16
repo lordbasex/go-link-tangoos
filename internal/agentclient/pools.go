@@ -90,3 +90,12 @@ func (c *Client) CacheCreate(ctx context.Context, a agentproto.CacheCreateArgs) 
 func (c *Client) CacheRemove(ctx context.Context, a agentproto.CacheRemoveArgs) error {
 	return c.CallOnce(ctx, agentproto.OpCacheRemove, a, nil)
 }
+
+// PoolLUN crea (create) o borra el LV de un LUN de iSCSI en un grupo.
+func (c *Client) PoolLUN(ctx context.Context, create bool, a agentproto.PoolLUNArgs) error {
+	op := agentproto.OpPoolLUNDelete
+	if create {
+		op = agentproto.OpPoolLUNCreate
+	}
+	return c.CallOnce(ctx, op, a, nil)
+}

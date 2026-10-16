@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { Globe, KeyRound, Lock, ServerCog, ShieldCheck, UserRound } from "lucide-react";
-import { RpcError, passwordStrength, setToken, useTransport, validHostname } from "@tango/client";
+import { LANGS, RpcError, getLang, locale, passwordStrength, setLang, setToken, t, tr, useTransport, validHostname } from "@tango/client";
 import type { SetupParams } from "@tango/client";
 import { openApp, toast, ui } from "./store";
 
@@ -26,7 +26,7 @@ function timezones(): string[] {
 function tzLabel(tz: string) {
   const city = tz.split("/").pop()!.replace(/_/g, " ");
   try {
-    const off = new Intl.DateTimeFormat("es-AR", { timeZone: tz, timeZoneName: "shortOffset" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value;
+    const off = new Intl.DateTimeFormat(locale(), { timeZone: tz, timeZoneName: "shortOffset" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value;
     return { city, region: tz.split("/").slice(0, -1).join(" / ").replace(/_/g, " "), off: off ?? "" };
   } catch {
     return { city, region: "", off: "" };
@@ -43,7 +43,7 @@ const userFrom = (full: string) =>
     .slice(0, 32) ?? "";
 
 export function SetupAssistant({ logo: Logo, suggestedHostname }: { logo: ComponentType<{ size?: number; color?: string }>; suggestedHostname: string }) {
-  const t = useTransport();
+  const tp = useTransport();
   const [step, setStep] = useState<Step>("welcome");
   const [hostname, setHostname] = useState(suggestedHostname || "tango");
   const [full, setFull] = useState("");
@@ -67,8 +67,8 @@ export function SetupAssistant({ logo: Logo, suggestedHostname }: { logo: Compon
   const effectiveName = nameTouched ? name : userFrom(full);
   const strength = passwordStrength(pw, [effectiveName, full, hostname]);
   const hostErr = validHostname(hostname);
-  const nameErr = !effectiveName ? "Elegí un nombre de usuario." : !/^[a-z][a-z0-9_-]{1,31}$/.test(effectiveName) ? "Empezá con una letra; solo minúsculas, números, guion y guion bajo." : ["root", "tango", "admin"].includes(effectiveName) ? "Ese nombre está reservado." : null;
-  const pwErr = pw.length > 0 && strength.score < 2 ? "La contraseña es demasiado débil." : pw2 && pw !== pw2 ? "Las contraseñas no coinciden." : null;
+  const nameErr = !effectiveName ? t("Elegí un nombre de usuario.") : !/^[a-z][a-z0-9_-]{1,31}$/.test(effectiveName) ? t("Empezá con una letra; solo minúsculas, números, guion y guion bajo.") : ["root", "tango", "admin"].includes(effectiveName) ? t("Ese nombre está reservado.") : null;
+  const pwErr = pw.length > 0 && strength.score < 2 ? t("La contraseña es demasiado débil.") : pw2 && pw !== pw2 ? t("Las contraseñas no coinciden.") : null;
 
   const valid: Record<Step, boolean> = {
     welcome: true,
@@ -93,7 +93,7 @@ export function SetupAssistant({ logo: Logo, suggestedHostname }: { logo: Compon
     setBusy(true);
     setErr(null);
     try {
-      const r = await t.call("setup.complete", { hostname, admin: { name: effectiveName, full: full.trim(), password: pw }, timezone: tz, certificate: cert });
+      const r = await tp.call("setup.complete", { hostname, admin: { name: effectiveName, full: full.trim(), password: pw }, timezone: tz, certificate: cert });
       setToken(r.token || null);
       document.querySelector(".tg-setup")?.animate([{ opacity: 1 }, { opacity: 0, transform: "scale(1.03)" }], { duration: 320, easing: "ease-in", fill: "forwards" });
       setTimeout(() => {
@@ -102,17 +102,17 @@ export function SetupAssistant({ logo: Logo, suggestedHostname }: { logo: Compon
           () =>
             toast({
               level: "info",
-              title: "Tu NAS está listo",
-              body: "El siguiente paso es crear tu primer volumen con los discos.",
+              title: t("Tu NAS está listo"),
+              body: t("El siguiente paso es crear tu primer volumen con los discos."),
               app: "tango.storage",
-              action: { label: "Crear volumen", run: () => openApp("tango.storage", { action: "create" }) },
+              action: { label: t("Crear volumen"), run: () => openApp("tango.storage", { action: "create" }) },
             }),
           700,
         );
       }, 300);
     } catch (e) {
       setBusy(false);
-      setErr(e instanceof RpcError ? e.message : "No se pudo completar la configuración. Revisá la conexión con el NAS.");
+      setErr(e instanceof RpcError ? e.message : t("No se pudo completar la configuración. Revisá la conexión con el NAS."));
       card.current?.animate([{ transform: "translateX(0)" }, { transform: "translateX(-8px)" }, { transform: "translateX(8px)" }, { transform: "translateX(0)" }], { duration: 280 });
     }
   };
@@ -140,42 +140,50 @@ export function SetupAssistant({ logo: Logo, suggestedHostname }: { logo: Compon
 
   return (
     <div className="tg-setup" onKeyDown={onKey}>
-      <div className="tg-setup-card" ref={card} role="dialog" aria-label="Configuración inicial">
+      <div className="tg-setup-card" ref={card} role="dialog" aria-label={t("Configuración inicial")}>
         <div className="tg-setup-body">
           {step === "welcome" && (
             <div className="tg-setup-welcome">
               <div className="tg-setup-logo">
                 <Logo size={56} color="#fff" />
               </div>
-              <h1>Configuremos tu NAS</h1>
-              <p>Son cinco pasos: un nombre para el equipo, tu cuenta de administrador, la zona horaria y cómo se protege la conexión. Los discos no se tocan.</p>
+              <h1>{t("Configuremos tu NAS")}</h1>
+              <p>{t("Son cinco pasos: un nombre para el equipo, tu cuenta de administrador, la zona horaria y cómo se protege la conexión. Los discos no se tocan.")}</p>
+              <div className="tg-setup-lang" role="group" aria-label={t("Idioma")}>
+                <Globe size={13} />
+                {LANGS.map((l) => (
+                  <button key={l.id} type="button" lang={l.id} aria-pressed={l.id === getLang()} onClick={() => l.id !== getLang() && setLang(l.id)}>
+                    {l.name}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {step === "name" && (
-            <Pane icon={ServerCog} title="Nombre del NAS" lead="Así lo vas a encontrar en la red y en el Finder o el Explorador.">
+            <Pane icon={ServerCog} title={t("Nombre del NAS")} lead={t("Así lo vas a encontrar en la red y en el Finder o el Explorador.")}>
               <label className="tg-setup-field">
-                <span>Nombre</span>
+                <span>{t("Nombre")}</span>
                 <input autoFocus value={hostname} onChange={(e) => setHostname(e.target.value.toLowerCase())} spellCheck={false} aria-invalid={!!hostErr} />
               </label>
               <div className="tg-setup-preview">
                 {hostErr ? (
-                  <span className="tg-setup-err">{hostErr}</span>
+                  <span className="tg-setup-err">{tr(hostErr)}</span>
                 ) : (
                   <>
-                    Vas a entrar desde <b>https://{hostname}.local</b>
+                    {t("Vas a entrar desde")} <b>https://{hostname}.local</b>
                   </>
                 )}
               </div>
             </Pane>
           )}
           {step === "admin" && (
-            <Pane icon={UserRound} title="Cuenta de administrador" lead="Con esta cuenta administrás el NAS. Después podés crear cuentas para tu familia o tu equipo.">
+            <Pane icon={UserRound} title={t("Cuenta de administrador")} lead={t("Con esta cuenta administrás el NAS. Después podés crear cuentas para tu familia o tu equipo.")}>
               <label className="tg-setup-field">
-                <span>Nombre completo</span>
+                <span>{t("Nombre completo")}</span>
                 <input autoFocus value={full} onChange={(e) => setFull(e.target.value)} placeholder="Federico Pereira" autoComplete="name" />
               </label>
               <label className="tg-setup-field">
-                <span>Usuario</span>
+                <span>{t("Usuario")}</span>
                 <input
                   value={effectiveName}
                   onChange={(e) => {
@@ -189,7 +197,7 @@ export function SetupAssistant({ logo: Logo, suggestedHostname }: { logo: Compon
               </label>
               {full && nameErr && <div className="tg-setup-err">{nameErr}</div>}
               <label className="tg-setup-field">
-                <span>Contraseña</span>
+                <span>{t("Contraseña")}</span>
                 <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" />
               </label>
               <div className="tg-setup-strength" data-score={pw ? strength.score : undefined} aria-live="polite">
@@ -198,21 +206,21 @@ export function SetupAssistant({ logo: Logo, suggestedHostname }: { logo: Compon
                     <i key={i} data-on={pw && strength.score > i ? "" : undefined} />
                   ))}
                 </div>
-                <span>{pw ? `${strength.label}. ${strength.hint}` : "Usá al menos 10 caracteres. Una frase de varias palabras funciona bien."}</span>
+                <span>{pw ? `${tr(strength.label)}. ${tr(strength.hint)}` : t("Usá al menos 10 caracteres. Una frase de varias palabras funciona bien.")}</span>
               </div>
               <label className="tg-setup-field">
-                <span>Repetir contraseña</span>
+                <span>{t("Repetir contraseña")}</span>
                 <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" />
               </label>
               {pwErr && <div className="tg-setup-err">{pwErr}</div>}
             </Pane>
           )}
           {step === "timezone" && (
-            <Pane icon={Globe} title="Zona horaria" lead="Para que las instantáneas programadas y los registros tengan la hora correcta.">
+            <Pane icon={Globe} title={t("Zona horaria")} lead={t("Para que las instantáneas programadas y los registros tengan la hora correcta.")}>
               <label className="tg-setup-search">
-                <input autoFocus placeholder="Buscar ciudad" value={tzQ} onChange={(e) => setTzQ(e.target.value)} aria-label="Buscar ciudad" />
+                <input autoFocus placeholder={t("Buscar ciudad")} value={tzQ} onChange={(e) => setTzQ(e.target.value)} aria-label={t("Buscar ciudad")} />
               </label>
-              <div className="tg-setup-tzlist" role="listbox" aria-label="Zonas horarias">
+              <div className="tg-setup-tzlist" role="listbox" aria-label={t("Zonas horarias")}>
                 {tzList.map((z) => {
                   const l = tzLabel(z);
                   return (
@@ -223,35 +231,35 @@ export function SetupAssistant({ logo: Logo, suggestedHostname }: { logo: Compon
                     </div>
                   );
                 })}
-                {tzList.length === 0 && <div className="tg-setup-none">Ninguna zona coincide con «{tzQ}».</div>}
+                {tzList.length === 0 && <div className="tg-setup-none">{t("Ninguna zona coincide con «{q}».", { q: tzQ })}</div>}
               </div>
             </Pane>
           )}
           {step === "cert" && (
-            <Pane icon={ShieldCheck} title="Conexión segura" lead="El escritorio siempre viaja cifrado. Lo que cambia es si tu navegador confía en el NAS sin advertencias.">
+            <Pane icon={ShieldCheck} title={t("Conexión segura")} lead={t("El escritorio siempre viaja cifrado. Lo que cambia es si tu navegador confía en el NAS sin advertencias.")}>
               <div className="tg-setup-choices" role="radiogroup">
-                <Choice checked={cert === "localca"} onSelect={() => setCert("localca")} icon={KeyRound} title="CA local de TangoOS (recomendado)">
-                  El NAS crea su propia autoridad certificante. Instalás el certificado raíz una vez en cada equipo y desaparecen las advertencias. Habilita la vista previa de videos y las descargas grandes.
+                <Choice checked={cert === "localca"} onSelect={() => setCert("localca")} icon={KeyRound} title={t("CA local de TangoOS (recomendado)")}>
+                  {t("El NAS crea su propia autoridad certificante. Instalás el certificado raíz una vez en cada equipo y desaparecen las advertencias. Habilita la vista previa de videos y las descargas grandes.")}
                 </Choice>
-                <Choice checked={cert === "selfsigned"} onSelect={() => setCert("selfsigned")} icon={Lock} title="Autofirmado">
-                  No hay que instalar nada, pero el navegador muestra una advertencia la primera vez y algunas funciones quedan limitadas. Podés cambiarlo después en Ajustes → Seguridad.
+                <Choice checked={cert === "selfsigned"} onSelect={() => setCert("selfsigned")} icon={Lock} title={t("Autofirmado")}>
+                  {t("No hay que instalar nada, pero el navegador muestra una advertencia la primera vez y algunas funciones quedan limitadas. Podés cambiarlo después en Ajustes → Seguridad.")}
                 </Choice>
               </div>
             </Pane>
           )}
           {step === "summary" && (
-            <Pane icon={ServerCog} title="Todo listo" lead="Revisá y confirmá. Podés cambiar cualquiera de estas opciones después en Ajustes.">
+            <Pane icon={ServerCog} title={t("Todo listo")} lead={t("Revisá y confirmá. Podés cambiar cualquiera de estas opciones después en Ajustes.")}>
               <dl className="tg-setup-summary">
-                <dt>Nombre del NAS</dt>
+                <dt>{t("Nombre del NAS")}</dt>
                 <dd>{hostname}.local</dd>
-                <dt>Administrador</dt>
+                <dt>{t("Administrador")}</dt>
                 <dd>
                   {full} ({effectiveName})
                 </dd>
-                <dt>Zona horaria</dt>
+                <dt>{t("Zona horaria")}</dt>
                 <dd>{tzLabel(tz).city}</dd>
-                <dt>Certificado</dt>
-                <dd>{cert === "localca" ? "CA local de TangoOS" : "Autofirmado"}</dd>
+                <dt>{t("Certificado")}</dt>
+                <dd>{cert === "localca" ? t("CA local de TangoOS") : t("Autofirmado")}</dd>
               </dl>
               {err && <div className="tg-setup-err" role="alert">{err}</div>}
             </Pane>
@@ -266,16 +274,16 @@ export function SetupAssistant({ logo: Logo, suggestedHostname }: { logo: Compon
           <div className="tg-setup-actions">
             {idx > 0 && (
               <button type="button" className="tg-btn" onClick={() => go(-1)} disabled={busy}>
-                Atrás
+                {t("Atrás")}
               </button>
             )}
             {step === "summary" ? (
               <button type="button" className="tg-btn" data-variant="primary" onClick={() => void finish()} disabled={busy}>
-                {busy ? "Configurando…" : "Empezar a usar TangoOS"}
+                {busy ? t("Configurando…") : t("Empezar a usar TangoOS")}
               </button>
             ) : (
               <button type="button" className="tg-btn" data-variant="primary" onClick={() => go(1)} disabled={!valid[step]}>
-                {step === "welcome" ? "Empezar" : "Continuar"}
+                {step === "welcome" ? t("Empezar") : t("Continuar")}
               </button>
             )}
           </div>

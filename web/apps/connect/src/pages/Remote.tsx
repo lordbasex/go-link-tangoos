@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { BUNDLE_PUBKEY } from "../config";
 import { BundleError, loadNasDesktop, type LoadStage } from "../bundle/loader";
 import { FINGERPRINT_PREFIX, browserLabel, openRemote, type LinkResult, type RemoteSession, type RemoteStage } from "../connect/remote";
-import { TangoMark } from "../components/site";
+import { t, tr } from "@tango/client";
+import { LangSwitch, TangoMark } from "../components/site";
 import { Link } from "../router";
 import { NasStore, type LinkedNas } from "../store/nasStore";
 import { releasePortal } from "../portalRoot";
@@ -15,10 +16,10 @@ const store = new NasStore();
 
 type Step = { key: string; label: string };
 const STEPS: Step[] = [
-  { key: "find", label: "Buscando tu NAS" },
-  { key: "direct", label: "Conexión directa o por relé" },
-  { key: "verify", label: "Verificando la identidad del NAS" },
-  { key: "desktop", label: "Descargando el escritorio" },
+  { key: "find", label: t("Buscando tu NAS") },
+  { key: "direct", label: t("Conexión directa o por relé") },
+  { key: "verify", label: t("Verificando la identidad del NAS") },
+  { key: "desktop", label: t("Descargando el escritorio") },
 ];
 
 function stepIndex(stage: RemoteStage | null, load: LoadStage | null): number {
@@ -39,7 +40,7 @@ export function Remote({ deviceId }: { deviceId: string }) {
   const [stage, setStage] = useState<RemoteStage | null>(null);
   const [load, setLoad] = useState<LoadStage | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fpChanged = !!error && error.startsWith(FINGERPRINT_PREFIX);
+  const fpChanged = !!error && (error.startsWith(FINGERPRINT_PREFIX) || error.startsWith(t(FINGERPRINT_PREFIX)));
   const [devMode, setDevMode] = useState(false);
   const [devReason, setDevReason] = useState("");
   const host = useRef<HTMLDivElement>(null);
@@ -69,8 +70,8 @@ export function Remote({ deviceId }: { deviceId: string }) {
       // cuando el NAS no lo entrega o no se puede montar; un problema de seguridad (firma, hash, manifiesto)
       // nunca cae al respaldo.
       let reason = "";
-      if (!BUNDLE_PUBKEY) reason = "este portal no tiene configurada la clave pública de releases";
-      else if (!s.transport.isReal("bundle.manifest" as never)) reason = "tu NAS todavía no entrega su escritorio por TangoConnect";
+      if (!BUNDLE_PUBKEY) reason = t("este portal no tiene configurada la clave pública de releases");
+      else if (!s.transport.isReal("bundle.manifest" as never)) reason = t("tu NAS todavía no entrega su escritorio por TangoConnect");
       else {
         try {
           const d = await loadNasDesktop({ deviceId: nas.deviceId, transport: s.transport, publicKey: BUNDLE_PUBKEY, onStage: setLoad });
@@ -84,7 +85,7 @@ export function Remote({ deviceId }: { deviceId: string }) {
             return;
           } catch (e) {
             // El portal ya se desmontó: mostramos el respaldo sobre la misma conexión.
-            reason = `no se pudo montar el escritorio del NAS (${(e as Error).message})`;
+            reason = t("no se pudo montar el escritorio del NAS ({error})", { error: tr((e as Error).message) });
             await mountFallback(s, reason);
             return;
           }
@@ -93,7 +94,7 @@ export function Remote({ deviceId }: { deviceId: string }) {
             setError(e.message);
             return;
           }
-          reason = e instanceof BundleError ? e.message : (e as Error).message;
+          reason = e instanceof BundleError ? e.message : tr((e as Error).message);
         }
       }
       if (cancelled) return;
@@ -111,10 +112,10 @@ export function Remote({ deviceId }: { deviceId: string }) {
   if (nas === null)
     return (
       <Shell>
-        <p className="ios-card-title">Este navegador no tiene vinculado ese NAS</p>
-        <p className="ios-note">Vinculalo con el código que muestra tu NAS en Ajustes → TangoConnect.</p>
+        <p className="ios-card-title">{t("Este navegador no tiene vinculado ese NAS")}</p>
+        <p className="ios-note">{t("Vinculalo con el código que muestra tu NAS en Ajustes → TangoConnect.")}</p>
         <Link className="ios-primary" to="/nas/vincular" style={{ textAlign: "center", textDecoration: "none" }}>
-          Vincular un NAS
+          {t("Vincular un NAS")}
         </Link>
       </Shell>
     );
@@ -123,7 +124,7 @@ export function Remote({ deviceId }: { deviceId: string }) {
     return (
       <>
         <div className="tc-banner" role="note">
-          Modo desarrollo: el escritorio es el de este portal ({devReason || "tu NAS todavía no entrega el suyo"}).
+          {t("Modo desarrollo: el escritorio es el de este portal ({reason}).", { reason: devReason || t("tu NAS todavía no entrega el suyo") })}
         </div>
         <div className="tc-desktop-host" ref={host} />
       </>
@@ -131,7 +132,7 @@ export function Remote({ deviceId }: { deviceId: string }) {
 
   const idx = stepIndex(stage, load);
   return (
-    <Shell title={nas?.name ?? "Tu NAS"}>
+    <Shell title={nas?.name ?? t("Tu NAS")}>
       <ol className="tc-steps">
         {STEPS.map((s, i) => (
           <li key={s.key} data-state={error && i === idx ? "error" : i < idx ? "done" : i === idx ? "now" : "todo"}>
@@ -144,7 +145,7 @@ export function Remote({ deviceId }: { deviceId: string }) {
         ))}
       </ol>
       {load?.kind === "files" && <progress className="tc-progress" max={load.totalBytes || 1} value={load.bytes} />}
-      {stage === "retrying" && !error && <p className="ios-note">Tu NAS no responde todavía; seguimos intentando…</p>}
+      {stage === "retrying" && !error && <p className="ios-note">{t("Tu NAS no responde todavía; seguimos intentando…")}</p>}
       {error && (
         <>
           <p className="ios-error" role="alert">
@@ -157,15 +158,15 @@ export function Remote({ deviceId }: { deviceId: string }) {
                 className="ios-primary"
                 onClick={() => void store.remove(deviceId).then(() => (location.href = "/nas/vincular"))}
               >
-                Olvidar y volver a vincular
+                {t("Olvidar y volver a vincular")}
               </button>
             ) : (
               <button type="button" className="ios-secondary" onClick={() => location.reload()}>
-                Reintentar
+                {t("Reintentar")}
               </button>
             )}
             <Link className="ios-action" to="/nas">
-              Volver a Mis NAS
+              {t("Volver a Mis NAS")}
             </Link>
           </div>
         </>
@@ -180,7 +181,7 @@ async function mountFallback(s: RemoteSession, reason: string) {
   const banner = document.createElement("div");
   banner.className = "tc-banner";
   banner.setAttribute("role", "note");
-  banner.textContent = `Modo desarrollo: el escritorio es el de este portal (${reason}).`;
+  banner.textContent = t("Modo desarrollo: el escritorio es el de este portal ({reason}).", { reason });
   const host = document.createElement("div");
   host.className = "tc-desktop-host";
   el.replaceChildren(banner, host);
@@ -200,18 +201,21 @@ function waitConnected(s: RemoteSession): Promise<void> {
   });
 }
 
-function Shell({ title = "Conectando", children }: { title?: string; children: React.ReactNode }) {
+function Shell({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
     <div className="ios">
       <div className="ios-col">
         <header className="ios-head">
           <TangoMark size={44} />
           <div>
-            <h1 className="ios-title">{title}</h1>
+            <h1 className="ios-title">{title ?? t("Conectando")}</h1>
             <p className="ios-subtitle">TangoOS Connect</p>
           </div>
         </header>
         <div className="ios-card ios-connect">{children}</div>
+        <p className="ios-note tc-lang-row">
+          <LangSwitch />
+        </p>
       </div>
     </div>
   );

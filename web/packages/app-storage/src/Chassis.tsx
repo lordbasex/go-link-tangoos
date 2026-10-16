@@ -1,8 +1,8 @@
 import type { Disk, Volume } from "@tango/client";
-import { fmtBytes, profileLabel } from "@tango/client";
+import { fmtBytes, profileLabel, t, tn } from "@tango/client";
 import { ledOf, volumeColor } from "./util";
 
-const ledText = { ok: "Funcionando", busy: "Con actividad", warn: "Con advertencias", crit: "Falló", off: "Bahía vacía", rebuild: "Reconstruyendo" } as const;
+const ledText = { ok: t("Funcionando"), busy: t("Con actividad"), warn: t("Con advertencias"), crit: t("Falló"), off: t("Bahía vacía"), rebuild: t("Reconstruyendo") } as const;
 
 type Layout = "tower4" | "tower8" | "rack";
 
@@ -30,12 +30,12 @@ export function Chassis({ disks, vols, selected, onSelect }: { disks: Disk[]; vo
 
   return (
     <div className="ts-chassis-wrap">
-      <div className="ts-chassis" data-layout={layout} role="group" aria-label={`Frente del NAS, ${n} bahías`}>
+      <div className="ts-chassis" data-layout={layout} role="group" aria-label={t("Frente del NAS, {n} bahías", { n })}>
         <div className="ts-chassis-panel">
           <div className="ts-power" aria-hidden="true">
             <span />
           </div>
-          <div className="ts-status-led" data-state={anyCrit ? "crit" : "ok"} title={anyCrit ? "Estado: atención" : "Estado: normal"} />
+          <div className="ts-status-led" data-state={anyCrit ? "crit" : "ok"} title={anyCrit ? t("Estado: atención") : t("Estado: normal")} />
           <div className="ts-brand">tango</div>
           <div className="ts-usb" aria-hidden="true" />
         </div>
@@ -54,8 +54,8 @@ export function Chassis({ disks, vols, selected, onSelect }: { disks: Disk[]; vo
                 data-selected={(d && selected === d.id) || undefined}
                 disabled={!d}
                 onClick={() => d && onSelect(d)}
-                title={d ? `Bahía ${i + 1} · ${d.model} · ${d.serial} · ${fmtBytes(d.size, 0)}` : `Bahía ${i + 1} vacía`}
-                aria-label={d ? `Bahía ${i + 1}: ${d.model}, ${fmtBytes(d.size, 0)}, ${ledText[led]}` : `Bahía ${i + 1} vacía`}
+                title={d ? t("Bahía {n} · {model} · {serial} · {size}", { n: i + 1, model: d.model, serial: d.serial, size: fmtBytes(d.size, 0) }) : t("Bahía {n} vacía", { n: i + 1 })}
+                aria-label={d ? t("Bahía {n}: {model}, {size}, {state}", { n: i + 1, model: d.model, size: fmtBytes(d.size, 0), state: ledText[led] }) : t("Bahía {n} vacía", { n: i + 1 })}
                 style={color ? { ["--vol" as string]: color } : undefined}
               >
                 <span className="ts-tray">
@@ -77,10 +77,10 @@ export function Chassis({ disks, vols, selected, onSelect }: { disks: Disk[]; vo
                     {d ? (
                       <>
                         <strong>{fmtBytes(d.size, 0)}</strong>
-                        <small>{d.use === "free" ? "Libre" : ledText[led]}</small>
+                        <small>{d.use === "free" ? t("Libre") : ledText[led]}</small>
                       </>
                     ) : (
-                      <small>Vacía</small>
+                      <small>{t("Vacía")}</small>
                     )}
                   </span>
                 )}
@@ -90,7 +90,7 @@ export function Chassis({ disks, vols, selected, onSelect }: { disks: Disk[]; vo
         </div>
       </div>
       {(used.length > 0 || free > 0) && (
-        <div className="ts-legend" aria-label="Volúmenes por bahía">
+        <div className="ts-legend" aria-label={t("Volúmenes por bahía")}>
           {used.map((v) => (
             <span key={v.id} className="ts-legend-item">
               <i style={{ background: volumeColor(v.id, vols) }} />
@@ -100,7 +100,7 @@ export function Chassis({ disks, vols, selected, onSelect }: { disks: Disk[]; vo
           {free > 0 && (
             <span className="ts-legend-item">
               <i data-free />
-              {free === 1 ? "1 disco libre" : `${free} discos libres`}
+              {tn(free, "{n} disco libre", "{n} discos libres")}
             </span>
           )}
         </div>

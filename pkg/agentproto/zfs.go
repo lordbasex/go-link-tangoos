@@ -26,6 +26,7 @@ const (
 	OpZfsUnlock     = "zfs.volume.unlock"
 	OpZfsLock       = "zfs.volume.lock"
 	OpZfsPassphrase = "zfs.volume.passphrase"
+	OpZfsKeyDevice  = "zfs.volume.keyDevice"
 
 	OpZfsZvolCreate = "zfs.zvol.create"
 	OpZfsZvolDelete = "zfs.zvol.delete"
@@ -114,6 +115,7 @@ type ZfsDataset struct {
 	Encrypted   bool   `json:"encrypted"`
 	KeyLoaded   bool   `json:"keyLoaded"`
 	Origin      string `json:"origin,omitempty"`
+	KeyDevice   string `json:"keyDevice,omitempty"` // tangoos:keydev (llave USB, ADR 0016)
 }
 
 // ZfsImportable es un pool que se ve en los discos pero no está importado.
@@ -209,10 +211,22 @@ type ZfsVolArgs struct {
 }
 
 // ZfsUnlockArgs carga la clave y monta el volumen y sus carpetas.
+// Con UseKeyDevice la frase sale del sello del volumen, abierto con el archivo del
+// pendrive (ADR 0016).
 type ZfsUnlockArgs struct {
+	Pool         string `json:"pool"`
+	Name         string `json:"name"`
+	Passphrase   string `json:"passphrase,omitempty"`
+	UseKeyDevice bool   `json:"useKeyDevice,omitempty"`
+}
+
+// ZfsKeyDeviceArgs guarda una llave nueva en el pendrive Device (UUID del filesystem) y
+// sella la frase para ella; Device vacío quita la llave (borra el sello).
+type ZfsKeyDeviceArgs struct {
 	Pool       string `json:"pool"`
 	Name       string `json:"name"`
 	Passphrase string `json:"passphrase"`
+	Device     string `json:"device,omitempty"`
 }
 
 // ZfsPassphraseArgs cambia la frase (la vieja se verifica primero).

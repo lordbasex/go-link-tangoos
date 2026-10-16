@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, AppWindow, CheckCircle2, Info, MoonStar, Network, Search, Settings2, Sun, SunMoon, Thermometer, Users, X, XOctagon, Zap } from "lucide-react";
-import { fmtAgo, fmtBytes, fmtRate, useJobs, useLive, useMetrics, useNotices, useTopic, maxTemp, fmtCpuTemp, fmtRpm } from "@tango/client";
+import { fmtAgo, fmtBytes, fmtRate, t, tn, tr, useJobs, useLive, useMetrics, useNotices, useTopic, maxTemp, fmtCpuTemp, fmtRpm } from "@tango/client";
 import type { FileEntry, Notice } from "@tango/client";
 import { Progress, Ring } from "@tango/ui";
 import { closeOverlay, commands, dismissToast, openApp, prefs, registry, toast, toasts, ui } from "./store";
@@ -19,7 +19,7 @@ export function Launcher() {
     <div className="tg-launcher" onMouseDown={(e) => e.target === e.currentTarget && closeOverlay()}>
       <label className="tg-launcher-search">
         <Search size={14} />
-        <input autoFocus placeholder="Buscar" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && apps[0] && launch(apps[0].id)} aria-label="Buscar apps" />
+        <input autoFocus placeholder={t("Buscar")} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && apps[0] && launch(apps[0].id)} aria-label={t("Buscar apps")} />
       </label>
       <div className="tg-launcher-grid" onMouseDown={(e) => e.target === e.currentTarget && closeOverlay()}>
         {apps.map((a) => (
@@ -54,8 +54,8 @@ export function Spotlight({ search }: { search: (q: string) => Promise<FileEntry
 
   useEffect(() => {
     if (q.trim().length < 2) return setFiles([]);
-    const t = setTimeout(() => search(q.trim()).then(setFiles, () => setFiles([])), 150);
-    return () => clearTimeout(t);
+    const tm = setTimeout(() => search(q.trim()).then(setFiles, () => setFiles([])), 150);
+    return () => clearTimeout(tm);
   }, [q, search]);
 
   const hits = useMemo<Hit[]>(() => {
@@ -82,20 +82,20 @@ export function Spotlight({ search }: { search: (q: string) => Promise<FileEntry
   let lastSection = "";
   return (
     <div className="tg-spot-wrap" onMouseDown={(e) => e.target === e.currentTarget && closeOverlay()}>
-      <div className="tg-spot" role="dialog" aria-label="Buscar">
+      <div className="tg-spot" role="dialog" aria-label={t("Buscar")}>
         <div className="tg-spot-input">
           <Search size={20} />
           <input
             autoFocus
             value={q}
-            placeholder="Buscar apps, ajustes, archivos y acciones"
+            placeholder={t("Buscar apps, ajustes, archivos y acciones")}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") (e.preventDefault(), setSel((s) => Math.min(hits.length - 1, s + 1)));
               if (e.key === "ArrowUp") (e.preventDefault(), setSel((s) => Math.max(0, s - 1)));
               if (e.key === "Enter") run(hits[sel]);
             }}
-            aria-label="Buscar"
+            aria-label={t("Buscar")}
           />
         </div>
         {hits.length > 0 && (
@@ -104,7 +104,7 @@ export function Spotlight({ search }: { search: (q: string) => Promise<FileEntry
               const head = h.section !== lastSection ? (lastSection = h.section) : null;
               return (
                 <div key={h.key}>
-                  {head && <div className="tg-spot-section">{head}</div>}
+                  {head && <div className="tg-spot-section">{t(head)}</div>}
                   <div role="option" aria-selected={i === sel} className="tg-spot-hit" onMouseEnter={() => setSel(i)} onClick={() => run(h)}>
                     <span className="tg-spot-icon">{h.icon}</span>
                     <span className="tg-spot-title">{h.title}</span>
@@ -115,7 +115,7 @@ export function Spotlight({ search }: { search: (q: string) => Promise<FileEntry
             })}
           </div>
         )}
-        {q.trim().length > 1 && hits.length === 0 && <div className="tg-spot-none">Nada coincide con «{q}».</div>}
+        {q.trim().length > 1 && hits.length === 0 && <div className="tg-spot-none">{t("Nada coincide con «{q}».", { q })}</div>}
       </div>
     </div>
   );
@@ -132,12 +132,12 @@ export function ControlCenter() {
   const disks = useLive("storage.disks.list", undefined, ["storage.changed"]).data ?? [];
   const hottest = maxTemp(disks.map((d) => d.tempC));
   const modes = [
-    { id: "light", label: "Claro", icon: Sun },
-    { id: "dark", label: "Oscuro", icon: MoonStar },
-    { id: "auto", label: "Auto", icon: SunMoon },
+    { id: "light", label: t("Claro"), icon: Sun },
+    { id: "dark", label: t("Oscuro"), icon: MoonStar },
+    { id: "auto", label: t("Auto"), icon: SunMoon },
   ] as const;
   return (
-    <div className="tg-popover tg-cc" role="dialog" aria-label="Centro de control">
+    <div className="tg-popover tg-cc" role="dialog" aria-label={t("Centro de control")}>
       <div className="tg-cc-tile tg-cc-wide">
         <div className="tg-cc-modes">
           {modes.map((md) => (
@@ -154,7 +154,7 @@ export function ControlCenter() {
           <div>
             <strong>{v.name}</strong>
             <small>
-              {fmtBytes(v.size - v.used)} libres · {v.state === "healthy" ? "En orden" : v.state === "degraded" ? "Sin redundancia" : v.state === "scrubbing" ? "Verificando" : "Construyendo"}
+              {t("{size} libres", { size: fmtBytes(v.size - v.used) })} · {v.state === "healthy" ? t("En orden") : v.state === "degraded" ? t("Sin redundancia") : v.state === "scrubbing" ? t("Verificando") : t("Construyendo")}
             </small>
           </div>
         </div>
@@ -171,23 +171,23 @@ export function ControlCenter() {
         <Thermometer size={16} />
         <strong>{fmtCpuTemp(last?.tempCpu)}</strong>
         <small>
-          {hottest == null ? "CPU" : `CPU · discos hasta ${hottest} °C`}
+          {hottest == null ? "CPU" : t("CPU · discos hasta {temp} °C", { temp: hottest })}
           <br />
-          ventilador {fmtRpm(last?.fanRpm)}
+          {t("ventilador {rpm}", { rpm: fmtRpm(last?.fanRpm) })}
         </small>
       </div>
       <div className="tg-cc-tile">
         <Users size={16} />
-        <strong>{sessions.length} sesiones</strong>
+        <strong>{tn(sessions.length, "{n} sesión", "{n} sesiones")}</strong>
         <small>web, app, SMB</small>
       </div>
       <button type="button" className="tg-cc-tile tg-cc-toggle" aria-pressed={p.dnd} onClick={() => prefs.set({ ...p, dnd: !p.dnd })}>
         <MoonStar size={16} />
-        <strong>No molestar</strong>
-        <small>{p.dnd ? "Activado" : "Desactivado"}</small>
+        <strong>{t("No molestar")}</strong>
+        <small>{p.dnd ? t("Activado") : t("Desactivado")}</small>
       </button>
       <button type="button" className="tg-cc-tile tg-cc-wide tg-cc-link" onClick={() => (closeOverlay(), openApp("tango.settings", { section: "appearance" }))}>
-        <Settings2 size={15} /> Apariencia y escritorio…
+        <Settings2 size={15} /> {t("Apariencia y escritorio…")}
       </button>
     </div>
   );
@@ -198,18 +198,18 @@ export function ControlCenter() {
 export function Activity() {
   const jobs = useJobs();
   return (
-    <div className="tg-popover tg-activity" role="dialog" aria-label="Actividad">
-      <div className="tg-pop-title">Actividad</div>
-      {jobs.length === 0 && <div className="tg-pop-empty">No hay tareas en curso.</div>}
+    <div className="tg-popover tg-activity" role="dialog" aria-label={t("Actividad")}>
+      <div className="tg-pop-title">{t("Actividad")}</div>
+      {jobs.length === 0 && <div className="tg-pop-empty">{t("No hay tareas en curso.")}</div>}
       {jobs.map((j) => (
         <div key={j.id} className="tg-job">
           <div className="tg-job-head">
-            <strong>{j.title}</strong>
+            <strong>{tr(j.title)}</strong>
             <span className="tg-num">{j.state === "succeeded" ? <CheckCircle2 size={14} color="var(--tg-ok)" /> : `${Math.round(j.progress * 100)} %`}</span>
           </div>
           <Progress value={j.progress} tone={j.state === "succeeded" ? "ok" : undefined} />
           <small>
-            {j.detail}
+            {tr(j.detail)}
             {j.rate && j.state === "running" ? ` · ${j.rate}` : ""}
           </small>
         </div>
@@ -231,13 +231,13 @@ function NoticeCard({ n, onAction }: { n: Pick<Notice, "level" | "title" | "body
       <div className="tg-notice-text">
         <div className="tg-notice-head">
           <I size={13} className="tg-notice-level" />
-          <strong>{n.title}</strong>
+          <strong>{tr(n.title)}</strong>
           {n.at && <time>{fmtAgo(n.at)}</time>}
         </div>
-        {n.body && <p>{n.body}</p>}
+        {n.body && <p>{tr(n.body)}</p>}
         {n.action && onAction && (
           <button type="button" className="tg-notice-action" onClick={onAction}>
-            {n.action.label}
+            {tr(n.action.label)}
           </button>
         )}
       </div>
@@ -250,16 +250,16 @@ export function NotificationCenter() {
   const [cleared, setCleared] = useState<Set<string>>(new Set());
   const visible = notices.filter((n) => !cleared.has(n.id));
   return (
-    <aside className="tg-nc" aria-label="Notificaciones">
+    <aside className="tg-nc" aria-label={t("Notificaciones")}>
       <div className="tg-nc-head">
-        <strong>Notificaciones</strong>
+        <strong>{t("Notificaciones")}</strong>
         {visible.length > 0 && (
           <button type="button" onClick={() => setCleared(new Set(notices.map((n) => n.id)))}>
-            Borrar todo
+            {t("Borrar todo")}
           </button>
         )}
       </div>
-      {visible.length === 0 && <div className="tg-pop-empty">Sin notificaciones nuevas.</div>}
+      {visible.length === 0 && <div className="tg-pop-empty">{t("Sin notificaciones nuevas.")}</div>}
       {visible.map((n) => (
         <NoticeCard key={n.id} n={n} onAction={n.action ? () => (closeOverlay(), openApp(n.action!.app, n.action!.route ? { section: n.action!.route } : {})) : undefined} />
       ))}
@@ -281,10 +281,10 @@ export function Toasts() {
   const list = toasts.use();
   return (
     <div className="tg-toasts" aria-live="polite">
-      {list.map((t) => (
-        <div key={t.id} className="tg-toast">
-          <NoticeCard n={{ ...t, body: t.body ?? "", action: t.action }} onAction={t.action ? () => (dismissToast(t.id), t.action!.run()) : undefined} />
-          <button type="button" className="tg-toast-x" aria-label="Cerrar" onClick={() => dismissToast(t.id)}>
+      {list.map((x) => (
+        <div key={x.id} className="tg-toast">
+          <NoticeCard n={{ ...x, body: x.body ?? "", action: x.action }} onAction={x.action ? () => (dismissToast(x.id), x.action!.run()) : undefined} />
+          <button type="button" className="tg-toast-x" aria-label={t("Cerrar")} onClick={() => dismissToast(x.id)}>
             <X size={11} strokeWidth={3} />
           </button>
         </div>
@@ -303,8 +303,8 @@ export function useOverlayDismiss() {
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       if (!ref.current) return;
-      const t = e.target as HTMLElement;
-      if (t.closest(".tg-popover,.tg-nc,.tg-spot,.tg-launcher,.tg-mission,.tg-mb-item,.tg-mb-icon,.tg-mb-clock")) return;
+      const el = e.target as HTMLElement;
+      if (el.closest(".tg-popover,.tg-nc,.tg-spot,.tg-launcher,.tg-mission,.tg-mb-item,.tg-mb-icon,.tg-mb-clock")) return;
       closeOverlay();
     };
     addEventListener("pointerdown", onDown, true);

@@ -225,7 +225,7 @@ func MergeList(pools []agentproto.ZfsPoolInfo, b []byte) error {
 }
 
 // DatasetProps son las columnas que pide el agente a `zfs list`.
-const DatasetProps = "name,type,guid,mountpoint,mounted,used,avail,refer,quota,reservation,volsize,encryption,keystatus,origin"
+const DatasetProps = "name,type,guid,mountpoint,mounted,used,avail,refer,quota,reservation,volsize,encryption,keystatus,origin," + KeyDevProp
 
 // ParseDatasets lee `zfs list -j -p -t filesystem,volume -o DatasetProps` y los
 // reparte por pool.
@@ -257,6 +257,9 @@ func ParseDatasets(b []byte) (map[string][]agentproto.ZfsDataset, error) {
 		}
 		if o := p["origin"].Value; o != "" && o != "-" {
 			ds.Origin = o
+		}
+		if k := p[KeyDevProp].Value; ds.Encrypted && k != "" && k != "-" {
+			ds.KeyDevice = k
 		}
 		pool := d.Pool
 		if pool == "" {

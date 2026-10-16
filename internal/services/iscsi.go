@@ -22,9 +22,20 @@ var chapUserRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 // zvolRe: /dev/zvol/<pool>/zvol/<nombre> (internal/zfs.ZvolDevice).
 var zvolRe = regexp.MustCompile(`^/dev/zvol/[a-z][a-z0-9_]{0,31}/zvol/[a-z][a-z0-9_-]{0,31}$`)
 
+// lvRe: /dev/<grupo>/il_<destino> (diskops.ISCSILVDev).
+var lvRe = regexp.MustCompile(`^/dev/[a-z][a-z0-9]{0,23}/il_[a-z0-9][a-z0-9-]{0,30}[a-z0-9]$`)
+
+// Block es el dispositivo de bloque del LUN (zvol o LV), vacío si es un archivo.
+func Block(t agentproto.ISCSITarget) string {
+	if t.Zvol != "" {
+		return t.Zvol
+	}
+	return t.LV
+}
+
 // ValidTargetName: minúsculas, números y guiones, 2–32 (entra en el IQN y en el archivo).
 func ValidTargetName(n string) error {
-	if !targetNameRe.MatchString(n) {
+	if !targetNameRe.MatchString(n) || n == "thin" { // il_thin es el pool thin de los LUN en LV
 		return errors.New("el nombre del destino admite minúsculas, números y guiones (2 a 32)")
 	}
 	return nil
@@ -62,9 +73,18 @@ func ValidateTarget(t agentproto.ISCSITarget) error {
 	if t.SizeBytes < 64<<20 || t.SizeBytes > 64<<40 {
 		return errors.New("el tamaño debe estar entre 64 MB y 64 TB")
 	}
+	if t.Zvol != "" && t.LV != "" {
+		return errors.New("un LUN va en un zvol o en un LV, no en los dos")
+	}
 	if t.Zvol != "" { // LUN sobre un volumen de bloque ZFS (ADR 0013)
 		if t.File != "" || !zvolRe.MatchString(t.Zvol) || path.Clean(t.Zvol) != t.Zvol {
 			return fmt.Errorf("volumen de bloque inválido %q", t.Zvol)
+		}
+		return ValidCHAP(t.CHAPUser, t.CHAPSecret)
+	}
+	if t.LV != "" { // LUN sobre un LV de un grupo de almacenamiento
+		if t.File != "" || !lvRe.MatchString(t.LV) || !strings.HasSuffix(t.LV, "/il_"+t.Name) {
+			return fmt.Errorf("volumen lógico inválido %q", t.LV)
 		}
 		return ValidCHAP(t.CHAPUser, t.CHAPSecret)
 	}
@@ -93,16 +113,16 @@ func Plan(t agentproto.ISCSITarget) []Step {
 	tgt := path.Join(ConfigFS, "iscsi", t.IQN)
 	tpg := path.Join(tgt, "tpgt_1")
 	control := fmt.Sprintf("fd_dev_name=%s,fd_dev_size=%d", t.File, t.SizeBytes)
-	if t.Zvol != "" { // dispositivo de bloque: backstore iblock
+	if dev := Block(t); dev != "" { // dispositivo de bloque (zvol o LV): backstore iblock
 		bs = path.Join(ConfigFS, "core", "iblock_0", t.Name)
-		control = "udev_path=" + t.Zvol
+		control = "udev_path=" + dev
 	}
 	steps := []Step{
 		{Mkdir: true, Path: bs},
 		{Path: path.Join(bs, "control"), Value: control},
 	}
-	if t.Zvol != "" { // udev_path también como atributo (lo muestran targetcli y el estado)
-		steps = append(steps, Step{Path: path.Join(bs, "udev_path"), Value: t.Zvol})
+	if dev := Block(t); dev != "" { // udev_path también como atributo (lo muestran targetcli y el estado)
+		steps = append(steps, Step{Path: path.Join(bs, "udev_path"), Value: dev})
 	}
 	steps = append(steps, []Step{
 		{Path: path.Join(bs, "wwn", "vpd_unit_serial"), Value: "tango-" + t.Name},
@@ -141,6 +161,6 @@ func TeardownPaths(t agentproto.ISCSITarget) []string {
 		tpg,
 		tgt,
 		bs,
-		path.Join(ConfigFS, "core", "iblock_0", t.Name), // LUN sobre zvol (el que no exista se ignora)
+		path.Join(ConfigFS, "core", "iblock_0", t.Name), // LUN sobre zvol o LV (el que no exista se ignora)
 	}
 }

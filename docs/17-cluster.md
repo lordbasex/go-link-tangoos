@@ -53,7 +53,10 @@ without split-brain. Client caches are off so every node sees changes immediatel
 - `glusterd` has no authentication: anyone reaching TCP 24007 can `peer probe` a node into their pool.
   TangoOS loads `table inet tango_gluster` (nftables) **before** installing `glusterfs-server`:
   ports 24007, 24008, **24010** (TangoOS control channel) and 49152–60999 are rejected (TCP reset, so a
-  stranger fails at once) except from loopback and the allow-list. The ruleset is regenerated when the
+  stranger fails at once) except from loopback and the allow-list. Packets of established connections are accepted
+  first: the brick range overlaps the kernel's ephemeral ports (32768–60999), and without that rule the replies to
+  this node's own outgoing connections from those ports were reset (about 40 % of outgoing TCP connections failed,
+  found while testing ZFS replication). The ruleset is regenerated when the
   agent starts, so an update that adds a port applies it without touching the allow-list.
 - Allow-list = pool members (resolved to IPs by tangod; the agent has no network) + open invitations. Once a
   node is in the pool, every other member opens to it on its next sync (every 20 s).

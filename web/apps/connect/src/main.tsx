@@ -1,3 +1,5 @@
+// Primero el catálogo en inglés: tiene que estar registrado antes de cualquier t() a nivel de módulo.
+import "./i18n.en";
 // Las fuentes las sirve el propio sitio (nunca un servicio de terceros que vea la IP de cada visita).
 import "@fontsource/chakra-petch/600.css";
 import "@fontsource/chakra-petch/700.css";
@@ -14,6 +16,13 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { setPortalRoot } from "./portalRoot";
+import { getLang, t } from "@tango/client";
+
+// index.html está en español: idioma del documento y descripción según la interfaz.
+document.documentElement.lang = getLang();
+document
+  .querySelector('meta[name="description"]')
+  ?.setAttribute("content", t("Entrá a tu NAS TangoOS desde cualquier lado, sin abrir puertos. Cifrado de punta a punta, sobre la red de go-link."));
 
 const root = createRoot(document.getElementById("root")!);
 setPortalRoot(root);

@@ -1,7 +1,27 @@
 # 06 — Native apps (Windows and Linux; macOS later)
 
-**Status:** design only. `tango-desk` (`cmd/tango-desk`) does not exist yet (roadmap M3, unchecked);
-there is no NativeBridge transport in `packages/client` and go-link-desk modules are not imported yet.
+**Status:** the choice below (Go + system webview) was **replaced by Electron** in
+[ADR 0018](adr/0018-native-app-electron.md): a WebKit parity check showed that the glass effect (`backdrop-filter`)
+is not drawn without accelerated compositing, so only Chromium everywhere guarantees the same look. The app lives in
+`web/apps/native`. The analysis below is kept for history.
+
+
+## What exists (ADR 0018)
+
+`web/apps/native` is an Electron app ("TangoOS" on the desktop):
+
+- **Launcher**: NAS devices found on the LAN (mDNS `_tangoos._tcp`, announced by avahi from the TangoOS package), the
+  saved ones, "add by address", and "from outside (TangoConnect)". The first connection shows the NAS's certificate
+  fingerprint (the same one Settings shows) and pins it; a different certificate is refused with a clear error page.
+  Language switch (Español / English).
+- **NAS window**: loads `https://<nas>/`, the NAS's own desktop, in its own session (separate storage per NAS),
+  sandboxed, navigation limited to that NAS (other links open in the system browser). It is the web page itself:
+  compared with Chrome on the same NAS, 0.10 % of the pixels differ, all of them live data (clock, network, uptime).
+- **Tray** with the saved NAS devices; closing windows keeps the app in the tray. `window.tangoNative` exposes
+  `openShare(name)` (opens `\\nas\share` or `smb://nas/share`) and `launcher()`.
+- Commands: `make native-run` (build and open), `make native-dist` (AppImage, deb, rpm and NSIS installers built in
+  the `electronuserland/builder` image), `make e2e-native NATIVE_NAS=<ip>` (Playwright drives the app against a real
+  NAS: launcher, fingerprint, login, and a forged pin refused).
 
 ## Requirement
 

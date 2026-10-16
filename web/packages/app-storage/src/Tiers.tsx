@@ -1,13 +1,13 @@
-import { fmtBytes } from "@tango/client";
+import { fmtBytes, t } from "@tango/client";
 import type { PoolTier, TierLevel } from "@tango/client";
 
 export const levelName: Record<TierLevel, string> = {
-  basic: "Básico",
+  basic: t("Básico"),
   raid1: "RAID 1",
   raid5: "RAID 5",
   raid6: "RAID 6",
   raid10: "RAID 10",
-  unused: "Reservado",
+  unused: t("Reservado"),
 };
 
 export interface TierDisk {
@@ -23,26 +23,26 @@ export interface TierDisk {
  */
 export function TierDiagram({ tiers, disks, height = 132 }: { tiers: PoolTier[]; disks: TierDisk[]; height?: number }) {
   if (!tiers.length || !disks.length) return null;
-  const total = tiers.reduce((a, t) => a + t.size, 0);
+  const total = tiers.reduce((a, tier) => a + tier.size, 0);
   const sorted = [...disks].sort((a, b) => a.size - b.size);
-  const usable = tiers.reduce((a, t) => a + t.usable, 0);
+  const usable = tiers.reduce((a, tier) => a + tier.usable, 0);
   return (
-    <figure className="ts-tiers" aria-label={`Tramos: ${tiers.map((t) => `${levelName[t.level]} de ${t.members.length} discos`).join(", ")}`}>
+    <figure className="ts-tiers" aria-label={t("Tramos: {list}", { list: tiers.map((tier) => t("{level} de {n} discos", { level: levelName[tier.level], n: tier.members.length })).join(", ") })}>
       <div className="ts-tiers-cols" style={{ height }}>
         {sorted.map((d) => (
           <div key={d.id} className="ts-tiers-col">
             <div className="ts-tiers-stack">
-              {tiers.map((t) =>
-                t.members.includes(d.id) ? (
+              {tiers.map((tier) =>
+                tier.members.includes(d.id) ? (
                   <div
-                    key={t.index}
+                    key={tier.index}
                     className="ts-tier-block"
-                    data-level={t.level}
-                    style={{ height: `${(t.size / total) * 100}%` }}
-                    title={`Tramo ${t.index} · ${levelName[t.level]} · ${fmtBytes(t.size)} de este disco`}
+                    data-level={tier.level}
+                    style={{ height: `${(tier.size / total) * 100}%` }}
+                    title={t("Tramo {index} · {level} · {size} de este disco", { index: tier.index, level: levelName[tier.level], size: fmtBytes(tier.size) })}
                   />
                 ) : (
-                  <div key={t.index} className="ts-tier-gap" style={{ height: `${(t.size / total) * 100}%` }} />
+                  <div key={tier.index} className="ts-tier-gap" style={{ height: `${(tier.size / total) * 100}%` }} />
                 ),
               )}
             </div>
@@ -53,15 +53,16 @@ export function TierDiagram({ tiers, disks, height = 132 }: { tiers: PoolTier[];
         ))}
       </div>
       <figcaption className="ts-tiers-legend">
-        {tiers.map((t) => (
-          <span key={t.index}>
-            <i className="ts-tier-block" data-level={t.level} />
-            Tramo {t.index}: {levelName[t.level]}
-            {t.level === "unused" ? ` · ${fmtBytes(t.size * t.members.length)} esperan otro disco` : ` de ${t.members.length} discos · ${fmtBytes(t.usable)} útiles`}
+        {tiers.map((tier) => (
+          <span key={tier.index}>
+            <i className="ts-tier-block" data-level={tier.level} />
+            {tier.level === "unused"
+              ? t("Tramo {index}: {level} · {size} esperan otro disco", { index: tier.index, level: levelName[tier.level], size: fmtBytes(tier.size * tier.members.length) })
+              : t("Tramo {index}: {level} de {n} discos · {size} útiles", { index: tier.index, level: levelName[tier.level], n: tier.members.length, size: fmtBytes(tier.usable) })}
           </span>
         ))}
         <span className="ts-tiers-total">
-          Total útil <b className="tg-num">{fmtBytes(usable)}</b>
+          {t("Total útil")} <b className="tg-num">{fmtBytes(usable)}</b>
         </span>
       </figcaption>
     </figure>

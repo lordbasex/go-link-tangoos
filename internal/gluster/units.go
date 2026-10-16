@@ -108,6 +108,11 @@ func FirewallRules(allowed []string) string {
 	b.WriteString(set("peers6", "ipv6_addr", v6))
 	b.WriteString("\tchain input {\n\t\ttype filter hook input priority -10; policy accept;\n")
 	b.WriteString("\t\tiif \"lo\" accept\n")
+	// Las respuestas de conexiones que abrió este equipo pasan: el rango de los bricks
+	// (49152–60999) se superpone con los puertos efímeros (32768–60999), y sin esto el
+	// SYN-ACK de cualquier conexión saliente desde ese rango se rechazaba (apt, HTTPS,
+	// replicación ZFS: ~40 % de conexiones fallidas). Encontrado en el laboratorio.
+	b.WriteString("\t\tct state established,related accept\n")
 	fmt.Fprintf(&b, "\t\ttcp dport %s ip saddr @peers4 accept\n", ports)
 	fmt.Fprintf(&b, "\t\ttcp dport %s ip6 saddr @peers6 accept\n", ports)
 	// reject y no drop: un nodo no invitado falla al instante en vez de esperar el timeout.

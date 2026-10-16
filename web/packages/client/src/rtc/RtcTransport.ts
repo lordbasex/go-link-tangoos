@@ -3,6 +3,7 @@
 import { verifyHost } from "../hostproof";
 import type { Transport, TransportState } from "../transport";
 import { RpcError } from "../protocol";
+import { t } from "../i18n";
 import type { Evt, Method, MetricsFrame, Params, Result, Topic } from "../protocol";
 import { getToken, setToken } from "../session";
 import { RpcClient } from "./rpc";
@@ -222,7 +223,7 @@ export class RtcTransport implements Transport {
   async fetchBundleFile(path: string): Promise<Uint8Array<ArrayBuffer>> {
     const r = (await this.call("bundle.get", { path })) as { id: number; size: number; sha256: string };
     const data = await this.bundleRx.expect(r.id, r.size);
-    if ((await sha256Hex(data)) !== r.sha256) throw new RpcError("BUNDLE_CORRUPT", `El archivo ${path} llegó corrupto`);
+    if ((await sha256Hex(data)) !== r.sha256) throw new RpcError("BUNDLE_CORRUPT", t("El archivo {path} llegó corrupto", { path }));
     return data;
   }
 

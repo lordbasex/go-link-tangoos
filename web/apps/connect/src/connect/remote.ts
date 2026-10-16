@@ -4,7 +4,7 @@
 //   guest → enlace público: reach sin vínculo → guest.open {link, secret}
 // El transporte es el RtcTransport de @tango/client (rtcFromSignal): los métodos llegan por
 // connect.hello y `beforeAuth` corre el paso de vínculo antes del auth.resume, en cada reconexión.
-import { rtcFromSignal, setToken, type RtcTransport } from "@tango/client";
+import { rtcFromSignal, setToken, t, type RtcTransport } from "@tango/client";
 import { SIGNAL_URL } from "../config";
 import { FrameCollector } from "../bundle/frames";
 import { joinSignal, type Stage, type Target } from "../signal/socket";
@@ -20,7 +20,8 @@ export interface LinkResult {
   name: string;
 }
 
-/** Prefijo del mensaje de error cuando la huella DTLS no es la fijada al vincular (la UI ofrece re-vincular). */
+/** Prefijo del mensaje de error cuando la huella DTLS no es la fijada al vincular (la UI ofrece re-vincular).
+ * Con la interfaz en inglés, el mensaje empieza por t(FINGERPRINT_PREFIX). */
 export const FINGERPRINT_PREFIX = "La huella del certificado de tu NAS cambió";
 
 /** Errores de signalhub que no se arreglan reintentando. */
@@ -119,8 +120,8 @@ export function openRemote(opts: {
     if (target.mode === "claim") {
       opts.onStage?.("linking");
       const r = (await call("connect.link", { label: opts.label })) as { linkId?: string; token?: string; deviceId?: string; fingerprint?: string };
-      if (!r?.linkId || !r?.token || !r?.deviceId) throw new StepError("BAD_LINK", "El NAS no entregó el vínculo");
-      const name = (await nasName(call)) || "Mi NAS";
+      if (!r?.linkId || !r?.token || !r?.deviceId) throw new StepError("BAD_LINK", t("El NAS no entregó el vínculo"));
+      const name = (await nasName(call)) || t("Mi NAS");
       const fp = normalizeFingerprint(r.fingerprint);
       nas = {
         deviceId: r.deviceId,
@@ -140,23 +141,26 @@ export function openRemote(opts: {
       }
       target = { mode: "reach", deviceId: nas.deviceId };
       const seen = normalizeFingerprint(remoteFingerprint(pc));
-      if (fp && seen && fp !== seen) throw new StepError("FINGERPRINT_CHANGED", `${FINGERPRINT_PREFIX} durante la vinculación: no lo guardamos.`);
+      if (fp && seen && fp !== seen) throw new StepError("FINGERPRINT_CHANGED", t("La huella del certificado de tu NAS cambió durante la vinculación: no lo guardamos."));
       settle({ deviceId: nas.deviceId, name });
       return;
     }
     // reach: el NAS prueba primero; recién después le damos el token.
-    if (!nas) throw new StepError("NO_LINK", "Este navegador no tiene el vínculo de ese NAS");
+    if (!nas) throw new StepError("NO_LINK", t("Este navegador no tiene el vínculo de ese NAS"));
     opts.onStage?.("verifying");
     // Pin DTLS: la conexión tiene que presentar la huella que el NAS informó al vincular. Si cambió,
     // no seguimos (ni la prueba ni el token): el usuario decide si vuelve a vincular.
     const seenNow = normalizeFingerprint(remoteFingerprint(pc));
     if (nas.fingerprint && seenNow && seenNow !== nas.fingerprint)
-      throw new StepError("FINGERPRINT_CHANGED", `${FINGERPRINT_PREFIX} desde que lo vinculaste. No le enviamos tu vínculo: si reinstalaste el NAS, olvidalo y volvé a vincularlo.`);
+      throw new StepError(
+        "FINGERPRINT_CHANGED",
+        t("La huella del certificado de tu NAS cambió desde que lo vinculaste. No le enviamos tu vínculo: si reinstalaste el NAS, olvidalo y volvé a vincularlo."),
+      );
     const nonce = newNonce();
     const r = (await call("connect.challenge", { linkId: nas.linkId, nonce })) as { proof?: string };
     const want = await linkProof(await tokenKey(nas.token), nonce);
     if (typeof r?.proof !== "string" || !sameText(r.proof, want))
-      throw new StepError("NAS_NOT_VERIFIED", "Este NAS no pudo probar que es el mismo que vinculaste: no le enviamos tu vínculo.");
+      throw new StepError("NAS_NOT_VERIFIED", t("Este NAS no pudo probar que es el mismo que vinculaste: no le enviamos tu vínculo."));
     await call("connect.resume", { linkId: nas.linkId, token: nas.token });
     const name = (await nasName(call)) || nas.name;
     await store.touch(nas.deviceId, { lastSeen: new Date().toISOString(), name });
@@ -204,7 +208,7 @@ export function openRemote(opts: {
     linked,
     close() {
       dead = true;
-      collector.failAll(new Error("Sesión cerrada"));
+      collector.failAll(new Error(t("Sesión cerrada")));
       transport.close();
     },
   };
@@ -213,7 +217,7 @@ export function openRemote(opts: {
 /** Nombre de este navegador para la lista de vínculos del NAS. */
 export function browserLabel(): string {
   const ua = navigator.userAgent;
-  const b = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Navegador";
+  const b = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : t("Navegador");
   const os = /iPhone|iPad/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "";
-  return os ? `${b} en ${os}` : b;
+  return os ? t("{browser} en {os}", { browser: b, os }) : b;
 }

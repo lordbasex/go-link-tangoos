@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, Columns3, Download, File, FileArchive, FileCode, FileSpreadsheet, FileText, Film, Folder, FolderOpen, FolderPlus, History, Home, Image as ImageIcon, LayoutGrid, Link2, List, Music, SearchX, Trash2, Upload,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { fmtAgo, fmtBytes, fmtDate, useIsReal, useLive, useTransport } from "@tango/client";
+import { fmtAgo, fmtBytes, fmtDate, locale, t, tn, useIsReal, useLive, useTransport } from "@tango/client";
 import type { Evt, FileEntry, FileKind, FileVersion, TrashEntry } from "@tango/client";
 import { WindowToolbar, openApp, showContextMenu, toast, useWindowMenus } from "@tango/shell";
 import type { AppProps, MenuItem } from "@tango/shell";
@@ -27,7 +27,7 @@ type SortKey = "name" | "mtime" | "size" | "kind";
 
 const join = (dir: string, name: string) => (dir === "/" ? `/${name}` : `${dir}/${name}`);
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
-const baseName = (p: string) => (p === "/" ? "Carpetas compartidas" : p === TRASH ? "Papelera" : p.slice(p.lastIndexOf("/") + 1));
+const baseName = (p: string) => (p === "/" ? t("Carpetas compartidas") : p === TRASH ? t("Papelera") : p.slice(p.lastIndexOf("/") + 1));
 
 const kindIcon: Record<FileKind, [LucideIcon, string]> = {
   dir: [Folder, "#3b8cf5"], image: [ImageIcon, "#ec4899"], video: [Film, "#8b5cf6"], audio: [Music, "#f97316"], pdf: [FileText, "#e5484d"], doc: [FileText, "#2f7cf6"],
@@ -39,7 +39,7 @@ function MiniIcon({ kind, tint }: { kind: FileKind; tint?: string }) {
   return <I size={16} strokeWidth={1.8} color={tint ?? c} style={{ flex: "none", fill: kind === "dir" ? `color-mix(in srgb, ${tint ?? c} 30%, transparent)` : "none" }} />;
 }
 
-const collator = new Intl.Collator("es", { numeric: true, sensitivity: "base" });
+const collator = new Intl.Collator(locale(), { numeric: true, sensitivity: "base" });
 
 function sortEntries(list: FileEntry[], key: SortKey, dir: 1 | -1) {
   return [...list].sort((a, b) => {
@@ -48,25 +48,25 @@ function sortEntries(list: FileEntry[], key: SortKey, dir: 1 | -1) {
     if (key === "name") c = collator.compare(a.name, b.name);
     else if (key === "mtime") c = a.mtime.localeCompare(b.mtime);
     else if (key === "size") c = a.size - b.size;
-    else c = collator.compare(kindLabel[a.kind], kindLabel[b.kind]) || collator.compare(a.name, b.name);
+    else c = collator.compare(t(kindLabel[a.kind]), t(kindLabel[b.kind])) || collator.compare(a.name, b.name);
     return c * dir;
   });
 }
 
 function validateName(name: string, siblings: FileEntry[], self?: string): string | null {
   const n = name.trim();
-  if (!n) return "El nombre no puede quedar vacío.";
-  if (n.includes("/")) return "El nombre no puede tener «/».";
-  if (n === "." || n === "..") return "Ese nombre está reservado.";
-  if (siblings.some((s) => s.path !== self && s.name.toLowerCase() === n.toLowerCase())) return `Ya existe «${n}» en esta carpeta.`;
+  if (!n) return t("El nombre no puede quedar vacío.");
+  if (n.includes("/")) return t("El nombre no puede tener «/».");
+  if (n === "." || n === "..") return t("Ese nombre está reservado.");
+  if (siblings.some((s) => s.path !== self && s.name.toLowerCase() === n.toLowerCase())) return t("Ya existe «{name}» en esta carpeta.", { name: n });
   return null;
 }
 
 export default function FilesApp({ win }: AppProps) {
-  const t = useTransport();
+  const tp = useTransport();
   // Datos reales (protocol §10): la raíz son las carpetas compartidas, no hay "Inicio" de usuario.
   const real = useIsReal("files.list");
-  const initialPath = typeof win.args.path === "string" ? (win.args.path as string) : t.kind === "mock" ? HOME : "/";
+  const initialPath = typeof win.args.path === "string" ? (win.args.path as string) : tp.kind === "mock" ? HOME : "/";
   const [hist, setHist] = useState({ stack: [initialPath], i: 0 });
   const path = hist.stack[hist.i];
   const [view, setView] = useState<View>("icons");
@@ -89,7 +89,7 @@ export default function FilesApp({ win }: AppProps) {
   // Explorar una instantánea (§13): la misma vista, de solo lectura, con files.list/thumb/download.begin + snapshot.
   const snap = typeof win.args.snapshot === "string" ? (win.args.snapshot as string) : "";
   const snapAt = typeof win.args.snapshotAt === "string" ? (win.args.snapshotAt as string) : "";
-  const roSnap = () => (toast({ level: "info", title: "La instantánea es de solo lectura", body: "Para recuperar algo, elegilo y tocá «Restaurar una copia»." }), true);
+  const roSnap = () => (toast({ level: "info", title: t("La instantánea es de solo lectura"), body: t("Para recuperar algo, elegilo y tocá «Restaurar una copia».") }), true);
 
   const isTrash = path === TRASH;
   const listing = useLive("files.list", snap ? { path, snapshot: snap } : { path: isTrash ? "/" : path }, snap ? [] : ["files.changed"], (e: Evt) => (e.data as { dir: string }).dir === path);
@@ -100,7 +100,7 @@ export default function FilesApp({ win }: AppProps) {
   const trashEntries: TrashEntry[] = trashLive.data ?? [];
   const trash: FileEntry[] = useMemo(() => trashEntries.map((e) => ({ name: e.name, path: e.path, kind: e.kind, size: e.size, mtime: e.deletedAt })), [trashEntries]);
   const originOf = useMemo(() => new Map(trashEntries.map((e) => [e.path, e.origin])), [trashEntries]);
-  const xf = useTransfers(t);
+  const xf = useTransfers(tp);
   const shareColor = useMemo(() => new Map(shares.map((s) => [s.name, s.color])), [shares]);
   const free = vols.reduce((a, v) => a + (v.size - v.used), 0);
 
@@ -111,9 +111,9 @@ export default function FilesApp({ win }: AppProps) {
       setResults(null);
       return;
     }
-    const id = setTimeout(() => t.call("files.search", { q: term }).then(setResults, () => setResults([])), 160);
+    const id = setTimeout(() => tp.call("files.search", { q: term }).then(setResults, () => setResults([])), 160);
     return () => clearTimeout(id);
-  }, [q, t]);
+  }, [q, tp]);
 
   const raw: FileEntry[] = results ?? (isTrash ? trash : (listing.data ?? []));
   const items = useMemo(() => sortEntries(raw, sort.key, sort.dir), [raw, sort]);
@@ -132,7 +132,7 @@ export default function FilesApp({ win }: AppProps) {
   const back = () => canBack && (setHist((h) => ({ ...h, i: h.i - 1 })), setSel(new Set()));
   const fwd = () => canFwd && (setHist((h) => ({ ...h, i: h.i + 1 })), setSel(new Set()));
 
-  useEffect(() => win.setTitle(results ? `Resultados para «${q.trim()}»` : baseName(path)), [path, results, q, win]);
+  useEffect(() => win.setTitle(results ? t("Resultados para «{q}»", { q: q.trim() }) : baseName(path)), [path, results, q, win]);
 
   // Preselección pedida por Spotlight
   useEffect(() => {
@@ -159,15 +159,15 @@ export default function FilesApp({ win }: AppProps) {
   const newFolder = async () => {
     if (snap && roSnap()) return;
     if (isTrash || results || path === "/") return;
-    const base = "Carpeta sin título";
+    const base = t("Carpeta sin título");
     let name = base;
     for (let n = 2; items.some((e) => e.name === name); n++) name = `${base} ${n}`;
     try {
-      const e = await t.call("files.mkdir", { path: join(path, name) });
+      const e = await tp.call("files.mkdir", { path: join(path, name) });
       setSel(new Set([e.path]));
       setRenaming(e.path);
     } catch (x) {
-      toast({ level: "crit", title: "No se pudo crear la carpeta", body: errText(x, { path }) });
+      toast({ level: "crit", title: t("No se pudo crear la carpeta"), body: errText(x, { path }) });
     }
   };
 
@@ -176,11 +176,11 @@ export default function FilesApp({ win }: AppProps) {
     if (!paths.length) return;
     const first = trashEntries.find((e) => e.path === paths[0]);
     try {
-      const r = await t.call("files.restore", { paths });
+      const r = await tp.call("files.restore", { paths });
       setSel(new Set());
-      toast({ level: "ok", title: r.count === 1 ? `Se restauró «${first?.name ?? "el ítem"}»` : `Se restauraron ${r.count} ítems`, body: first ? `De vuelta en ${baseName(first.origin)}.` : undefined });
+      toast({ level: "ok", title: r.count === 1 ? (first ? t("Se restauró «{name}»", { name: first.name }) : t("Se restauró «el ítem»")) : t("Se restauraron {n} ítems", { n: r.count }), body: first ? t("De vuelta en {place}.", { place: baseName(first.origin) }) : undefined });
     } catch (x) {
-      toast({ level: "crit", title: "No se pudo restaurar", body: errText(x, { path: first?.origin, name: first?.name }) });
+      toast({ level: "crit", title: t("No se pudo restaurar"), body: errText(x, { path: first?.origin, name: first?.name }) });
     }
   };
 
@@ -188,11 +188,11 @@ export default function FilesApp({ win }: AppProps) {
     if (snap && roSnap()) return;
     if (!entries.length || isTrash) return;
     try {
-      const r = await t.call("files.trash", { paths: entries.map((e) => e.path) });
+      const r = await tp.call("files.trash", { paths: entries.map((e) => e.path) });
       setSel(new Set());
       // En el NAS la papelera tiene otra ruta: para deshacer se buscan los ítems recién borrados por origen y nombre.
       const undo = async () => {
-        const now = await t.call("files.trash.list", {});
+        const now = await tp.call("files.trash.list", {});
         const paths = entries
           .map((e) => now.filter((x) => x.origin === parentOf(e.path) && x.name === e.name).sort((a, b) => b.deletedAt.localeCompare(a.deletedAt))[0]?.path)
           .filter((p): p is string => !!p);
@@ -200,13 +200,13 @@ export default function FilesApp({ win }: AppProps) {
       };
       toast({
         level: "info",
-        title: "Se movió a la Papelera",
-        body: r.count === 1 ? `«${entries[0].name}»` : `${r.count} ítems`,
+        title: t("Se movió a la Papelera"),
+        body: r.count === 1 ? `«${entries[0].name}»` : t("{n} ítems", { n: r.count }),
         app: "tango.files",
-        action: { label: "Deshacer", run: () => void undo() },
+        action: { label: t("Deshacer"), run: () => void undo() },
       });
     } catch (x) {
-      toast({ level: "crit", title: "No se pudo mover a la Papelera", body: errText(x, { path: entries[0].path, name: entries[0].name }) });
+      toast({ level: "crit", title: t("No se pudo mover a la Papelera"), body: errText(x, { path: entries[0].path, name: entries[0].name }) });
     }
   };
 
@@ -215,18 +215,18 @@ export default function FilesApp({ win }: AppProps) {
     const shares = [...new Set(trashEntries.map((e) => e.origin.split("/").filter(Boolean)[0]).filter(Boolean))];
     let n = 0;
     try {
-      for (const share of shares) n += (await t.call("files.trash.empty", { share })).count;
+      for (const share of shares) n += (await tp.call("files.trash.empty", { share })).count;
       setSel(new Set());
-      toast({ level: "ok", title: "Papelera vaciada", body: n === 1 ? "Se borró 1 ítem para siempre." : `Se borraron ${n} ítems para siempre.` });
+      toast({ level: "ok", title: t("Papelera vaciada"), body: tn(n, "Se borró 1 ítem para siempre.", "Se borraron {n} ítems para siempre.") });
     } catch (x) {
-      toast({ level: "crit", title: "No se pudo vaciar la papelera", body: errText(x) });
+      toast({ level: "crit", title: t("No se pudo vaciar la papelera"), body: errText(x) });
     }
   };
 
   const upload = (files: FileList | File[]) => {
     if (snap && roSnap()) return;
     if (isTrash || results || path === "/") {
-      toast({ level: "warn", title: "Elegí una carpeta para subir", body: "Abrí una carpeta compartida y volvé a intentarlo." });
+      toast({ level: "warn", title: t("Elegí una carpeta para subir"), body: t("Abrí una carpeta compartida y volvé a intentarlo.") });
       return;
     }
     const list = [...files];
@@ -241,10 +241,10 @@ export default function FilesApp({ win }: AppProps) {
   /** Copia un archivo de la instantánea a la carpeta en vivo (files.restoreVersion: no pisa el actual). */
   const restoreCopy = async (e: FileEntry) => {
     try {
-      const r = await t.call("files.restoreVersion", { path: e.path, snapshot: snap });
-      toast({ level: "ok", title: `Se restauró como «${r.name}»`, body: `Está en ${parentOf(r.path)}. Lo que había quedó como estaba.`, app: "tango.files" });
+      const r = await tp.call("files.restoreVersion", { path: e.path, snapshot: snap });
+      toast({ level: "ok", title: t("Se restauró como «{name}»", { name: r.name }), body: t("Está en {place}. Lo que había quedó como estaba.", { place: parentOf(r.path) }), app: "tango.files" });
     } catch (x) {
-      toast({ level: "crit", title: "No se pudo restaurar", body: errText(x, { path: e.path, name: e.name }) });
+      toast({ level: "crit", title: t("No se pudo restaurar"), body: errText(x, { path: e.path, name: e.name }) });
     }
   };
 
@@ -257,7 +257,7 @@ export default function FilesApp({ win }: AppProps) {
       return null;
     }
     try {
-      const e = await t.call("files.rename", { path: entry.path, name: name.trim() });
+      const e = await tp.call("files.rename", { path: entry.path, name: name.trim() });
       setRenaming(null);
       setSel(new Set([e.path]));
       return null;
@@ -432,12 +432,12 @@ export default function FilesApp({ win }: AppProps) {
   const sortItems = (): MenuItem[] =>
     (
       [
-        ["name", "Nombre"],
-        ["mtime", "Fecha de modificación"],
-        ["size", "Tamaño"],
-        ["kind", "Tipo"],
+        ["name", "Ordenar por nombre"],
+        ["mtime", "Ordenar por fecha de modificación"],
+        ["size", "Ordenar por tamaño"],
+        ["kind", "Ordenar por tipo"],
       ] as [SortKey, string][]
-    ).map(([k, l]) => ({ label: `Ordenar por ${l.toLowerCase()}`, checked: sort.key === k, action: () => setSort((s) => ({ key: k, dir: s.key === k ? (-s.dir as 1 | -1) : 1 })) }));
+    ).map(([k, l]) => ({ label: t(l), checked: sort.key === k, action: () => setSort((s) => ({ key: k, dir: s.key === k ? (-s.dir as 1 | -1) : 1 })) }));
 
   const itemMenu = (e: RMouseEvent, entry: FileEntry, i: number) => {
     e.preventDefault();
@@ -450,19 +450,19 @@ export default function FilesApp({ win }: AppProps) {
     }
     const many = targets.length > 1;
     if (isTrash) {
-      showContextMenu(e.clientX, e.clientY, [{ label: many ? `Restaurar ${targets.length} ítems` : "Restaurar", action: () => void restore(targets.map((x) => x.path)) }]);
+      showContextMenu(e.clientX, e.clientY, [{ label: many ? t("Restaurar {n} ítems", { n: targets.length }) : t("Restaurar"), action: () => void restore(targets.map((x) => x.path)) }]);
       return;
     }
     showContextMenu(e.clientX, e.clientY, [
-      { label: "Abrir", disabled: many, action: () => open(entry) },
-      { label: "Vista rápida", shortcut: "Espacio", disabled: many, action: () => setQl(entry.path) },
+      { label: t("Abrir"), disabled: many, action: () => open(entry) },
+      { label: t("Vista rápida"), shortcut: t("Espacio"), disabled: many, action: () => setQl(entry.path) },
       { separator: true },
-      { label: "Renombrar", shortcut: "↩", disabled: many || path === "/", action: () => setRenaming(entry.path) },
-      { label: "Versiones anteriores…", disabled: many || entry.kind === "dir", action: () => setVersionsOf(entry) },
-      { label: "Descargar", disabled: many || entry.kind === "dir", action: () => download(entry) },
-      { label: "Compartir enlace…", disabled: many, action: () => setShareOf(entry) },
+      { label: t("Renombrar"), shortcut: "↩", disabled: many || path === "/", action: () => setRenaming(entry.path) },
+      { label: t("Versiones anteriores…"), disabled: many || entry.kind === "dir", action: () => setVersionsOf(entry) },
+      { label: t("Descargar"), disabled: many || entry.kind === "dir", action: () => download(entry) },
+      { label: t("Compartir enlace…"), disabled: many, action: () => setShareOf(entry) },
       { separator: true },
-      { label: many ? `Mover ${targets.length} ítems a la Papelera` : "Mover a la Papelera", shortcut: "⌫", disabled: path === "/", action: () => void moveToTrash(targets) },
+      { label: many ? t("Mover {n} ítems a la Papelera", { n: targets.length }) : t("Mover a la Papelera"), shortcut: "⌫", disabled: path === "/", action: () => void moveToTrash(targets) },
     ]);
   };
 
@@ -471,21 +471,21 @@ export default function FilesApp({ win }: AppProps) {
     e.preventDefault();
     if (isTrash) {
       showContextMenu(e.clientX, e.clientY, [
-        { label: "Restaurar todo", disabled: !trash.length, action: () => void restore(trash.map((x) => x.path)) },
-        { label: "Vaciar la papelera…", disabled: !trash.length, action: () => setConfirmEmpty(true) },
+        { label: t("Restaurar todo"), disabled: !trash.length, action: () => void restore(trash.map((x) => x.path)) },
+        { label: t("Vaciar la papelera…"), disabled: !trash.length, action: () => setConfirmEmpty(true) },
       ]);
       return;
     }
     const writable = path !== "/" && !results;
     showContextMenu(e.clientX, e.clientY, [
-      { label: "Nueva carpeta", disabled: !writable, action: () => void newFolder() },
-      { label: "Subir archivos…", disabled: !writable, action: () => fileInput.current?.click() },
+      { label: t("Nueva carpeta"), disabled: !writable, action: () => void newFolder() },
+      { label: t("Subir archivos…"), disabled: !writable, action: () => fileInput.current?.click() },
       { separator: true },
       ...sortItems(),
       { separator: true },
-      { label: "Íconos", checked: view === "icons", action: () => setView("icons") },
-      { label: "Lista", checked: view === "list", action: () => setView("list") },
-      { label: "Columnas", checked: view === "columns", action: () => setView("columns") },
+      { label: t("Íconos"), checked: view === "icons", action: () => setView("icons") },
+      { label: t("Lista"), checked: view === "list", action: () => setView("list") },
+      { label: t("Columnas"), checked: view === "columns", action: () => setView("columns") },
     ]);
   };
 
@@ -493,43 +493,43 @@ export default function FilesApp({ win }: AppProps) {
     win,
     [
       {
-        label: "Archivo",
+        label: t("Archivo"),
         items: [
-          { label: "Nueva carpeta", disabled: isTrash || path === "/", action: () => void newFolder() },
-          { label: "Subir archivos…", disabled: isTrash || path === "/", action: () => fileInput.current?.click() },
+          { label: t("Nueva carpeta"), disabled: isTrash || path === "/", action: () => void newFolder() },
+          { label: t("Subir archivos…"), disabled: isTrash || path === "/", action: () => fileInput.current?.click() },
           { separator: true },
-          { label: "Vista rápida", shortcut: "Espacio", disabled: selected.length !== 1, action: () => selected[0] && setQl(selected[0].path) },
-          { label: "Versiones anteriores…", disabled: selected.length !== 1 || selected[0]?.kind === "dir", action: () => selected[0] && setVersionsOf(selected[0]) },
-          { label: "Descargar", disabled: selected.length !== 1 || selected[0]?.kind === "dir" || isTrash, action: () => selected[0] && download(selected[0]) },
+          { label: t("Vista rápida"), shortcut: t("Espacio"), disabled: selected.length !== 1, action: () => selected[0] && setQl(selected[0].path) },
+          { label: t("Versiones anteriores…"), disabled: selected.length !== 1 || selected[0]?.kind === "dir", action: () => selected[0] && setVersionsOf(selected[0]) },
+          { label: t("Descargar"), disabled: selected.length !== 1 || selected[0]?.kind === "dir" || isTrash, action: () => selected[0] && download(selected[0]) },
           { separator: true },
-          { label: "Mover a la Papelera", shortcut: "⌫", disabled: !selected.length || isTrash, action: () => void moveToTrash(selected) },
+          { label: t("Mover a la Papelera"), shortcut: "⌫", disabled: !selected.length || isTrash, action: () => void moveToTrash(selected) },
         ],
       },
       {
-        label: "Ver",
+        label: t("Ver"),
         items: [
-          { label: "Como íconos", checked: view === "icons", action: () => setView("icons") },
-          { label: "Como lista", checked: view === "list", action: () => setView("list") },
-          { label: "Como columnas", checked: view === "columns", action: () => setView("columns") },
+          { label: t("Como íconos"), checked: view === "icons", action: () => setView("icons") },
+          { label: t("Como lista"), checked: view === "list", action: () => setView("list") },
+          { label: t("Como columnas"), checked: view === "columns", action: () => setView("columns") },
           { separator: true },
           ...sortItems(),
         ],
       },
       {
-        label: "Ir",
+        label: t("Ir"),
         items: [
-          { label: "Atrás", disabled: !canBack, action: back },
-          { label: "Adelante", disabled: !canFwd, action: fwd },
-          { label: "Carpeta superior", disabled: path === "/" || isTrash, action: () => navigate(parentOf(path)) },
+          { label: t("Atrás"), disabled: !canBack, action: back },
+          { label: t("Adelante"), disabled: !canFwd, action: fwd },
+          { label: t("Carpeta superior"), disabled: path === "/" || isTrash, action: () => navigate(parentOf(path)) },
           { separator: true },
           ...(real
             ? []
             : [
-                { label: "Inicio", action: () => navigate(HOME) },
-                { label: "Descargas", action: () => navigate(DOWNLOADS) },
+                { label: t("Inicio"), action: () => navigate(HOME) },
+                { label: t("Descargas"), action: () => navigate(DOWNLOADS) },
               ]),
-          { label: "Carpetas compartidas", action: () => navigate("/") },
-          { label: "Papelera", action: () => navigate(TRASH) },
+          { label: t("Carpetas compartidas"), action: () => navigate("/") },
+          { label: t("Papelera"), action: () => navigate(TRASH) },
         ],
       },
     ],
@@ -546,26 +546,26 @@ export default function FilesApp({ win }: AppProps) {
   let content: React.ReactNode;
   if (notFound)
     content = (
-      <EmptyState icon={SearchX} title="Esta carpeta ya no existe" action={<Button onClick={() => navigate(real ? "/" : HOME)}>{real ? "Ir a las carpetas compartidas" : "Ir a Inicio"}</Button>}>
-        Puede que la hayan movido o renombrado desde otra sesión.
+      <EmptyState icon={SearchX} title={t("Esta carpeta ya no existe")} action={<Button onClick={() => navigate(real ? "/" : HOME)}>{real ? t("Ir a las carpetas compartidas") : t("Ir a Inicio")}</Button>}>
+        {t("Puede que la hayan movido o renombrado desde otra sesión.")}
       </EmptyState>
     );
   else if (results && !items.length)
     content = (
-      <EmptyState icon={SearchX} title="Sin resultados">
-        Nada coincide con «{q.trim()}». Probá con otra palabra o revisá la ortografía.
+      <EmptyState icon={SearchX} title={t("Sin resultados")}>
+        {t("Nada coincide con «{q}». Probá con otra palabra o revisá la ortografía.", { q: q.trim() })}
       </EmptyState>
     );
   else if (isTrash && !items.length)
     content = (
-      <EmptyState icon={Trash2} title="La papelera está vacía">
-        Lo que borres desde Archivos queda acá hasta que lo restaures o vacíes la papelera.
+      <EmptyState icon={Trash2} title={t("La papelera está vacía")}>
+        {t("Lo que borres desde Archivos queda acá hasta que lo restaures o vacíes la papelera.")}
       </EmptyState>
     );
   else if (!listing.loading && !items.length && !results)
     content = (
-      <EmptyState icon={FolderOpen} title="Esta carpeta está vacía" action={path !== "/" ? <Button onClick={() => fileInput.current?.click()}>Subir archivos</Button> : undefined}>
-        Arrastrá archivos acá o usá «Subir archivos».
+      <EmptyState icon={FolderOpen} title={t("Esta carpeta está vacía")} action={path !== "/" ? <Button onClick={() => fileInput.current?.click()}>{t("Subir archivos")}</Button> : undefined}>
+        {t("Arrastrá archivos acá o usá «Subir archivos».")}
       </EmptyState>
     );
   else if (view === "list")
@@ -583,7 +583,7 @@ export default function FilesApp({ win }: AppProps) {
             ).map(([k, l, cls]) => (
               <th key={k} className={cls} aria-sort={sort.key === k ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
                 <button type="button" className="tf-th" onClick={() => setSort((s) => ({ key: k, dir: s.key === k ? (-s.dir as 1 | -1) : 1 }))}>
-                  {l}
+                  {t(l)}
                   {sort.key === k && <span className="tf-sort">{sort.dir === 1 ? "▲" : "▼"}</span>}
                 </button>
               </th>
@@ -601,7 +601,7 @@ export default function FilesApp({ win }: AppProps) {
               </td>
               <td className="tf-dim">{fmtDate(e.mtime)}</td>
               <td className="num tf-dim">{e.kind === "dir" ? (e.size ? fmtBytes(e.size) : "—") : fmtBytes(e.size)}</td>
-              <td className="tf-dim">{kindLabel[e.kind]}</td>
+              <td className="tf-dim">{t(kindLabel[e.kind])}</td>
             </tr>
           ))}
         </tbody>
@@ -651,7 +651,7 @@ export default function FilesApp({ win }: AppProps) {
             onMouseDown={(ev) => ev.button === 0 && clickItem(ev, e, i)}
             onDoubleClick={() => open(e)}
             onContextMenu={(ev) => itemMenu(ev, e, i)}
-            title={results || isTrash ? (isTrash ? `Estaba en ${originOf.get(e.path) ?? "?"}` : e.path) : undefined}
+            title={results || isTrash ? (isTrash ? t("Estaba en {place}", { place: originOf.get(e.path) ?? "?" }) : e.path) : undefined}
           >
             <div className="tf-thumb">{real ? <RealThumb entry={e} tint={tintFor(e)} /> : <Thumb entry={e} tint={tintFor(e)} />}</div>
             {renaming === e.path ? (
@@ -669,47 +669,47 @@ export default function FilesApp({ win }: AppProps) {
   return (
     <SnapshotCtx.Provider value={snap}>
     <div className="tg-app tf-app" style={{ ["--side" as string]: `${SIDE}px` }}>
-      <aside className="tg-app-side tg-sidebar" aria-label="Lugares">
-        <h4>Favoritos</h4>
-        {!real && <SidebarItem icon={Home} label="Inicio" current={path === HOME} onClick={() => navigate(HOME)} />}
-        {!real && <SidebarItem icon={Download} label="Descargas" current={path === DOWNLOADS} onClick={() => navigate(DOWNLOADS)} />}
-        <SidebarItem icon={FolderOpen} label="Todas las carpetas" current={path === "/"} onClick={() => navigate("/")} />
-        <h4>Carpetas compartidas</h4>
+      <aside className="tg-app-side tg-sidebar" aria-label={t("Lugares")}>
+        <h4>{t("Favoritos")}</h4>
+        {!real && <SidebarItem icon={Home} label={t("Inicio")} current={path === HOME} onClick={() => navigate(HOME)} />}
+        {!real && <SidebarItem icon={Download} label={t("Descargas")} current={path === DOWNLOADS} onClick={() => navigate(DOWNLOADS)} />}
+        <SidebarItem icon={FolderOpen} label={t("Todas las carpetas")} current={path === "/"} onClick={() => navigate("/")} />
+        <h4>{t("Carpetas compartidas")}</h4>
         {shares.map((s) => (
           <SidebarItem key={s.id} icon={Folder} color={s.color} label={s.name} current={inShare(`/${s.name}`) && (real || !(s.name === "homes" && (path === HOME || path === DOWNLOADS)))} onClick={() => navigate(`/${s.name}`)} />
         ))}
-        {!shares.length && <div className="tf-side-empty">Todavía no hay carpetas compartidas. Creá un volumen en Almacenamiento.</div>}
-        <h4>Más</h4>
-        <SidebarItem icon={Trash2} label="Papelera" current={isTrash} meta={trash.length || undefined} onClick={() => navigate(TRASH)} />
-        <SidebarItem icon={Link2} label="Enlaces compartidos" current={false} onClick={() => setShowLinks(true)} />
+        {!shares.length && <div className="tf-side-empty">{t("Todavía no hay carpetas compartidas. Creá un volumen en Almacenamiento.")}</div>}
+        <h4>{t("Más")}</h4>
+        <SidebarItem icon={Trash2} label={t("Papelera")} current={isTrash} meta={trash.length || undefined} onClick={() => navigate(TRASH)} />
+        <SidebarItem icon={Link2} label={t("Enlaces compartidos")} current={false} onClick={() => setShowLinks(true)} />
       </aside>
 
       <WindowToolbar win={win} inset={SIDE}>
         <div className="tg-tb-group" data-no-drag>
-          <IconButton icon={ChevronLeft} label="Atrás" disabled={!canBack} onClick={back} />
-          <IconButton icon={ChevronRight} label="Adelante" disabled={!canFwd} onClick={fwd} />
+          <IconButton icon={ChevronLeft} label={t("Atrás")} disabled={!canBack} onClick={back} />
+          <IconButton icon={ChevronRight} label={t("Adelante")} disabled={!canFwd} onClick={fwd} />
         </div>
         <div className="tf-tb-title">
-          <span className="tg-tb-title">{results ? "Resultados" : baseName(path)}</span>
-          {!results && !isTrash && path !== "/" && <span className="tg-tb-sub">{parentOf(path) === "/" ? "Carpeta compartida" : parentOf(path)}</span>}
+          <span className="tg-tb-title">{results ? t("Resultados") : baseName(path)}</span>
+          {!results && !isTrash && path !== "/" && <span className="tg-tb-sub">{parentOf(path) === "/" ? t("Carpeta compartida") : parentOf(path)}</span>}
         </div>
         <div className="tg-tb-spacer" />
         <div className="tg-tb-group" data-no-drag>
           <Segmented<View>
-            label="Vista"
+            label={t("Vista")}
             value={view}
             onChange={setView}
             options={[
-              { value: "icons", label: "Íconos", icon: LayoutGrid },
-              { value: "list", label: "Lista", icon: List },
-              { value: "columns", label: "Columnas", icon: Columns3 },
+              { value: "icons", label: t("Íconos"), icon: LayoutGrid },
+              { value: "list", label: t("Lista"), icon: List },
+              { value: "columns", label: t("Columnas"), icon: Columns3 },
             ]}
           />
-          <IconButton icon={FolderPlus} label="Nueva carpeta" disabled={isTrash || !!results || path === "/"} onClick={() => void newFolder()} />
-          <IconButton icon={Upload} label="Subir archivos" disabled={isTrash || !!results || path === "/"} onClick={() => fileInput.current?.click()} />
+          <IconButton icon={FolderPlus} label={t("Nueva carpeta")} disabled={isTrash || !!results || path === "/"} onClick={() => void newFolder()} />
+          <IconButton icon={Upload} label={t("Subir archivos")} disabled={isTrash || !!results || path === "/"} onClick={() => fileInput.current?.click()} />
         </div>
         <div className="tf-tb-search" data-no-drag>
-          <SearchField value={q} onChange={setQ} placeholder="Buscar en el NAS" />
+          <SearchField value={q} onChange={setQ} placeholder={t("Buscar en el NAS")} />
         </div>
         {!real && <DemoBadge />}
       </WindowToolbar>
@@ -719,13 +719,13 @@ export default function FilesApp({ win }: AppProps) {
           <div className="tf-snapbar" role="status">
             <History size={14} />
             <span>
-              Instantánea del <b>{snapAt ? fmtDate(snapAt) : snap}</b> · solo lectura
+              {t("Instantánea del")} <b>{snapAt ? fmtDate(snapAt) : snap}</b> · {t("solo lectura")}
             </span>
             {selected.length === 1 && selected[0].kind !== "dir" && (
-              <Button onClick={() => void restoreCopy(selected[0])}>Restaurar una copia</Button>
+              <Button onClick={() => void restoreCopy(selected[0])}>{t("Restaurar una copia")}</Button>
             )}
             <Button variant="plain" onClick={() => openApp("tango.files", { path })}>
-              Ver la carpeta actual
+              {t("Ver la carpeta actual")}
             </Button>
           </div>
         )}
@@ -747,17 +747,17 @@ export default function FilesApp({ win }: AppProps) {
           {dragOver && (
             <div className="tf-drop">
               <Upload size={30} />
-              <strong>Soltá para subir a {baseName(path)}</strong>
+              <strong>{t("Soltá para subir a {place}", { place: baseName(path) })}</strong>
             </div>
           )}
         </div>
         <TransfersPanel items={xf.items} onCancel={xf.cancel} onClear={xf.clearDone} />
         <footer className="tg-app-foot tf-foot">
-          <nav className="tf-crumbs" aria-label="Ruta">
+          <nav className="tf-crumbs" aria-label={t("Ruta")}>
             {isTrash ? (
-              <span>Papelera</span>
+              <span>{t("Papelera")}</span>
             ) : results ? (
-              <span>Buscando en todas las carpetas</span>
+              <span>{t("Buscando en todas las carpetas")}</span>
             ) : (
               crumbs.map((c, i) => (
                 <span key={c} className="tf-crumb">
@@ -772,9 +772,9 @@ export default function FilesApp({ win }: AppProps) {
           </nav>
           <div className="tg-tb-spacer" />
           <span className="tg-num">
-            {items.length === 1 ? "1 ítem" : `${items.length} ítems`}
-            {sel.size > 0 && ` · ${sel.size} seleccionado${sel.size > 1 ? "s" : ""}${selSize ? ` (${fmtBytes(selSize)})` : ""}`}
-            {free > 0 && ` · ${fmtBytes(free)} disponibles`}
+            {tn(items.length, "1 ítem", "{n} ítems")}
+            {sel.size > 0 && ` · ${tn(sel.size, "{n} seleccionado", "{n} seleccionados")}${selSize ? ` (${fmtBytes(selSize)})` : ""}`}
+            {free > 0 && ` · ${t("{size} disponibles", { size: fmtBytes(free) })}`}
           </span>
         </footer>
       </div>
@@ -820,9 +820,9 @@ export default function FilesApp({ win }: AppProps) {
         width={420}
         footer={
           <>
-            <Button onClick={() => setConfirmEmpty(false)}>Cancelar</Button>
+            <Button onClick={() => setConfirmEmpty(false)}>{t("Cancelar")}</Button>
             <Button variant="danger" onClick={() => void emptyTrash()}>
-              Vaciar la papelera
+              {t("Vaciar la papelera")}
             </Button>
           </>
         }
@@ -830,9 +830,9 @@ export default function FilesApp({ win }: AppProps) {
         <div className="tf-ver-head">
           <Trash2 size={22} />
           <div>
-            <strong>¿Vaciar la papelera?</strong>
+            <strong>{t("¿Vaciar la papelera?")}</strong>
             <span>
-              {trash.length === 1 ? "El ítem se borra" : `Los ${trash.length} ítems se borran`} para siempre del NAS. Las instantáneas que ya existían no cambian.
+              {tn(trash.length, "El ítem se borra para siempre del NAS. Las instantáneas que ya existían no cambian.", "Los {n} ítems se borran para siempre del NAS. Las instantáneas que ya existían no cambian.")}
             </span>
           </div>
         </div>
@@ -870,7 +870,7 @@ function RenameField({ entry, onCommit, onCancel, multiline }: { entry: FileEntr
         ref={ref}
         value={v}
         spellCheck={false}
-        aria-label="Nuevo nombre"
+        aria-label={t("Nuevo nombre")}
         aria-invalid={!!err}
         onChange={(e) => (setV(e.target.value), setErr(null))}
         onKeyDown={(e) => {
@@ -928,7 +928,7 @@ function Column({
           </div>
         );
       })}
-      {!list.length && !own.loading && <div className="tf-col-empty">Vacía</div>}
+      {!list.length && !own.loading && <div className="tf-col-empty">{t("Vacía")}</div>}
     </div>
   );
 }
@@ -941,20 +941,20 @@ function Preview({ entry, onVersions, onDownload, real }: { entry: FileEntry; on
       </div>
       <strong>{entry.name}</strong>
       <span className="tf-dim">
-        {kindLabel[entry.kind]} · {fmtBytes(entry.size)}
+        {t(kindLabel[entry.kind])} · {fmtBytes(entry.size)}
       </span>
       <dl>
-        <dt>Modificado</dt>
+        <dt>{t("Modificado")}</dt>
         <dd>{fmtDate(entry.mtime)}</dd>
-        <dt>Ubicación</dt>
+        <dt>{t("Ubicación")}</dt>
         <dd>{parentOf(entry.path)}</dd>
       </dl>
       <div className="tf-preview-actions">
         <Button onClick={onDownload}>
-          <Download size={13} /> Descargar
+          <Download size={13} /> {t("Descargar")}
         </Button>
         <Button onClick={onVersions}>
-          <History size={13} /> Versiones
+          <History size={13} /> {t("Versiones")}
         </Button>
       </div>
     </div>
@@ -964,7 +964,7 @@ function Preview({ entry, onVersions, onDownload, real }: { entry: FileEntry; on
 // ---- Versiones anteriores (instantáneas) ---------------------------------------------
 
 function VersionsSheet({ entry, onClose, onRestored }: { entry: FileEntry | null; onClose: () => void; onRestored: (e: FileEntry) => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const [list, setList] = useState<FileVersion[] | null>(null);
   const [pick, setPick] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -972,20 +972,20 @@ function VersionsSheet({ entry, onClose, onRestored }: { entry: FileEntry | null
     if (!entry) return;
     setList(null);
     setPick(null);
-    t.call("files.versions", { path: entry.path }).then(setList, () => setList([]));
-  }, [entry, t]);
+    tp.call("files.versions", { path: entry.path }).then(setList, () => setList([]));
+  }, [entry, tp]);
   if (!entry) return null;
   const chosen = list?.find((v) => v.snapshot.id === pick);
   const restore = async () => {
     if (!chosen) return;
     setBusy(true);
     try {
-      const e = await t.call("files.restoreVersion", { path: entry.path, snapshot: chosen.snapshot.id });
+      const e = await tp.call("files.restoreVersion", { path: entry.path, snapshot: chosen.snapshot.id });
       onClose();
       onRestored(e);
-      toast({ level: "ok", title: `Se restauró como «${e.name}»`, body: `Es la versión de ${fmtDate(chosen.snapshot.at)}. El archivo actual quedó como estaba.` });
+      toast({ level: "ok", title: t("Se restauró como «{name}»", { name: e.name }), body: t("Es la versión de {date}. El archivo actual quedó como estaba.", { date: fmtDate(chosen.snapshot.at) }) });
     } catch (x) {
-      toast({ level: "crit", title: "No se pudo restaurar la versión", body: errText(x, { path: entry.path, name: entry.name }) });
+      toast({ level: "crit", title: t("No se pudo restaurar la versión"), body: errText(x, { path: entry.path, name: entry.name }) });
     } finally {
       setBusy(false);
     }
@@ -997,9 +997,9 @@ function VersionsSheet({ entry, onClose, onRestored }: { entry: FileEntry | null
       width={520}
       footer={
         <>
-          <Button onClick={onClose}>Cancelar</Button>
+          <Button onClick={onClose}>{t("Cancelar")}</Button>
           <Button variant="primary" disabled={!chosen || busy} onClick={() => void restore()}>
-            {busy ? "Restaurando…" : "Restaurar esta versión"}
+            {busy ? t("Restaurando…") : t("Restaurar esta versión")}
           </Button>
         </>
       }
@@ -1007,12 +1007,12 @@ function VersionsSheet({ entry, onClose, onRestored }: { entry: FileEntry | null
       <div className="tf-ver-head">
         <History size={22} />
         <div>
-          <strong>Versiones anteriores de «{entry.name}»</strong>
-          <span>Cada instantánea guarda cómo estaba la carpeta en ese momento. Restaurar crea una copia al lado del archivo actual, sin pisarlo.</span>
+          <strong>{t("Versiones anteriores de «{name}»", { name: entry.name })}</strong>
+          <span>{t("Cada instantánea guarda cómo estaba la carpeta en ese momento. Restaurar crea una copia al lado del archivo actual, sin pisarlo.")}</span>
         </div>
       </div>
       {!list && <Progress indeterminate />}
-      {list && !list.length && <p className="tf-dim">No hay versiones anteriores de este archivo: la carpeta todavía no tiene instantáneas, o el archivo es nuevo.</p>}
+      {list && !list.length && <p className="tf-dim">{t("No hay versiones anteriores de este archivo: la carpeta todavía no tiene instantáneas, o el archivo es nuevo.")}</p>}
       {list && list.length > 0 && (
         <ol className="tf-timeline">
           {list.map((v, i) => (
@@ -1022,11 +1022,11 @@ function VersionsSheet({ entry, onClose, onRestored }: { entry: FileEntry | null
                 <span className="tf-ver-when">
                   <strong>{fmtDate(v.snapshot.at)}</strong>
                   <small>
-                    {fmtAgo(v.snapshot.at)} · modificado {fmtDate(v.mtime)}
+                    {fmtAgo(v.snapshot.at)} · {t("modificado {date}", { date: fmtDate(v.mtime) })}
                   </small>
                 </span>
-                {v.snapshot.kind === "manual" ? <Badge tone="info">Manual</Badge> : <Badge>Programada</Badge>}
-                {v.snapshot.locked && <Badge tone="warn">Protegida</Badge>}
+                {v.snapshot.kind === "manual" ? <Badge tone="info">{t("Manual")}</Badge> : <Badge>{t("Programada")}</Badge>}
+                {v.snapshot.locked && <Badge tone="warn">{t("Protegida")}</Badge>}
                 <span className="tf-ver-size tg-num">{fmtBytes(v.size)}</span>
               </button>
             </li>

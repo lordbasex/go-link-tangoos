@@ -1,9 +1,9 @@
-import { fmtAgo, profileInfo, unusedBytes, useIsReal, useTransport } from "@tango/client";
+import { fmtAgo, profileInfo, t, unusedBytes, useIsReal, useTransport } from "@tango/client";
 import type { Method } from "@tango/client";
 import type { Disk, DiskHealth, Pool, Volume, VolumeProfile } from "@tango/client";
 import type { Tone } from "@tango/ui";
 
-export type Section = "overview" | "pools" | "zfs" | "volumes" | "disks" | "snapshots" | "iscsi";
+export type Section = "overview" | "pools" | "zfs" | "repl" | "volumes" | "disks" | "snapshots" | "iscsi";
 
 export type Led = "ok" | "warn" | "crit" | "off" | "busy" | "rebuild";
 
@@ -18,25 +18,31 @@ export function useAvailable(m: Method): boolean {
 
 /** Motivo por el que un disco no puede usarse para un volumen nuevo (null = elegible). */
 export function ineligibleReason(d: Disk, vols: Volume[], pools: Pool[] = []): string | null {
-  if (d.use === "system") return "Disco del sistema";
-  if (d.use === "failed") return "Falló: no responde";
-  if (d.foreign) return "Viene de otro NAS";
-  if (d.pool) return `${d.role === "cache" ? "Caché SSD del grupo" : "Miembro del grupo"} ${pools.find((p) => p.id === d.pool)?.name ?? ""}`.trim();
-  if (d.use === "member") return `Miembro de ${vols.find((v) => v.id === d.volume)?.name ?? "un volumen"}`;
+  if (d.use === "system") return t("Disco del sistema");
+  if (d.use === "failed") return t("Falló: no responde");
+  if (d.foreign) return t("Viene de otro NAS");
+  if (d.pool) {
+    const name = pools.find((p) => p.id === d.pool)?.name ?? "";
+    return (d.role === "cache" ? t("Caché SSD del grupo {name}", { name }) : t("Miembro del grupo {name}", { name })).trim();
+  }
+  if (d.use === "member") {
+    const name = vols.find((v) => v.id === d.volume)?.name;
+    return name ? t("Miembro de {name}", { name }) : t("Miembro de un volumen");
+  }
   return null;
 }
 
 /** Nombre corto de para qué se usa un disco (tabla de discos, chasis). */
 export function diskUse(d: Disk, vols: Volume[], pools: Pool[] = []): string {
-  if (d.use === "system") return "Disco del sistema";
-  if (d.use === "failed") return "Falló";
-  if (d.foreign) return "Otro NAS (ajeno)";
+  if (d.use === "system") return t("Disco del sistema");
+  if (d.use === "failed") return t("Falló");
+  if (d.foreign) return t("Otro NAS (ajeno)");
   if (d.pool) {
-    const p = pools.find((x) => x.id === d.pool)?.name ?? "grupo";
-    return d.role === "cache" ? `Caché SSD · ${p}` : p;
+    const p = pools.find((x) => x.id === d.pool)?.name ?? t("grupo");
+    return d.role === "cache" ? t("Caché SSD · {name}", { name: p }) : p;
   }
-  if (d.use === "member") return vols.find((v) => v.id === d.volume)?.name ?? "En uso";
-  return "Sin usar";
+  if (d.use === "member") return vols.find((v) => v.id === d.volume)?.name ?? t("En uso");
+  return t("Sin usar");
 }
 
 export function ledOf(d: Disk | undefined, vols: Volume[], pools: Pool[] = []): Led {
@@ -66,19 +72,19 @@ export function volumeColor(volId: string, vols: Volume[]): string {
 }
 
 export const profileName: Record<VolumeProfile, string> = {
-  basic: "Básico",
+  basic: t("Básico"),
   raid1: "RAID 1",
   raid5: "RAID 5",
   raid6: "RAID 6",
   raid10: "RAID 10",
-  hybrid1: "Híbrido-1",
-  hybrid2: "Híbrido-2",
-  stripe: "ZFS sin redundancia",
-  mirror: "Espejo ZFS",
+  hybrid1: t("Híbrido-1"),
+  hybrid2: t("Híbrido-2"),
+  stripe: t("ZFS sin redundancia"),
+  mirror: t("Espejo ZFS"),
   raidz1: "RAIDZ1",
   raidz2: "RAIDZ2",
   raidz3: "RAIDZ3",
-  mixed: "ZFS mixto",
+  mixed: t("ZFS mixto"),
 };
 
 export const profileHelp: Record<VolumeProfile, string> = {
@@ -108,14 +114,14 @@ export function capacity(profile: VolumeProfile, sizes: number[]) {
 
 /** Contenido detectado en el disco (demo, determinístico). */
 export function detectedContent(d: Disk): string {
-  if (d.foreign) return `Volumen ${d.foreign.profile} de otro NAS (${d.foreign.label})`;
-  if (d.bay === 3) return "Una partición ext4 sin montar (3,9 TB)";
-  return "Vacío: sin tabla de particiones";
+  if (d.foreign) return t("Volumen {profile} de otro NAS ({label})", { profile: d.foreign.profile, label: d.foreign.label });
+  if (d.bay === 3) return t("Una partición ext4 sin montar (3,9 TB)");
+  return t("Vacío: sin tabla de particiones");
 }
 
-export const smartLabel = { ok: "Saludable", warn: "Con advertencias", crit: "Falló", unknown: "Sin SMART" } as const;
+export const smartLabel = { ok: t("Saludable"), warn: t("Con advertencias"), crit: t("Falló"), unknown: t("Sin SMART") } as const;
 /** SMART "unknown" (discos virtuales, controladoras sin passthrough) se muestra como info, no como problema. */
 export const smartTone = (h: DiskHealth): Tone => (h === "unknown" ? "info" : h);
 
 /** Última verificación: el servidor manda null o "" cuando el volumen nunca se verificó. */
-export const scrubAgo = (v: Pick<Volume, "lastScrub">) => (v.lastScrub ? fmtAgo(v.lastScrub) : "Nunca");
+export const scrubAgo = (v: Pick<Volume, "lastScrub">) => (v.lastScrub ? fmtAgo(v.lastScrub) : t("Nunca"));

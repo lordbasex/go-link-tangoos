@@ -1,4 +1,5 @@
-const nf = (d: number) => new Intl.NumberFormat("es-AR", { maximumFractionDigits: d });
+import { locale, t } from "./i18n";
+const nf = (d: number) => new Intl.NumberFormat(locale(), { maximumFractionDigits: d });
 
 /** Bytes en unidades decimales (como los fabricantes de discos y macOS). */
 export function fmtBytes(n: number, digits = 1): string {
@@ -12,21 +13,21 @@ export function fmtBytes(n: number, digits = 1): string {
 }
 
 export const fmtRate = (bps: number) => `${fmtBytes(bps)}/s`;
-export const fmtPct = (v: number, d = 0) => `${nf(d).format(v * 100)} %`;
+export const fmtPct = (v: number, d = 0) => t("{v} %", { v: nf(d).format(v * 100) });
 
-const rtf = new Intl.RelativeTimeFormat("es-AR", { numeric: "auto" });
+const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: "auto" });
 export function fmtAgo(isoDate: string): string {
   const s = (new Date(isoDate).getTime() - Date.now()) / 1000;
   const a = Math.abs(s);
-  if (a < 45) return "recién";
+  if (a < 45) return t("recién");
   if (a < 3600) return rtf.format(Math.round(s / 60), "minute");
   if (a < 86400) return rtf.format(Math.round(s / 3600), "hour");
   if (a < 86400 * 30) return rtf.format(Math.round(s / 86400), "day");
-  return new Date(isoDate).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(isoDate).toLocaleDateString(locale(), { day: "numeric", month: "short", year: "numeric" });
 }
 
 export function fmtDate(isoDate: string): string {
-  return new Date(isoDate).toLocaleString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return new Date(isoDate).toLocaleString(locale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 export function fmtDuration(sec: number): string {
@@ -58,4 +59,4 @@ export function maxTemp(ts: (number | null | undefined)[]): number | null {
 
 /** Sensores de la CPU/ventilador: 0 o negativo = el hardware no expone el sensor (p. ej. una VM). */
 export const fmtCpuTemp = (v: number | undefined | null) => (v && v > 0 ? `${Math.round(v)} °C` : "—");
-export const fmtRpm = (v: number | undefined | null) => (v && v > 0 ? `${new Intl.NumberFormat("es-AR").format(v)} rpm` : "—");
+export const fmtRpm = (v: number | undefined | null) => (v && v > 0 ? `${new Intl.NumberFormat(locale()).format(v)} rpm` : "—");

@@ -1,5 +1,6 @@
 // RPC sobre el DataChannel `rpc` (protocol/README.md §3).
 import { RpcError } from "../protocol";
+import { t } from "../i18n";
 
 /** Lo mínimo de RTCDataChannel que usa el cliente (permite tests con un canal falso). */
 export interface ChannelLike {
@@ -45,7 +46,7 @@ export class RpcClient {
       const p: Pending = {
         resolve,
         reject,
-        timer: setTimeout(() => this.settle(id, new RpcError("TIMEOUT", `${method}: el NAS no respondió a tiempo`)), opts.timeoutMs ?? this.timeoutMs),
+        timer: setTimeout(() => this.settle(id, new RpcError("TIMEOUT", t("{method}: el NAS no respondió a tiempo", { method }))), opts.timeoutMs ?? this.timeoutMs),
       };
       if (opts.signal) {
         const onAbort = () => {

@@ -1,5 +1,6 @@
 // Fase v1.0 simulada (protocol/README.md §13): 2FA, UPS, files.stat y shares.update. Datos DEMO.
 import { RpcError } from "../protocol";
+import { t } from "../i18n";
 import type { Job, Method, Notice, Params, Result, Share, Topic, Topics } from "../protocol";
 import type { UpsConfig, UpsStatus } from "../protocol-v1";
 import type { MemFS } from "./data";
@@ -32,7 +33,7 @@ export function v1Handlers(ctx: MockV1Ctx): { [M in Method]?: (p: Params<M>) => 
     const on = ups.mode !== "none";
     return {
       mode: ups.mode, configured: on, online: on, name: ups.upsName, model: on ? "APC Back-UPS ES 700 (DEMO)" : "",
-      status: on ? "OL CHRG" : "", statusText: on ? "Con luz, cargando" : "Sin datos",
+      status: on ? "OL CHRG" : "", statusText: on ? t("Con luz, cargando") : t("Sin datos"),
       batteryPct: on ? 96 : null, runtimeSec: on ? 2280 : null, loadPct: on ? 18 : null, inputVoltage: on ? 221 : null,
       lastUpdate: new Date().toISOString(), onBatterySince: null,
       detected: [{ vendor: "American Power Conversion", product: "Back-UPS ES 700", id: "051d:0002" }],
@@ -61,7 +62,7 @@ export function v1Handlers(ctx: MockV1Ctx): { [M in Method]?: (p: Params<M>) => 
     "ups.config.get": () => ({ ...ups, password: "" }),
     "ups.config.set": (p) => {
       if (p.mode === "remote" && !p.host) throw new RpcError("INVALID_PARAMS", "Indicá la dirección del equipo con el UPS");
-      const j = ctx.startJob("ups.config", p.mode === "none" ? "Desactivando el UPS" : "Configurando el UPS", "DEMO", 0, 0.34, undefined, () => {
+      const j = ctx.startJob("ups.config", p.mode === "none" ? t("Desactivando el UPS") : t("Configurando el UPS"), "DEMO", 0, 0.34, undefined, () => {
         ups = { ...p, password: "" };
         ctx.emit("ups.changed", upsStatus());
         ctx.emit("services.changed", { id: "ups" as never });
@@ -71,13 +72,13 @@ export function v1Handlers(ctx: MockV1Ctx): { [M in Method]?: (p: Params<M>) => 
     "files.stat": ({ path }) => {
       const dir = path.slice(0, path.lastIndexOf("/")) || "/";
       const e = ctx.fs().list(dir)?.find((x) => x.path === path);
-      if (!e) throw new RpcError("PATH_NOT_FOUND", `No existe ${path}`);
+      if (!e) throw new RpcError("PATH_NOT_FOUND", t("No existe {path}", { path }));
       return e;
     },
     "shares.update": ({ share, description, smb, timeMachine, timeMachineMaxBytes }) => {
       const sh = ctx.shares().find((x) => x.id === share);
       if (!sh) throw new RpcError("SHARE_NOT_FOUND", "No existe la carpeta compartida");
-      const j = ctx.startJob("shares.update", `Actualizando ${sh.name}`, "DEMO", 0, 0.5, undefined, () => {
+      const j = ctx.startJob("shares.update", t("Actualizando {name}", { name: sh.name }), "DEMO", 0, 0.5, undefined, () => {
         if (description !== undefined) sh.description = description;
         if (smb !== undefined) sh.smb = smb;
         if (timeMachine !== undefined) sh.timeMachine = timeMachine && sh.smb;

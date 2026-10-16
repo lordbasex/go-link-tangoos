@@ -3,12 +3,12 @@
 import "./cluster.css";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Boxes, Camera, Database, FolderOpen, Gauge, HardDrive, Layers, Lock, LockOpen, Network, Play, Plus, RefreshCw, Server, Settings2, Share2, ShieldCheck, Square, Terminal, Trash2, UserPlus } from "lucide-react";
-import { RpcError, clusterInfoText, clusterVolumeTone, fmtBytes, useIsReal, useLive, useTransport } from "@tango/client";
+import { RpcError, clusterInfoText, clusterVolumeTone, fmtBytes, locale, t, tn, tr, useIsReal, useLive, useTransport } from "@tango/client";
 import type { ClusterNode, ClusterStatus, ClusterVolume } from "@tango/client";
 import { WindowToolbar, toast, useWindowMenus } from "@tango/shell";
 import type { AppProps } from "@tango/shell";
 import { Badge, Button, DemoBadge, EmptyState, Group, IconButton, Progress, Row, Segmented, Sheet, SidebarItem, Status, TextInput, Toggle } from "@tango/ui";
-import { AddNodeSheet, BrickPicker, BricksSheet, InviteSheet, NFSSheet, QuotaSheet, SecurityGroup, SnapshotsSheet, TLSSheet, choiceSpec, defaultChoice } from "./Stage2";
+import { AddNodeSheet, BrickPicker, BricksSheet, InviteSheet, NFSSheet, QuotaSheet, SecurityGroup, SnapshotsSheet, TLSSheet, choiceSpec, defaultChoice, rich } from "./Stage2";
 import type { BrickChoice } from "./Stage2";
 
 const SIDE = 230;
@@ -19,7 +19,7 @@ type View = { kind: "overview" } | { kind: "nodes" } | { kind: "volume"; name: s
 const errText = (e: unknown) => (e instanceof RpcError ? e.message : String(e));
 
 function useAct() {
-  const t = useTransport();
+  const tp = useTransport();
   return async (title: string, fn: () => Promise<unknown>, ok?: string) => {
     try {
       await fn();
@@ -29,7 +29,7 @@ function useAct() {
       toast({ level: "warn", title, body: errText(e), app: APP });
       return false;
     } finally {
-      void t;
+      void tp;
     }
   };
 }
@@ -37,16 +37,16 @@ function useAct() {
 const volLabel = (v: ClusterVolume) => {
   if (v.arbiter > 0) return `${v.type} ${v.sets} × (${v.replica - v.arbiter} + ${v.arbiter})`;
   if (v.replica > 1) return `${v.type} ${v.sets} × ${v.replica}`;
-  return `${v.type} · ${v.bricks.length} bricks`;
+  return t("{type} · {n} bricks", { type: v.type, n: v.bricks.length });
 };
 
 const volState = (v: ClusterVolume): string => {
-  if (v.splitBrain > 0) return `Split-brain en ${v.splitBrain} archivos`;
-  if (v.status === "Created") return "Creado, sin arrancar";
-  if (v.status === "Stopped") return "Detenido";
-  if (v.online < v.bricks.length) return `${v.online} de ${v.bricks.length} bricks en línea`;
-  if (v.healPending > 0) return `Curando ${v.healPending} entradas`;
-  return "En orden";
+  if (v.splitBrain > 0) return tn(v.splitBrain, "Split-brain en un archivo", "Split-brain en {n} archivos");
+  if (v.status === "Created") return t("Creado, sin arrancar");
+  if (v.status === "Stopped") return t("Detenido");
+  if (v.online < v.bricks.length) return t("{online} de {total} bricks en línea", { online: v.online, total: v.bricks.length });
+  if (v.healPending > 0) return tn(v.healPending, "Curando una entrada", "Curando {n} entradas");
+  return t("En orden");
 };
 
 export default function ClusterApp({ win }: AppProps) {
@@ -65,11 +65,11 @@ export default function ClusterApp({ win }: AppProps) {
     win,
     [
       {
-        label: "Clúster",
+        label: t("Clúster"),
         items: [
-          { label: "Invitar un nodo…", disabled: !st?.running, action: () => setSheet("invite") },
-          { label: "Agregar un nodo…", disabled: !st?.running, action: () => setSheet("add") },
-          { label: "Crear volumen…", disabled: !st?.running, action: () => setSheet("create") },
+          { label: t("Invitar un nodo…"), disabled: !st?.running, action: () => setSheet("invite") },
+          { label: t("Agregar un nodo…"), disabled: !st?.running, action: () => setSheet("add") },
+          { label: t("Crear volumen…"), disabled: !st?.running, action: () => setSheet("create") },
         ],
       },
     ],
@@ -77,15 +77,15 @@ export default function ClusterApp({ win }: AppProps) {
   );
 
   const current = view.kind === "volume" ? st?.volumes.find((v) => v.name === view.name) : undefined;
-  const title = view.kind === "nodes" ? "Nodos" : current ? current.name : "Clúster";
+  const title = view.kind === "nodes" ? t("Nodos") : current ? current.name : t("Clúster");
 
   return (
     <div className="tg-app tcl" style={{ ["--side" as string]: `${SIDE}px` }}>
       <aside className="tg-app-side tg-sidebar">
-        <h4>Clúster</h4>
-        <SidebarItem icon={Boxes} label="Resumen" current={view.kind === "overview"} onClick={() => setView({ kind: "overview" })} />
-        <SidebarItem icon={Server} label="Nodos" current={view.kind === "nodes"} meta={st?.nodes.length || undefined} onClick={() => setView({ kind: "nodes" })} disabled={!st?.installed} />
-        {!!st?.volumes.length && <h4>Volúmenes</h4>}
+        <h4>{t("Clúster")}</h4>
+        <SidebarItem icon={Boxes} label={t("Resumen")} current={view.kind === "overview"} onClick={() => setView({ kind: "overview" })} />
+        <SidebarItem icon={Server} label={t("Nodos")} current={view.kind === "nodes"} meta={st?.nodes.length || undefined} onClick={() => setView({ kind: "nodes" })} disabled={!st?.installed} />
+        {!!st?.volumes.length && <h4>{t("Volúmenes")}</h4>}
         {st?.volumes.map((v) => (
           <SidebarItem
             key={v.name}
@@ -104,10 +104,10 @@ export default function ClusterApp({ win }: AppProps) {
           {!real && <DemoBadge />}
           {st?.running && (
             <>
-              <IconButton icon={UserPlus} label="Invitar un nodo" onClick={() => setSheet("invite")} />
-              <IconButton icon={Network} label="Agregar un nodo" onClick={() => setSheet("add")} />
+              <IconButton icon={UserPlus} label={t("Invitar un nodo")} onClick={() => setSheet("invite")} />
+              <IconButton icon={Network} label={t("Agregar un nodo")} onClick={() => setSheet("add")} />
               <Button onClick={() => setSheet("create")}>
-                <Plus size={14} /> Crear volumen
+                <Plus size={14} /> {t("Crear volumen")}
               </Button>
             </>
           )}
@@ -145,26 +145,26 @@ export default function ClusterApp({ win }: AppProps) {
 // ---- Instalación ----------------------------------------------------------------------
 
 function Install({ st }: { st: ClusterStatus }) {
-  const t = useTransport();
+  const tp = useTransport();
   const act = useAct();
   const [busy, setBusy] = useState(false);
   const install = () => {
     setBusy(true);
-    void act("No se pudo instalar GlusterFS", () => t.call("cluster.install", undefined), "Instalando GlusterFS…").finally(() => setBusy(false));
+    void act(t("No se pudo instalar GlusterFS"), () => tp.call("cluster.install", undefined), t("Instalando GlusterFS…")).finally(() => setBusy(false));
   };
   return (
     <EmptyState
       icon={Boxes}
-      title={st.installed ? "GlusterFS no está corriendo" : "Uní varios TangoOS en un clúster"}
+      title={st.installed ? t("GlusterFS no está corriendo") : t("Uní varios TangoOS en un clúster")}
       action={
         <Button variant="primary" onClick={install} disabled={busy}>
-          {st.installed ? "Arrancar GlusterFS" : "Instalar GlusterFS"}
+          {st.installed ? t("Arrancar GlusterFS") : t("Instalar GlusterFS")}
         </Button>
       }
     >
       {st.installed
-        ? (st.error ?? "glusterd no responde.")
-        : "Con GlusterFS, cada archivo se guarda a la vez en varios NAS: si uno se apaga, los demás siguen sirviendo los datos. Se instala solo en este equipo (unos 31 MB) y los puertos quedan cerrados salvo para los nodos que invites."}
+        ? (st.error ? tr(st.error) : t("glusterd no responde."))
+        : t("Con GlusterFS, cada archivo se guarda a la vez en varios NAS: si uno se apaga, los demás siguen sirviendo los datos. Se instala solo en este equipo (unos 31 MB) y los puertos quedan cerrados salvo para los nodos que invites.")}
     </EmptyState>
   );
 }
@@ -177,34 +177,34 @@ function Overview({ st, open, onCreate, onAdd }: { st: ClusterStatus; open: (nam
   return (
     <div className="tcl-pad">
       <div className="tcl-stats">
-        <Stat icon={Server} label="Nodos" value={`${connected} de ${st.nodes.length}`} tone={connected === st.nodes.length ? "ok" : "warn"} hint={connected === st.nodes.length ? "Todos conectados" : "Hay nodos sin conexión"} />
-        <Stat icon={Database} label="Volúmenes" value={String(st.volumes.length)} tone={issues.length ? "warn" : "ok"} hint={issues.length ? `${issues.length} con avisos` : "Todos en orden"} />
-        <Stat icon={ShieldCheck} label="Firewall" value={`${st.allowed.length} permitidos`} tone="info" hint="Solo estos equipos llegan a GlusterFS" />
-        <Stat icon={st.tls.secure ? Lock : LockOpen} label="Entre nodos" value={st.tls.secure ? "Con TLS" : "Sin cifrar"} tone={st.tls.secure ? "ok" : "warn"} hint={st.tls.secure ? "Certificados de la CA del clúster" : "Prendelo desde Nodos"} />
+        <Stat icon={Server} label={t("Nodos")} value={t("{n} de {total}", { n: connected, total: st.nodes.length })} tone={connected === st.nodes.length ? "ok" : "warn"} hint={connected === st.nodes.length ? t("Todos conectados") : t("Hay nodos sin conexión")} />
+        <Stat icon={Database} label={t("Volúmenes")} value={String(st.volumes.length)} tone={issues.length ? "warn" : "ok"} hint={issues.length ? tn(issues.length, "Uno con avisos", "{n} con avisos") : t("Todos en orden")} />
+        <Stat icon={ShieldCheck} label={t("Firewall")} value={tn(st.allowed.length, "{n} permitido", "{n} permitidos")} tone="info" hint={t("Solo estos equipos llegan a GlusterFS")} />
+        <Stat icon={st.tls.secure ? Lock : LockOpen} label={t("Entre nodos")} value={st.tls.secure ? t("Con TLS") : t("Sin cifrar")} tone={st.tls.secure ? "ok" : "warn"} hint={st.tls.secure ? t("Certificados de la CA del clúster") : t("Prendelo desde Nodos")} />
       </div>
 
       {st.volumes.some((v) => v.splitBrain > 0) && (
         <div className="tcl-alert" data-tone="crit">
           <AlertTriangle size={16} />
-          <span>Hay archivos en split-brain: cada copia tiene una versión distinta y GlusterFS no puede elegir sola. Abrí el volumen para ver dónde.</span>
+          <span>{t("Hay archivos en split-brain: cada copia tiene una versión distinta y GlusterFS no puede elegir sola. Abrí el volumen para ver dónde.")}</span>
         </div>
       )}
 
       {st.nodes.length === 1 ? (
-        <EmptyState icon={Network} title="Este NAS todavía está solo" action={<Button onClick={onAdd}>Agregar un nodo…</Button>}>
-          Para sumar otro TangoOS: en ese equipo abrí Clúster, tocá «Invitar un nodo» y escribí la IP de este NAS ({st.selfAddrs?.[0] ?? st.self}). Después agregalo desde acá.
+        <EmptyState icon={Network} title={t("Este NAS todavía está solo")} action={<Button onClick={onAdd}>{t("Agregar un nodo…")}</Button>}>
+          {t("Para sumar otro TangoOS: en ese equipo abrí Clúster, tocá «Invitar un nodo» y escribí la IP de este NAS ({ip}). Después agregalo desde acá.", { ip: st.selfAddrs?.[0] ?? st.self })}
         </EmptyState>
       ) : st.volumes.length === 0 ? (
-        <EmptyState icon={Database} title="Sin volúmenes del clúster" action={<Button onClick={onCreate}>Crear volumen…</Button>}>
-          Un volumen replicado guarda una copia completa en cada nodo que elijas.
+        <EmptyState icon={Database} title={t("Sin volúmenes del clúster")} action={<Button onClick={onCreate}>{t("Crear volumen…")}</Button>}>
+          {t("Un volumen replicado guarda una copia completa en cada nodo que elijas.")}
         </EmptyState>
       ) : (
-        <Group title="Volúmenes">
+        <Group title={t("Volúmenes")}>
           {st.volumes.map((v) => (
-            <Row key={v.name} icon={<Database size={16} />} label={<b>{v.name}</b>} hint={`${volLabel(v)} · ${v.sizeTotal ? `${fmtBytes(v.sizeTotal - v.sizeFree)} de ${fmtBytes(v.sizeTotal)}` : "sin datos de espacio"}`}>
+            <Row key={v.name} icon={<Database size={16} />} label={<b>{v.name}</b>} hint={`${volLabel(v)} · ${v.sizeTotal ? t("{used} de {total}", { used: fmtBytes(v.sizeTotal - v.sizeFree), total: fmtBytes(v.sizeTotal) }) : t("sin datos de espacio")}`}>
               <Status tone={clusterVolumeTone(v)}>{volState(v)}</Status>
               <Button variant="plain" onClick={() => open(v.name)}>
-                Abrir
+                {t("Abrir")}
               </Button>
             </Row>
           ))}
@@ -212,7 +212,7 @@ function Overview({ st, open, onCreate, onAdd }: { st: ClusterStatus; open: (nam
       )}
 
       {st.orphans.length > 0 && <Orphans st={st} />}
-      <p className="tcl-foot">GlusterFS {st.version} · este nodo: {st.self}</p>
+      <p className="tcl-foot">{t("GlusterFS {version} · este nodo: {self}", { version: st.version ?? "", self: st.self })}</p>
     </div>
   );
 }
@@ -231,19 +231,19 @@ function Stat({ icon: Icon, label, value, hint, tone }: { icon: typeof Server; l
 }
 
 function Orphans({ st }: { st: ClusterStatus }) {
-  const t = useTransport();
+  const tp = useTransport();
   const act = useAct();
   const [confirm, setConfirm] = useState<string | null>(null);
   return (
-    <Group title="Bricks huérfanos en este nodo">
+    <Group title={t("Bricks huérfanos en este nodo")}>
       {st.orphans.map((o) => (
-        <Row key={o.path} icon={<HardDrive size={16} />} label={o.path} hint={o.kind === "lv" ? `Volumen dedicado del brick de ${o.name} que ya no usa ningún brick. Ocupa espacio en el grupo ${o.tango_volume}.` : `Quedaron del volumen ${o.name}, que ya no existe. Ocupan espacio en ${o.tango_volume}.`}>
+        <Row key={o.path} icon={<HardDrive size={16} />} label={o.path} hint={o.kind === "lv" ? t("Volumen dedicado del brick de {name} que ya no usa ningún brick. Ocupa espacio en el grupo {group}.", { name: o.name, group: o.tango_volume }) : t("Quedaron del volumen {name}, que ya no existe. Ocupan espacio en {volume}.", { name: o.name, volume: o.tango_volume })}>
           {confirm === o.path ? (
-            <Button variant="danger" onClick={() => void act("No se pudo borrar", () => t.call("cluster.brick.cleanup", { kind: o.kind, tangoVolume: o.tango_volume, name: o.name }), `Borrado ${o.path}`).then(() => setConfirm(null))}>
-              Borrar los datos
+            <Button variant="danger" onClick={() => void act(t("No se pudo borrar"), () => tp.call("cluster.brick.cleanup", { kind: o.kind, tangoVolume: o.tango_volume, name: o.name }), t("Borrado {path}", { path: o.path })).then(() => setConfirm(null))}>
+              {t("Borrar los datos")}
             </Button>
           ) : (
-            <Button onClick={() => setConfirm(o.path)}>Borrar…</Button>
+            <Button onClick={() => setConfirm(o.path)}>{t("Borrar…")}</Button>
           )}
         </Row>
       ))}
@@ -255,12 +255,12 @@ function Orphans({ st }: { st: ClusterStatus }) {
 
 function latencyText(n: ClusterNode) {
   if (n.self) return "—";
-  if (!n.connected || n.latencyMs < 0) return "sin respuesta";
+  if (!n.connected || n.latencyMs < 0) return t("sin respuesta");
   return `${n.latencyMs} ms`;
 }
 
 function Nodes({ st, onInvite, onAdd, onTLS, onCertify }: { st: ClusterStatus; onInvite: () => void; onAdd: () => void; onTLS: () => void; onCertify: (host: string) => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const act = useAct();
   const [removing, setRemoving] = useState<string | null>(null);
   const bricksOn = (host: string) => st.volumes.reduce((s, v) => s + v.bricks.filter((b) => b.host === host).length, 0);
@@ -269,11 +269,11 @@ function Nodes({ st, onInvite, onAdd, onTLS, onCertify }: { st: ClusterStatus; o
       <table className="tcl-table">
         <thead>
           <tr>
-            <th>Nodo</th>
-            <th>Estado</th>
-            <th>Latencia</th>
-            <th>Certificado</th>
-            <th>Bricks</th>
+            <th>{t("Nodo")}</th>
+            <th>{t("Estado")}</th>
+            <th>{t("Latencia")}</th>
+            <th>{t("Certificado")}</th>
+            <th>{t("Bricks")}</th>
             <th />
           </tr>
         </thead>
@@ -282,38 +282,38 @@ function Nodes({ st, onInvite, onAdd, onTLS, onCertify }: { st: ClusterStatus; o
             <tr key={n.uuid}>
               <td>
                 <b>{n.host}</b>
-                {n.self && <Badge>Este NAS</Badge>}
+                {n.self && <Badge>{t("Este NAS")}</Badge>}
               </td>
               <td>
-                <Status tone={n.connected ? "ok" : "crit"}>{n.self ? "En línea" : n.connected ? "Conectado" : "Sin conexión"}</Status>
+                <Status tone={n.connected ? "ok" : "crit"}>{n.self ? t("En línea") : n.connected ? t("Conectado") : t("Sin conexión")}</Status>
               </td>
               <td className="tcl-num" data-slow={!n.self && n.latencyMs > 20 ? true : undefined}>
                 {latencyText(n)}
               </td>
-              <td>{st.nodeInfo[n.host] ? <Badge tone="ok">{st.nodeInfo[n.host].cn}</Badge> : <Badge tone="warn">Sin certificado</Badge>}</td>
+              <td>{st.nodeInfo[n.host] ? <Badge tone="ok">{st.nodeInfo[n.host].cn}</Badge> : <Badge tone="warn">{t("Sin certificado")}</Badge>}</td>
               <td className="tcl-num">{bricksOn(n.host)}</td>
               <td className="tcl-actions">
                 {!n.self &&
                   (removing === n.host ? (
-                    <Button variant="danger" onClick={() => void act("No se pudo sacar el nodo", () => t.call("cluster.peer.remove", { host: n.host }), `${n.host} salió del clúster`).then(() => setRemoving(null))}>
-                      Sacar del clúster
+                    <Button variant="danger" onClick={() => void act(t("No se pudo sacar el nodo"), () => tp.call("cluster.peer.remove", { host: n.host }), t("{host} salió del clúster", { host: n.host })).then(() => setRemoving(null))}>
+                      {t("Sacar del clúster")}
                     </Button>
                   ) : (
-                    <IconButton icon={Trash2} label={`Sacar ${n.host}`} disabled={bricksOn(n.host) > 0} onClick={() => setRemoving(n.host)} />
+                    <IconButton icon={Trash2} label={t("Sacar {host}", { host: n.host })} disabled={bricksOn(n.host) > 0} onClick={() => setRemoving(n.host)} />
                   ))}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="tcl-note">Un nodo con bricks no se puede sacar: primero reemplazá o quitá sus bricks desde cada volumen. Al sacarlo, sale del firewall de todos y de la lista TLS de cada volumen.</p>
+      <p className="tcl-note">{t("Un nodo con bricks no se puede sacar: primero reemplazá o quitá sus bricks desde cada volumen. Al sacarlo, sale del firewall de todos y de la lista TLS de cada volumen.")}</p>
 
       <SecurityGroup st={st} onTLS={onTLS} onCertify={onCertify} />
 
-      <Group title="Invitaciones abiertas en este NAS">
+      <Group title={t("Invitaciones abiertas en este NAS")}>
         {st.invites.length === 0 ? (
-          <Row label="Ninguna" hint="Invitá a un equipo para que pueda sumar a este NAS a su clúster.">
-            <Button onClick={onInvite}>Invitar…</Button>
+          <Row label={t("Ninguna")} hint={t("Invitá a un equipo para que pueda sumar a este NAS a su clúster.")}>
+            <Button onClick={onInvite}>{t("Invitar…")}</Button>
           </Row>
         ) : (
           st.invites.map((i) => (
@@ -324,22 +324,22 @@ function Nodes({ st, onInvite, onAdd, onTLS, onCertify }: { st: ClusterStatus; o
                 <span>
                   {i.host}
                   {i.code && !i.joined && <code className="tcl-path">{i.code}</code>}
-                  {i.joined && <Badge tone="ok">Unido</Badge>}
+                  {i.joined && <Badge tone="ok">{t("Unido")}</Badge>}
                 </span>
               }
-              hint={`${i.addrs.join(", ")} · vence ${new Date(i.expires).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}${i.fingerprint ? ` · huella ${i.fingerprint}` : ""}`}
+              hint={`${i.addrs.join(", ")} · ${t("vence {time}", { time: new Date(i.expires).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) })}${i.fingerprint ? ` · ${t("huella {fp}", { fp: i.fingerprint })}` : ""}`}
             >
-              <Button variant="plain" onClick={() => void act("No se pudo cancelar", () => t.call("cluster.invite.cancel", { host: i.host }))}>
-                Cancelar
+              <Button variant="plain" onClick={() => void act(t("No se pudo cancelar"), () => tp.call("cluster.invite.cancel", { host: i.host }))}>
+                {t("Cancelar")}
               </Button>
             </Row>
           ))
         )}
       </Group>
-      <Group title="Equipos que pueden hablar con GlusterFS">
-        <Row label={st.allowed.length ? st.allowed.join(" · ") : "Solo este NAS"} hint="Los nodos del clúster y las invitaciones abiertas. Para cualquier otro equipo de la red, los puertos de GlusterFS están cerrados.">
+      <Group title={t("Equipos que pueden hablar con GlusterFS")}>
+        <Row label={st.allowed.length ? st.allowed.join(" · ") : t("Solo este NAS")} hint={t("Los nodos del clúster y las invitaciones abiertas. Para cualquier otro equipo de la red, los puertos de GlusterFS están cerrados.")}>
           <Button variant="plain" onClick={onAdd}>
-            Agregar un nodo…
+            {t("Agregar un nodo…")}
           </Button>
         </Row>
       </Group>
@@ -350,7 +350,7 @@ function Nodes({ st, onInvite, onAdd, onTLS, onCertify }: { st: ClusterStatus; o
 // ---- Volumen ---------------------------------------------------------------------------
 
 function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
-  const t = useTransport();
+  const tp = useTransport();
   const act = useAct();
   const [showInfo, setShowInfo] = useState(false);
   const [sheet, setSheet] = useState<null | "options" | "mount" | "delete" | "bricks" | "quota" | "snaps" | "nfs">(null);
@@ -362,7 +362,7 @@ function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
     return out;
   }, [v]);
   const action = (a: "start" | "stop") =>
-    void act(a === "start" ? "No se pudo arrancar" : "No se pudo detener", () => t.call("cluster.volume.action", { name: v.name, action: a }), a === "start" ? `${v.name} arrancado` : `${v.name} detenido`);
+    void act(a === "start" ? t("No se pudo arrancar") : t("No se pudo detener"), () => tp.call("cluster.volume.action", { name: v.name, action: a }), a === "start" ? t("{name} arrancado", { name: v.name }) : t("{name} detenido", { name: v.name }));
 
   return (
     <div className="tcl-pad">
@@ -374,26 +374,26 @@ function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
             </Status>
           </div>
           <span className="tcl-sub">
-            {volLabel(v)} · {v.status === "Started" ? "Arrancado" : v.status === "Stopped" ? "Detenido" : "Creado"}
-            {mount?.mounted && ` · montado en ${mount.path}`}
-            {mount?.share && ` · carpeta SMB «${mount.share}»`}
-            {st.nfs[v.name]?.length ? ` · NFS para ${st.nfs[v.name].map((r) => r.host).join(", ")}` : ""}
+            {volLabel(v)} · {v.status === "Started" ? t("Arrancado") : v.status === "Stopped" ? t("Detenido") : t("Creado")}
+            {mount?.mounted && ` · ${t("montado en {path}", { path: mount.path })}`}
+            {mount?.share && ` · ${t("carpeta SMB «{share}»", { share: mount.share })}`}
+            {st.nfs[v.name]?.length ? ` · ${t("NFS para {hosts}", { hosts: st.nfs[v.name].map((r) => r.host).join(", ") })}` : ""}
             {v.tls ? " · TLS" : ""}
           </span>
         </div>
         <div className="tcl-vbtns">
-          {v.status === "Started" ? <IconButton icon={Square} label="Detener" onClick={() => action("stop")} /> : <IconButton icon={Play} label="Arrancar" onClick={() => action("start")} />}
-          <IconButton icon={RefreshCw} label="Curar ahora" disabled={v.status !== "Started" || v.replica < 2} onClick={() => void act("No se pudo lanzar la curación", () => t.call("cluster.volume.heal", { name: v.name }), "Curación lanzada")} />
-          <IconButton icon={Settings2} label="Opciones" onClick={() => setSheet("options")} />
-          <IconButton icon={HardDrive} label="Bricks: agregar, quitar, reemplazar, rebalancear" onClick={() => setSheet("bricks")} />
-          <IconButton icon={Gauge} label="Cuotas" onClick={() => setSheet("quota")} />
-          <IconButton icon={Camera} label="Instantáneas" onClick={() => setSheet("snaps")} />
+          {v.status === "Started" ? <IconButton icon={Square} label={t("Detener")} onClick={() => action("stop")} /> : <IconButton icon={Play} label={t("Arrancar")} onClick={() => action("start")} />}
+          <IconButton icon={RefreshCw} label={t("Curar ahora")} disabled={v.status !== "Started" || v.replica < 2} onClick={() => void act(t("No se pudo lanzar la curación"), () => tp.call("cluster.volume.heal", { name: v.name }), t("Curación lanzada"))} />
+          <IconButton icon={Settings2} label={t("Opciones")} onClick={() => setSheet("options")} />
+          <IconButton icon={HardDrive} label={t("Bricks: agregar, quitar, reemplazar, rebalancear")} onClick={() => setSheet("bricks")} />
+          <IconButton icon={Gauge} label={t("Cuotas")} onClick={() => setSheet("quota")} />
+          <IconButton icon={Camera} label={t("Instantáneas")} onClick={() => setSheet("snaps")} />
           <IconButton icon={Network} label="NFS" onClick={() => setSheet("nfs")} />
-          <IconButton icon={Terminal} label="Ver como gluster volume info" pressed={showInfo} onClick={() => setShowInfo(!showInfo)} />
+          <IconButton icon={Terminal} label={t("Ver como gluster volume info")} pressed={showInfo} onClick={() => setShowInfo(!showInfo)} />
           <Button onClick={() => setSheet("mount")}>
-            <FolderOpen size={13} /> {mount?.mounted ? "Montaje y SMB…" : "Montar…"}
+            <FolderOpen size={13} /> {mount?.mounted ? t("Montaje y SMB…") : t("Montar…")}
           </Button>
-          <IconButton icon={Trash2} label="Borrar el volumen" onClick={() => setSheet("delete")} />
+          <IconButton icon={Trash2} label={t("Borrar el volumen")} onClick={() => setSheet("delete")} />
         </div>
       </div>
 
@@ -401,7 +401,7 @@ function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
         <div className="tcl-cap">
           <Progress value={used} tone={used > 0.9 ? "crit" : used > 0.8 ? "warn" : undefined} />
           <span>
-            {fmtBytes(v.sizeTotal - v.sizeFree)} usados de {fmtBytes(v.sizeTotal)} · {fmtBytes(v.sizeFree)} libres
+            {t("{used} usados de {total} · {free} libres", { used: fmtBytes(v.sizeTotal - v.sizeFree), total: fmtBytes(v.sizeTotal), free: fmtBytes(v.sizeFree) })}
           </span>
         </div>
       )}
@@ -410,22 +410,30 @@ function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
         <div className="tcl-alert" data-tone="crit">
           <AlertTriangle size={16} />
           <span>
-            {v.splitBrain} archivos tienen versiones distintas en cada copia. Revisalos con <code>gluster volume heal {v.name} info split-brain</code> y elegí la copia buena, o fijá la opción «cluster.favorite-child-policy».
+            {rich(
+              tn(
+                v.splitBrain,
+                "Un archivo tiene versiones distintas en cada copia. Revisalo con {cmd} y elegí la copia buena, o fijá la opción «cluster.favorite-child-policy».",
+                "{n} archivos tienen versiones distintas en cada copia. Revisalos con {cmd} y elegí la copia buena, o fijá la opción «cluster.favorite-child-policy».",
+                { cmd: "{cmd}" },
+              ),
+              { cmd: <code>gluster volume heal {v.name} info split-brain</code> },
+            )}
           </span>
         </div>
       )}
       {v.healPending > 0 && v.splitBrain === 0 && (
         <div className="tcl-alert" data-tone="warn">
           <RefreshCw size={16} />
-          <span>Faltan copiar {v.healPending} entradas a todas las réplicas. Pasa después de que un nodo estuvo apagado; se completa sola.</span>
+          <span>{tn(v.healPending, "Falta copiar una entrada a todas las réplicas. Pasa después de que un nodo estuvo apagado; se completa sola.", "Faltan copiar {n} entradas a todas las réplicas. Pasa después de que un nodo estuvo apagado; se completa sola.")}</span>
         </div>
       )}
 
       {showInfo ? (
-        <pre className="tcl-info" aria-label="Salida de gluster volume info">{clusterInfoText(v)}</pre>
+        <pre className="tcl-info" aria-label={t("Salida de gluster volume info")}>{clusterInfoText(v)}</pre>
       ) : (
         sets.map((set, i) => (
-          <Group key={i} title={sets.length > 1 ? `Conjunto de réplica ${i + 1}` : "Bricks"}>
+          <Group key={i} title={sets.length > 1 ? t("Conjunto de réplica {n}", { n: i + 1 }) : t("Bricks")}>
             {set.map((b) => (
               <Row
                 key={b.host + b.path}
@@ -434,20 +442,20 @@ function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
                   <span>
                     <b>{b.host}</b>
                     <span className="tcl-path">{b.path}</span>
-                    {b.arbiter && <Badge>Árbitro</Badge>}
-                    {b.kind === "lv" && <Badge tone="info">Volumen dedicado</Badge>}
-                    {b.kind === "snap" && <Badge tone="info">Restaurado</Badge>}
+                    {b.arbiter && <Badge>{t("Árbitro")}</Badge>}
+                    {b.kind === "lv" && <Badge tone="info">{t("Volumen dedicado")}</Badge>}
+                    {b.kind === "snap" && <Badge tone="info">{t("Restaurado")}</Badge>}
                   </span>
                 }
                 hint={
                   b.online
-                    ? `${b.port ? `puerto ${b.port} · ` : ""}${b.sizeFree != null && b.sizeTotal ? `${fmtBytes(b.sizeFree)} libres de ${fmtBytes(b.sizeTotal)}` : ""}${b.fsName ? ` · ${b.fsName}` : ""}`
-                    : (b.healStatus ?? "El nodo no responde")
+                    ? `${b.port ? `${t("puerto {port}", { port: b.port })} · ` : ""}${b.sizeFree != null && b.sizeTotal ? t("{free} libres de {total}", { free: fmtBytes(b.sizeFree), total: fmtBytes(b.sizeTotal) }) : ""}${b.fsName ? ` · ${b.fsName}` : ""}`
+                    : (b.healStatus ? tr(b.healStatus) : t("El nodo no responde"))
                 }
               >
-                {b.splitBrain > 0 && <Badge tone="crit">{b.splitBrain} en split-brain</Badge>}
-                {b.healPending > 0 && <Badge tone="warn">{b.healPending} por curar</Badge>}
-                <Status tone={b.online ? "ok" : "crit"}>{b.online ? "En línea" : "Fuera de línea"}</Status>
+                {b.splitBrain > 0 && <Badge tone="crit">{t("{n} en split-brain", { n: b.splitBrain })}</Badge>}
+                {b.healPending > 0 && <Badge tone="warn">{t("{n} por curar", { n: b.healPending })}</Badge>}
+                <Status tone={b.online ? "ok" : "crit"}>{b.online ? t("En línea") : t("Fuera de línea")}</Status>
               </Row>
             ))}
           </Group>
@@ -466,7 +474,7 @@ function VolumeView({ st, v }: { st: ClusterStatus; v: ClusterVolume }) {
 }
 
 function OptionsSheet({ st, v, onClose }: { st: ClusterStatus; v: ClusterVolume; onClose: () => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const act = useAct();
   const [vals, setVals] = useState<Record<string, string>>(() => ({ ...v.options }));
   const changed = st.options.filter((o) => (vals[o.key] ?? "") !== (v.options[o.key] ?? ""));
@@ -477,7 +485,7 @@ function OptionsSheet({ st, v, onClose }: { st: ClusterStatus; v: ClusterVolume;
       if (vals[o.key]) set[o.key] = vals[o.key];
       else if (!o.global) reset.push(o.key);
     }
-    void act("No se pudieron cambiar las opciones", () => t.call("cluster.volume.options", { name: v.name, set, reset }), "Opciones guardadas").then((ok) => ok && onClose());
+    void act(t("No se pudieron cambiar las opciones"), () => tp.call("cluster.volume.options", { name: v.name, set, reset }), t("Opciones guardadas")).then((ok) => ok && onClose());
   };
   const applyPreset = (id: string) => {
     const p = st.presets.find((x) => x.id === id);
@@ -490,21 +498,21 @@ function OptionsSheet({ st, v, onClose }: { st: ClusterStatus; v: ClusterVolume;
       width={620}
       footer={
         <>
-          <span className="tcl-grow">{changed.length ? `${changed.length} cambios` : "Sin cambios"}</span>
-          <Button onClick={onClose}>Cancelar</Button>
+          <span className="tcl-grow">{changed.length ? tn(changed.length, "Un cambio", "{n} cambios") : t("Sin cambios")}</span>
+          <Button onClick={onClose}>{t("Cancelar")}</Button>
           <Button variant="primary" disabled={!changed.length} onClick={save}>
-            Guardar
+            {t("Guardar")}
           </Button>
         </>
       }
     >
-      <h2 className="tg-h2">Opciones de {v.name}</h2>
+      <h2 className="tg-h2">{t("Opciones de {name}", { name: v.name })}</h2>
       <div className="tcl-presets">
         {st.presets
           .filter((p) => Object.keys(p.options).length)
           .map((p) => (
             <Button key={p.id} variant="plain" onClick={() => applyPreset(p.id)}>
-              Aplicar «{p.name}»
+              {t("Aplicar «{name}»", { name: tr(p.name) })}
             </Button>
           ))}
       </div>
@@ -514,8 +522,8 @@ function OptionsSheet({ st, v, onClose }: { st: ClusterStatus; v: ClusterVolume;
             <div>
               <code>{o.key}</code>
               <small>
-                {o.desc}
-                {o.global && " · vale para todo el clúster"}
+                {tr(o.desc)}
+                {o.global && ` · ${t("vale para todo el clúster")}`}
               </small>
             </div>
             {o.type === "bool" ? (
@@ -524,20 +532,20 @@ function OptionsSheet({ st, v, onClose }: { st: ClusterStatus; v: ClusterVolume;
                 value={(vals[o.key] ?? "") as "" | "on" | "off"}
                 onChange={(x) => setVals({ ...vals, [o.key]: x })}
                 options={[
-                  { value: "", label: "Defecto" },
+                  { value: "", label: t("Defecto") },
                   { value: "on", label: "on" },
                   { value: "off", label: "off" },
                 ]}
               />
             ) : o.type === "enum" ? (
               <select className="tg-select" value={vals[o.key] ?? ""} onChange={(e) => setVals({ ...vals, [o.key]: e.target.value })} aria-label={o.key}>
-                <option value="">Defecto</option>
+                <option value="">{t("Defecto")}</option>
                 {o.enum?.map((x) => (
                   <option key={x}>{x}</option>
                 ))}
               </select>
             ) : (
-              <TextInput value={vals[o.key] ?? ""} placeholder="Defecto" aria-label={o.key} onChange={(e) => setVals({ ...vals, [o.key]: e.target.value })} style={{ width: 110 }} />
+              <TextInput value={vals[o.key] ?? ""} placeholder={t("Defecto")} aria-label={o.key} onChange={(e) => setVals({ ...vals, [o.key]: e.target.value })} style={{ width: 110 }} />
             )}
           </div>
         ))}
@@ -547,7 +555,7 @@ function OptionsSheet({ st, v, onClose }: { st: ClusterStatus; v: ClusterVolume;
 }
 
 function MountSheet({ v, mounted, share, onClose }: { v: ClusterVolume; mounted: boolean; share?: string; onClose: () => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const act = useAct();
   const users = useLive("users.list", undefined, ["users.changed"]).data ?? [];
   const [on, setOn] = useState(true);
@@ -556,9 +564,9 @@ function MountSheet({ v, mounted, share, onClose }: { v: ClusterVolume; mounted:
   const [rw, setRw] = useState<string[]>([]);
   const save = () =>
     void act(
-      on ? "No se pudo montar" : "No se pudo desmontar",
-      () => t.call("cluster.volume.mount", on ? { name: v.name, enabled: true, share: smb ? name : "", comment: `Volumen del clúster ${v.name}`, rw: smb ? rw : [], ro: [] } : { name: v.name, enabled: false }),
-      on ? `Montando ${v.name}…` : `Desmontando ${v.name}…`,
+      on ? t("No se pudo montar") : t("No se pudo desmontar"),
+      () => tp.call("cluster.volume.mount", on ? { name: v.name, enabled: true, share: smb ? name : "", comment: `Volumen del clúster ${v.name}`, rw: smb ? rw : [], ro: [] } : { name: v.name, enabled: false }),
+      on ? t("Montando {name}…", { name: v.name }) : t("Desmontando {name}…", { name: v.name }),
     ).then((ok) => ok && onClose());
   return (
     <Sheet
@@ -567,31 +575,31 @@ function MountSheet({ v, mounted, share, onClose }: { v: ClusterVolume; mounted:
       width={480}
       footer={
         <>
-          <Button onClick={onClose}>Cancelar</Button>
+          <Button onClick={onClose}>{t("Cancelar")}</Button>
           <Button variant="primary" disabled={on && smb && (!name || rw.length === 0)} onClick={save}>
-            {on ? "Aplicar" : "Desmontar"}
+            {on ? t("Aplicar") : t("Desmontar")}
           </Button>
         </>
       }
     >
-      <h2 className="tg-h2">Montaje de {v.name}</h2>
-      <p className="tg-lead">Se monta en /cluster/{v.name} de este NAS. Si este nodo se reinicia y otro del clúster está andando, el montaje se resuelve igual.</p>
-      <Row label="Montado en este NAS">
-        <Toggle checked={on} onChange={setOn} label="Montado" />
+      <h2 className="tg-h2">{t("Montaje de {name}", { name: v.name })}</h2>
+      <p className="tg-lead">{t("Se monta en /cluster/{name} de este NAS. Si este nodo se reinicia y otro del clúster está andando, el montaje se resuelve igual.", { name: v.name })}</p>
+      <Row label={t("Montado en este NAS")}>
+        <Toggle checked={on} onChange={setOn} label={t("Montado")} />
       </Row>
       {on && (
         <>
-          <Row label="Compartir por SMB" hint="Como una carpeta compartida más, con los usuarios de TangoOS.">
-            <Toggle checked={smb} onChange={setSmb} label="Compartir por SMB" />
+          <Row label={t("Compartir por SMB")} hint={t("Como una carpeta compartida más, con los usuarios de TangoOS.")}>
+            <Toggle checked={smb} onChange={setSmb} label={t("Compartir por SMB")} />
           </Row>
           {smb && (
             <>
               <label className="tcl-field">
-                <span>Nombre de la carpeta</span>
+                <span>{t("Nombre de la carpeta")}</span>
                 <TextInput value={name} onChange={(e) => setName(e.target.value)} />
               </label>
               <div className="tcl-field">
-                <span>Lectura y escritura</span>
+                <span>{t("Lectura y escritura")}</span>
                 <div className="tcl-chips">
                   {users.map((u) => (
                     <button key={u.name} type="button" className="tcl-chip" aria-pressed={rw.includes(u.name)} onClick={() => setRw(rw.includes(u.name) ? rw.filter((x) => x !== u.name) : [...rw, u.name])}>
@@ -604,18 +612,18 @@ function MountSheet({ v, mounted, share, onClose }: { v: ClusterVolume; mounted:
           )}
         </>
       )}
-      {mounted && !on && <p className="tcl-note">Se va a desmontar solo en este NAS; el volumen sigue andando en el clúster.</p>}
+      {mounted && !on && <p className="tcl-note">{t("Se va a desmontar solo en este NAS; el volumen sigue andando en el clúster.")}</p>}
     </Sheet>
   );
 }
 
 function DeleteSheet({ v, mounted, onClose }: { v: ClusterVolume; mounted: boolean; onClose: () => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const act = useAct();
   const [typed, setTyped] = useState("");
   const remove = async () => {
-    if (v.status === "Started" && !(await act("No se pudo detener", () => t.call("cluster.volume.action", { name: v.name, action: "stop" })))) return;
-    if (await act("No se pudo borrar", () => t.call("cluster.volume.action", { name: v.name, action: "delete" }), `${v.name} borrado`)) onClose();
+    if (v.status === "Started" && !(await act(t("No se pudo detener"), () => tp.call("cluster.volume.action", { name: v.name, action: "stop" })))) return;
+    if (await act(t("No se pudo borrar"), () => tp.call("cluster.volume.action", { name: v.name, action: "delete" }), t("{name} borrado", { name: v.name }))) onClose();
   };
   return (
     <Sheet
@@ -624,22 +632,22 @@ function DeleteSheet({ v, mounted, onClose }: { v: ClusterVolume; mounted: boole
       width={460}
       footer={
         <>
-          <Button onClick={onClose}>Cancelar</Button>
+          <Button onClick={onClose}>{t("Cancelar")}</Button>
           <Button variant="danger" disabled={typed !== v.name || mounted} onClick={() => void remove()}>
-            Borrar el volumen
+            {t("Borrar el volumen")}
           </Button>
         </>
       }
     >
-      <h2 className="tg-h2">¿Borrar {v.name}?</h2>
+      <h2 className="tg-h2">{t("¿Borrar {name}?", { name: v.name })}</h2>
       <p className="tg-lead">
         {mounted
-          ? "Primero desmontalo en este NAS (y en los demás nodos donde esté montado)."
-          : "Se detiene y se borra en todo el clúster. Los datos quedan en cada brick hasta que los borres desde «Bricks huérfanos» en cada nodo."}
+          ? t("Primero desmontalo en este NAS (y en los demás nodos donde esté montado).")
+          : t("Se detiene y se borra en todo el clúster. Los datos quedan en cada brick hasta que los borres desde «Bricks huérfanos» en cada nodo.")}
       </p>
       {!mounted && (
         <label className="tcl-field">
-          <span>Escribí {v.name} para confirmar</span>
+          <span>{t("Escribí {name} para confirmar", { name: v.name })}</span>
           <TextInput value={typed} onChange={(e) => setTyped(e.target.value)} />
         </label>
       )}
@@ -650,7 +658,7 @@ function DeleteSheet({ v, mounted, onClose }: { v: ClusterVolume; mounted: boole
 // ---- Crear volumen ---------------------------------------------------------------------
 
 function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: () => void; onCreated: (name: string) => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const act = useAct();
   const connected = st.nodes.filter((n) => n.connected);
   const [name, setName] = useState("");
@@ -662,13 +670,13 @@ function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: (
   const hosts = Object.keys(picked);
   const nameOk = /^[a-z][a-z0-9_]{0,31}$/.test(name) && !st.volumes.some((v) => v.name === name);
   const countOk = hosts.length > 0 && hosts.length % replica === 0;
-  const summary = replica > 1 ? `${hosts.length > replica ? "Distributed-Replicate" : "Replicate"} ${hosts.length / replica || 0} × ${replica} = ${hosts.length}` : `Distribute · ${hosts.length} bricks`;
+  const summary = replica > 1 ? `${hosts.length > replica ? "Distributed-Replicate" : "Replicate"} ${hosts.length / replica || 0} × ${replica} = ${hosts.length}` : t("Distribute · {n} bricks", { n: hosts.length });
 
   const create = () =>
     void act(
-      "No se pudo crear el volumen",
+      t("No se pudo crear el volumen"),
       () =>
-        t.call("cluster.volume.create", {
+        tp.call("cluster.volume.create", {
           name,
           replica,
           arbiter: replica === 3 && arbiter,
@@ -676,7 +684,7 @@ function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: (
           start,
           bricks: connected.filter((n) => picked[n.host]).map((n) => choiceSpec(n.host, picked[n.host])),
         }),
-      `Creando ${name}…`,
+      t("Creando {name}…", { name }),
     ).then((ok) => ok && onCreated(name));
 
   return (
@@ -687,21 +695,21 @@ function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: (
       footer={
         <>
           <span className="tcl-grow tcl-sum">{summary}</span>
-          <Button onClick={onClose}>Cancelar</Button>
+          <Button onClick={onClose}>{t("Cancelar")}</Button>
           <Button variant="primary" disabled={!nameOk || !countOk} onClick={create}>
-            Crear
+            {t("Crear")}
           </Button>
         </>
       }
     >
-      <h2 className="tg-h2">Crear un volumen del clúster</h2>
+      <h2 className="tg-h2">{t("Crear un volumen del clúster")}</h2>
       <label className="tcl-field">
-        <span>Nombre (minúsculas, números y _)</span>
+        <span>{t("Nombre (minúsculas, números y _)")}</span>
         <TextInput autoFocus value={name} placeholder="gv_documentos" onChange={(e) => setName(e.target.value.toLowerCase())} />
       </label>
 
       <div className="tcl-field">
-        <span>Ajustes</span>
+        <span>{t("Ajustes")}</span>
         <div className="tcl-cards">
           {st.presets.map((p) => (
             <button
@@ -714,17 +722,17 @@ function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: (
                 if (p.replica) setReplica(p.replica);
               }}
             >
-              <b>{p.name}</b>
-              <small>{p.desc}</small>
-              {Object.keys(p.options).length > 0 && <small className="tcl-muted">{Object.keys(p.options).length} opciones</small>}
+              <b>{tr(p.name)}</b>
+              <small>{tr(p.desc)}</small>
+              {Object.keys(p.options).length > 0 && <small className="tcl-muted">{tn(Object.keys(p.options).length, "Una opción", "{n} opciones")}</small>}
             </button>
           ))}
         </div>
       </div>
 
-      <Row label="Copias de cada archivo" hint="Réplica 3 sigue andando con un nodo apagado y no queda en split-brain.">
+      <Row label={t("Copias de cada archivo")} hint={t("Réplica 3 sigue andando con un nodo apagado y no queda en split-brain.")}>
         <Segmented
-          label="Réplica"
+          label={t("Réplica")}
           value={String(replica) as "2" | "3" | "4"}
           onChange={(x) => setReplica(Number(x))}
           options={[
@@ -735,13 +743,13 @@ function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: (
         />
       </Row>
       {replica === 3 && (
-        <Row label="Árbitro" hint="El tercer brick guarda solo metadatos: decide en caso de empate y ocupa casi nada.">
-          <Toggle checked={arbiter} onChange={setArbiter} label="Árbitro" />
+        <Row label={t("Árbitro")} hint={t("El tercer brick guarda solo metadatos: decide en caso de empate y ocupa casi nada.")}>
+          <Toggle checked={arbiter} onChange={setArbiter} label={t("Árbitro")} />
         </Row>
       )}
 
       <div className="tcl-field">
-        <span>Bricks: un nodo por copia. Carpeta en un volumen de TangoOS, o un volumen dedicado (XFS) en un grupo de almacenamiento; thin permite instantáneas</span>
+        <span>{t("Bricks: un nodo por copia. Carpeta en un volumen de TangoOS, o un volumen dedicado (XFS) en un grupo de almacenamiento; thin permite instantáneas")}</span>
         <div className="tcl-bricks">
           {connected.map((n) => (
             <BrickPicker
@@ -759,13 +767,13 @@ function CreateSheet({ st, onClose, onCreated }: { st: ClusterStatus; onClose: (
             />
           ))}
         </div>
-        {!countOk && <small className="tcl-warn">Con réplica {replica}, elegí {replica} nodos (o un múltiplo).</small>}
+        {!countOk && <small className="tcl-warn">{t("Con réplica {n}, elegí {n} nodos (o un múltiplo).", { n: replica })}</small>}
       </div>
-      <Row label="Arrancar al crearlo">
-        <Toggle checked={start} onChange={setStart} label="Arrancar" />
+      <Row label={t("Arrancar al crearlo")}>
+        <Toggle checked={start} onChange={setStart} label={t("Arrancar")} />
       </Row>
       <p className="tcl-note">
-        <Layers size={12} /> Los volúmenes dedicados se crean en cada nodo al crear el volumen del clúster. <Share2 size={12} /> Después podés montarlo y compartirlo por SMB o NFS.
+        <Layers size={12} /> {t("Los volúmenes dedicados se crean en cada nodo al crear el volumen del clúster.")} <Share2 size={12} /> {t("Después podés montarlo y compartirlo por SMB o NFS.")}
       </p>
     </Sheet>
   );

@@ -56,6 +56,7 @@ check:
 	@out=$$(gofmt -l cmd internal pkg); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	go vet $(GOPKGS)
 	go test $(GOPKGS)
+	go run ./scripts/i18n-extract -check
 
 ## deb: tangoos_<version>_amd64.deb in dist/
 deb: tangod tango-agent
@@ -83,6 +84,7 @@ ISO_VARIANT ?= product
 ISO_TEST_IP ?= 172.17.0.46/24
 ISO_TEST_GW ?= 172.17.0.1
 ISO_TEST_DISK ?= TANGO-SYS
+ISO_TEST_TZ ?=
 ISO_DIR    := /var/lib/vz/template/iso
 ISO_SRC    := /root/tangoos-iso/src
 iso: deb tango-installer
@@ -92,7 +94,7 @@ iso: deb tango-installer
 	ssh-keygen -y -f $(SSH_KEY) | ssh $(SSH_OPTS) root@$(PVE) 'cat > $(ISO_SRC)/dev_authorized_keys'
 	ssh $(SSH_OPTS) root@$(PVE) 'cd $(ISO_SRC)/image && ./build-image.sh --deb ../$(notdir $(DEB)) --variant $(ISO_VARIANT) \
 		--out $(ISO_DIR)/tangoos-$(VERSION)-amd64$(if $(filter test,$(ISO_VARIANT)),-test,).iso \
-		$(if $(filter test,$(ISO_VARIANT)),--authorized-keys ../dev_authorized_keys --ip $(ISO_TEST_IP) --gw $(ISO_TEST_GW) --disk $(ISO_TEST_DISK),)'
+		$(if $(filter test,$(ISO_VARIANT)),--authorized-keys ../dev_authorized_keys --ip $(ISO_TEST_IP) --gw $(ISO_TEST_GW) --disk $(ISO_TEST_DISK) $(if $(ISO_TEST_TZ),--tz $(ISO_TEST_TZ)),)'
 
 ## iso-netinst: ISO netinst + preseed (fase 1; baja Debian de internet, ~7 min)
 iso-netinst: deb
@@ -199,6 +201,35 @@ e2e-cluster:
 ##   cuotas, instantáneas, agregar/quitar/reemplazar bricks, rebalance, NFS y revocación. Además de lo de
 ##   e2e-cluster, cada nodo necesita un disco libre TANGO-P<n> (grupo gpool). Empieza reseteando los nodos
 ##   (tests/cluster-reset.sh: solo para el laboratorio de 3 VMs del clúster).
+## native: app de escritorio (Electron, ADR 0018) compilada en web/apps/native/dist; `make native-run` la abre.
+.PHONY: native native-run native-dist e2e-native
+native:
+	npm run build -w @tango/native --prefix web
+native-run: native
+	cd web/apps/native && ../../node_modules/.bin/electron .
+## native-dist: instaladores de Linux (AppImage, deb, rpm) y Windows (NSIS) con Docker (electron-builder).
+native-dist: native
+	sh web/apps/native/scripts/package.sh all
+## e2e-native: la app contra un NAS real. NATIVE_NAS=ip y TANGO_E2E_ADMIN_PASSWORD.
+e2e-native: native
+	@test -n "$(NATIVE_NAS)" || { echo "definí NATIVE_NAS=ip"; exit 1; }
+	cd web/e2e && TANGO_E2E_NATIVE_NAS=$(NATIVE_NAS) npx playwright test native.spec.ts
+
+## e2e-repl: llave USB de ZFS y replicación entre dos NAS (ADR 0016). REPL=origen,destino con ZFS y los
+##   discos TANGO-Z<n> y TANGO-KEY<n> libres.
+.PHONY: e2e-repl
+e2e-repl:
+	@test -n "$(REPL)" || { echo "definí REPL=ip-origen,ip-destino"; exit 1; }
+	TANGO_SSH_KEY=$(SSH_KEY) TANGO_E2E_DESTRUCTIVE=1 TANGO_E2E_REPL=$(REPL) \
+	go test -tags e2e ./tests/e2e -run 'TestZfsKeyAndReplication$$' -v -count=1 -timeout 60m
+
+## e2e-iscsi-lv: LUN de iSCSI en un volumen lógico de un grupo. ISCSI_LV=ip con un grupo con 3 GB libres.
+.PHONY: e2e-iscsi-lv
+e2e-iscsi-lv:
+	@test -n "$(ISCSI_LV)" || { echo "definí ISCSI_LV=ip"; exit 1; }
+	TANGO_SSH_KEY=$(SSH_KEY) TANGO_E2E_DESTRUCTIVE=1 TANGO_E2E_ISCSI_LV=$(ISCSI_LV) \
+	go test -tags e2e ./tests/e2e -run 'TestIscsiOnLV$$' -v -count=1 -timeout 20m
+
 .PHONY: e2e-cluster2
 e2e-cluster2:
 	@test -n "$(CLUSTER)" || { echo "definí CLUSTER=ip1,ip2,ip3"; exit 1; }

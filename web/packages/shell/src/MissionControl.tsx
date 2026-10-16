@@ -2,6 +2,7 @@
 // Las ventanas reales se transforman con CSS (sin re-render); encima va una capa con títulos
 // y zonas de clic. Esc o clic en el vacío cierra.
 import { useEffect, useLayoutEffect, useState } from "react";
+import { t } from "@tango/client";
 import { closeOverlay, focusWin, registry, restoreWin, wm, workArea } from "./store";
 import { missionLayout } from "./missionLayout";
 import type { Placed } from "./missionLayout";
@@ -62,7 +63,7 @@ export function MissionControl() {
   };
 
   return (
-    <div className="tg-mission" onMouseDown={(e) => e.target === e.currentTarget && closeOverlay()} role="dialog" aria-label="Todas las ventanas">
+    <div className="tg-mission" onMouseDown={(e) => e.target === e.currentTarget && closeOverlay()} role="dialog" aria-label={t("Todas las ventanas")}>
       {placed.map((p) => {
         const w = windows.find((x) => x.id === p.id);
         if (!w) return null;
@@ -76,9 +77,9 @@ export function MissionControl() {
           </button>
         );
       })}
-      {placed.length === 0 && <div className="tg-mission-empty">No hay ventanas abiertas.</div>}
+      {placed.length === 0 && <div className="tg-mission-empty">{t("No hay ventanas abiertas.")}</div>}
       {minimized.length > 0 && (
-        <div className="tg-mission-min" aria-label="Ventanas minimizadas">
+        <div className="tg-mission-min" aria-label={t("Ventanas minimizadas")}>
           {minimized.map((w) => {
             const app = registry.get(w.app);
             return (

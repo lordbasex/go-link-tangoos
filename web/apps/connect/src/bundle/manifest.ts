@@ -4,6 +4,8 @@
 // archivos de adentro del texto firmado (no la que viene suelta al lado).
 // Vector compartido con Go: protocol/vectors/tangoconnect.json.
 
+import { t } from "@tango/client";
+
 export interface BundleFile {
   path: string;
   sha256: string;
@@ -41,19 +43,19 @@ export function hex(b: ArrayBuffer | Uint8Array): string {
 
 /** Reglas de forma: rutas relativas sin "..", sha256 hex, tamaños razonables, index.html presente. */
 export function validateManifestShape(m: SignedManifest): string | null {
-  if (!m || m.v !== 1) return "versión de manifiesto desconocida";
-  if (typeof m.version !== "string" || !m.version || m.version.length > 64) return "versión inválida";
-  if (!Array.isArray(m.files) || m.files.length === 0 || m.files.length > 2000) return "lista de archivos inválida";
-  if (!m.files.some((f) => f.path === "index.html")) return "falta index.html";
+  if (!m || m.v !== 1) return t("versión de manifiesto desconocida");
+  if (typeof m.version !== "string" || !m.version || m.version.length > 64) return t("versión inválida");
+  if (!Array.isArray(m.files) || m.files.length === 0 || m.files.length > 2000) return t("lista de archivos inválida");
+  if (!m.files.some((f) => f.path === "index.html")) return t("falta index.html");
   let total = 0;
   for (const f of m.files) {
     if (typeof f.path !== "string" || !/^[A-Za-z0-9._@\-/]+$/.test(f.path) || f.path.startsWith("/") || f.path.split("/").some((p) => p === ".." || p === "" || p === "."))
-      return `ruta inválida: ${String(f.path).slice(0, 80)}`;
-    if (!/^[0-9a-f]{64}$/.test(f.sha256)) return `sha256 inválido en ${f.path}`;
-    if (!Number.isInteger(f.size) || f.size < 0 || f.size > 50 * 1024 * 1024) return `tamaño inválido en ${f.path}`;
+      return t("ruta inválida: {path}", { path: String(f.path).slice(0, 80) });
+    if (!/^[0-9a-f]{64}$/.test(f.sha256)) return t("sha256 inválido en {path}", { path: f.path });
+    if (!Number.isInteger(f.size) || f.size < 0 || f.size > 50 * 1024 * 1024) return t("tamaño inválido en {path}", { path: f.path });
     total += f.size;
   }
-  if (total > 200 * 1024 * 1024) return "el escritorio pesa demasiado";
+  if (total > 200 * 1024 * 1024) return t("el escritorio pesa demasiado");
   return null;
 }
 

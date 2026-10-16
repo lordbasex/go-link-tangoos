@@ -2,6 +2,7 @@
 // LUKS2 por volumen y caché SSD. Se suma a Methods/Topics, Volume y Disk por module
 // augmentation para no chocar con otros cambios en protocol.ts.
 import type { Bytes } from "./protocol";
+import { t } from "./i18n";
 
 export type PoolProfile = "basic" | "raid1" | "raid5" | "raid6" | "raid10" | "hybrid1" | "hybrid2";
 export type TierLevel = "basic" | "raid1" | "raid5" | "raid6" | "raid10" | "unused";
@@ -31,6 +32,8 @@ export interface Pool {
   cacheDisks: string[];
   tiers: PoolTier[];
   volumes: string[];
+  /** LUN de iSCSI en volúmenes lógicos del grupo. */
+  luns?: { name: string; dev: string; size: Bytes; thin: boolean }[];
   task?: "rebuild" | "reshape" | "resync";
   progress?: number;
 }
@@ -118,14 +121,15 @@ declare module "./protocol" {
 
 // ---- Reglas (las mismas que internal/diskops/hybrid.go) -------------------------------
 
+// Los textos son getters: se traducen al leerlos.
 export const POOL_PROFILES: { id: PoolProfile; label: string; description: string; tolerance: string; check: (n: number) => string | null }[] = [
-  { id: "hybrid1", label: "Híbrido-1", description: "Aprovecha discos de distinto tamaño. Se puede ampliar de a un disco.", tolerance: "Soporta la falla de 1 disco.", check: (n) => (n >= 2 ? null : "Elegí al menos 2 discos") },
-  { id: "hybrid2", label: "Híbrido-2", description: "Como Híbrido-1, con doble protección.", tolerance: "Soporta la falla de 2 discos a la vez.", check: (n) => (n >= 4 ? null : "Elegí al menos 4 discos") },
-  { id: "basic", label: "Básico", description: "Un solo disco, sin redundancia.", tolerance: "No soporta la falla del disco.", check: (n) => (n === 1 ? null : "Elegí exactamente 1 disco") },
-  { id: "raid1", label: "RAID 1", description: "Dos discos espejados.", tolerance: "Soporta la falla de 1 disco.", check: (n) => (n === 2 ? null : "Elegí exactamente 2 discos") },
-  { id: "raid5", label: "RAID 5", description: "Tres discos o más, con paridad.", tolerance: "Soporta la falla de 1 disco.", check: (n) => (n >= 3 ? null : "Elegí al menos 3 discos") },
-  { id: "raid6", label: "RAID 6", description: "Cuatro discos o más, con doble paridad.", tolerance: "Soporta la falla de 2 discos.", check: (n) => (n >= 4 ? null : "Elegí al menos 4 discos") },
-  { id: "raid10", label: "RAID 10", description: "Espejos de a pares, unidos en franjas.", tolerance: "Soporta la falla de 1 disco por par.", check: (n) => (n < 4 ? "Elegí al menos 4 discos" : n % 2 ? "La cantidad de discos tiene que ser par" : null) },
+  { id: "hybrid1", get label() { return t("Híbrido-1"); }, get description() { return t("Aprovecha discos de distinto tamaño. Se puede ampliar de a un disco."); }, get tolerance() { return t("Soporta la falla de 1 disco."); }, check: (n) => (n >= 2 ? null : t("Elegí al menos {n} discos", { n: 2 })) },
+  { id: "hybrid2", get label() { return t("Híbrido-2"); }, get description() { return t("Como Híbrido-1, con doble protección."); }, get tolerance() { return t("Soporta la falla de 2 discos a la vez."); }, check: (n) => (n >= 4 ? null : t("Elegí al menos {n} discos", { n: 4 })) },
+  { id: "basic", get label() { return t("Básico"); }, get description() { return t("Un solo disco, sin redundancia."); }, get tolerance() { return t("No soporta la falla del disco."); }, check: (n) => (n === 1 ? null : t("Elegí exactamente 1 disco")) },
+  { id: "raid1", label: "RAID 1", get description() { return t("Dos discos espejados."); }, get tolerance() { return t("Soporta la falla de 1 disco."); }, check: (n) => (n === 2 ? null : t("Elegí exactamente 2 discos")) },
+  { id: "raid5", label: "RAID 5", get description() { return t("Tres discos o más, con paridad."); }, get tolerance() { return t("Soporta la falla de 1 disco."); }, check: (n) => (n >= 3 ? null : t("Elegí al menos {n} discos", { n: 3 })) },
+  { id: "raid6", label: "RAID 6", get description() { return t("Cuatro discos o más, con doble paridad."); }, get tolerance() { return t("Soporta la falla de 2 discos."); }, check: (n) => (n >= 4 ? null : t("Elegí al menos {n} discos", { n: 4 })) },
+  { id: "raid10", label: "RAID 10", get description() { return t("Espejos de a pares, unidos en franjas."); }, get tolerance() { return t("Soporta la falla de 1 disco por par."); }, check: (n) => (n < 4 ? t("Elegí al menos {n} discos", { n: 4 }) : n % 2 ? t("La cantidad de discos tiene que ser par") : null) },
 ];
 
 export const poolProfileLabel = (p: PoolProfile) => POOL_PROFILES.find((x) => x.id === p)?.label ?? p;

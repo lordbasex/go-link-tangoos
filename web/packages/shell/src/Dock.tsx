@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ComponentType, MouseEvent as RMouseEvent } from "react";
+import { t } from "@tango/client";
 import { closeWin, focusWin, openApp, prefs, registry, restoreWin, toggleOverlay, ui, wm } from "./store";
 import { showContextMenu } from "./ContextMenu";
 
@@ -51,14 +52,14 @@ export function Dock({ launcherIcon, extras }: { launcherIcon: ComponentType<{ s
       menu: () => [
         ...wins.map((w) => ({ label: w.title, checked: !w.minimized, action: () => (w.minimized ? restoreWin(w.id) : focusWin(w.id)) })),
         ...(wins.length ? [{ separator: true }] : []),
-        { label: wins.length ? "Nueva ventana" : "Abrir", action: () => openApp(id), disabled: !!(a.singleInstance && wins.length) },
-        ...(wins.length ? [{ separator: true }, { label: "Cerrar", action: () => wins.forEach((w) => closeWin(w.id)) }] : []),
+        { label: wins.length ? t("Nueva ventana") : t("Abrir"), action: () => openApp(id), disabled: !!(a.singleInstance && wins.length) },
+        ...(wins.length ? [{ separator: true }, { label: t("Cerrar"), action: () => wins.forEach((w) => closeWin(w.id)) }] : []),
       ],
     };
   };
 
   const items: (Item | "sep")[] = [
-    { key: "launcher", label: "Aplicaciones", icon: launcherIcon, onClick: () => toggleOverlay("launcher") },
+    { key: "launcher", label: t("Aplicaciones"), icon: launcherIcon, onClick: () => toggleOverlay("launcher") },
     ...pinned.map((a) => appItem(a.id)),
     ...runningExtra.map(appItem),
     "sep",

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import { Bell, Cpu, FolderLock, Globe, Info, Keyboard, Network, Palette, RefreshCw, Server, ShieldCheck, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useLive, useIsReal } from "@tango/client";
+import { useLive, useIsReal, t } from "@tango/client";
 import { Avatar, WindowToolbar, ui } from "@tango/shell";
 import type { AppProps } from "@tango/shell";
 import { DemoBadge, SearchField } from "@tango/ui";
@@ -32,7 +32,7 @@ export interface SectionDef {
 
 const SECTIONS: SectionDef[] = [
   { id: "general", title: "General", icon: Info, color: "#8E8E96", keywords: "acerca nas modelo cpu memoria ram serie versión debian kernel tiempo encendido", component: General, group: 0 },
-  { id: "appearance", title: "Apariencia", icon: Palette, color: "#8B5CF6", keywords: "tema claro oscuro auto acento color fondo wallpaper dock tamaño magnificación widgets", component: Appearance, group: 0 },
+  { id: "appearance", title: "Apariencia", icon: Palette, color: "#8B5CF6", keywords: "tema claro oscuro auto acento color fondo wallpaper dock tamaño magnificación widgets idioma language", component: Appearance, group: 0 },
   { id: "network", title: "Red", icon: Network, color: "#2F7CF6", keywords: "ip mac interfaz ethernet dns gateway hostname puerta de enlace", component: NetworkSection, group: 1 },
   { id: "users", title: "Usuarios y grupos", icon: Users, color: "#2F7CF6", keywords: "usuario cuenta grupo administrador 2fa cuota permisos", component: UsersSection, group: 1 },
   { id: "shares", title: "Carpetas compartidas", icon: FolderLock, color: "#F97316", keywords: "share carpeta compartida smb nfs permisos papelera instantáneas", component: SharesSection, group: 1 },
@@ -65,7 +65,7 @@ export default function SettingsApp({ win }: AppProps) {
   const visible = useMemo(() => {
     const n = norm(q.trim());
     if (!n) return SECTIONS;
-    return SECTIONS.filter((s) => n.split(/\s+/).every((w) => norm(`${s.title} ${s.keywords}`).includes(w)));
+    return SECTIONS.filter((s) => n.split(/\s+/).every((w) => norm(`${s.title} ${t(s.title)} ${s.keywords} ${t(s.keywords)}`).includes(w)));
   }, [q]);
 
   useEffect(() => {
@@ -78,20 +78,20 @@ export default function SettingsApp({ win }: AppProps) {
   return (
     <div className="tg-app tset" style={{ ["--side" as string]: `${SIDE_W}px` }}>
       <WindowToolbar win={win} inset={SIDE_W}>
-        <div className="tg-tb-title">{sec.title}</div>
+        <div className="tg-tb-title">{t(sec.title)}</div>
         <div className="tg-tb-spacer" />
         {!realData && <DemoBadge />}
       </WindowToolbar>
       <aside className="tg-sidebar tg-app-side tset-side">
         <div className="tset-search">
-          <SearchField value={q} onChange={setQ} placeholder="Buscar" />
+          <SearchField value={q} onChange={setQ} placeholder={t("Buscar")} />
         </div>
         {me && !q && (
           <button type="button" className="tset-me" onClick={() => setCurrent("users")}>
             <Avatar user={me} size={38} />
             <span>
               <strong>{me.full}</strong>
-              <small>{me.admin ? "Administrador" : "Usuario"} · {me.email || me.name}</small>
+              <small>{me.admin ? t("Administrador") : t("Usuario")} · {me.email || me.name}</small>
             </span>
           </button>
         )}
@@ -102,11 +102,11 @@ export default function SettingsApp({ win }: AppProps) {
               <span className="tset-icon" style={{ background: s.color }}>
                 <s.icon size={13} strokeWidth={2.2} />
               </span>
-              <span>{s.title}</span>
+              <span>{t(s.title)}</span>
             </button>
           </div>
         ))}
-        {visible.length === 0 && <div className="tset-none">Ningún ajuste coincide con «{q}».</div>}
+        {visible.length === 0 && <div className="tset-none">{t("Ningún ajuste coincide con «{q}».", { q })}</div>}
       </aside>
       <div className="tg-app-main">
         <div className="tg-app-content">

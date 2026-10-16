@@ -302,7 +302,7 @@ func (inv *Inventory) zfsVolumes(ctx context.Context) []Volume {
 			}
 			v := Volume{ID: ZfsVolumeID(d.GUID), Name: vol, Kind: "zfs", Pool: ZfsPoolID(p.Name), Profile: zfsLayout(p), FS: "zfs",
 				Size: d.Used + d.Avail, Used: d.Used, State: map[string]string{"healthy": "healthy", "degraded": "degraded", "readonly": "readonly"}[zfsState(p)],
-				Disks: append([]string{}, disks...), Growth30d: []float64{}, Encrypted: d.Encrypted}
+				Disks: append([]string{}, disks...), Growth30d: []float64{}, Encrypted: d.Encrypted, KeyDevice: d.KeyDevice}
 			if v.State == "" {
 				v.State = "failed"
 			}

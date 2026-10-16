@@ -45,10 +45,15 @@ func GlusterLVDev(vg, vol string) string { return "/dev/" + vg + "/gb_" + vol }
 // gb_thin (que se crea o se agranda en size + 25 % para las instantáneas: un pool thin
 // lleno deja el volumen sin escritura).
 func GlusterLVCreate(ctx context.Context, vg, vol string, size uint64, thin bool, pvs []string) error {
-	p, err := glusterLVPath(vg, vol)
-	if err != nil {
+	if _, err := glusterLVPath(vg, vol); err != nil {
 		return err
 	}
+	return blockLVCreate(ctx, vg, "gb_"+vol, GlusterThinPool, TagGlusterBrick+vol, TagGlusterBrick+"thin", size, thin, pvs)
+}
+
+// blockLVCreate crea un LV sin filesystem de TangoOS (brick de GlusterFS o LUN de iSCSI):
+// grueso sobre los PV de datos, o thin en thinPool (que se crea o se agranda en size + 25 %).
+func blockLVCreate(ctx context.Context, vg, lv, thinPool, tag, poolTag string, size uint64, thin bool, pvs []string) error {
 	size = AlignExtent(size)
 	if size == 0 {
 		return errors.New("tamaño inválido")
@@ -58,33 +63,31 @@ func GlusterLVCreate(ctx context.Context, vg, vol string, size uint64, thin bool
 			return err
 		}
 	}
-	tag := TagGlusterBrick + vol
 	if !thin {
-		args := []string{"lvcreate", "--yes", "--wipesignatures", "y", "--zero", "y", "--name", "gb_" + vol,
+		args := []string{"lvcreate", "--yes", "--wipesignatures", "y", "--zero", "y", "--name", lv,
 			"--size", strconv.FormatUint(size, 10) + "b", "--addtag", tag, vg}
-		_, err = lvm(ctx, append(args, pvs...)...)
+		_, err := lvm(ctx, append(args, pvs...)...)
 		return err
 	}
 	poolSize := AlignExtent(size + size/4)
 	exists := false
-	if out, err := lvm(ctx, "lvs", "--noheadings", "-o", "lv_name", vg+"/"+GlusterThinPool); err == nil && strings.TrimSpace(out) == GlusterThinPool {
+	if out, err := lvm(ctx, "lvs", "--noheadings", "-o", "lv_name", vg+"/"+thinPool); err == nil && strings.TrimSpace(out) == thinPool {
 		exists = true
 	}
 	if exists {
-		args := []string{"lvextend", "--yes", "--size", "+" + strconv.FormatUint(poolSize, 10) + "b", vg + "/" + GlusterThinPool}
+		args := []string{"lvextend", "--yes", "--size", "+" + strconv.FormatUint(poolSize, 10) + "b", vg + "/" + thinPool}
 		if _, err := lvm(ctx, append(args, pvs...)...); err != nil {
 			return fmt.Errorf("agrandar el pool thin: %w", err)
 		}
 	} else {
-		args := []string{"lvcreate", "--yes", "--type", "thin-pool", "--name", GlusterThinPool,
-			"--size", strconv.FormatUint(poolSize, 10) + "b", "--addtag", TagGlusterBrick + "thin", vg}
+		args := []string{"lvcreate", "--yes", "--type", "thin-pool", "--name", thinPool,
+			"--size", strconv.FormatUint(poolSize, 10) + "b", "--addtag", poolTag, vg}
 		if _, err := lvm(ctx, append(args, pvs...)...); err != nil {
 			return fmt.Errorf("crear el pool thin: %w", err)
 		}
 	}
-	_, err = lvm(ctx, "lvcreate", "--yes", "--type", "thin", "--name", "gb_"+vol, "--virtualsize", strconv.FormatUint(size, 10)+"b",
-		"--thinpool", GlusterThinPool, "--addtag", tag, vg)
-	_ = p
+	_, err := lvm(ctx, "lvcreate", "--yes", "--type", "thin", "--name", lv, "--virtualsize", strconv.FormatUint(size, 10)+"b",
+		"--thinpool", thinPool, "--addtag", tag, vg)
 	return err
 }
 
@@ -94,7 +97,12 @@ func GlusterLVRemove(ctx context.Context, vg, vol string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := lvm(ctx, "lvremove", "--yes", p); err != nil {
+	return blockLVRemove(ctx, vg, p, GlusterThinPool)
+}
+
+// blockLVRemove borra un LV y, si era el último thin de thinPool, también el pool.
+func blockLVRemove(ctx context.Context, vg, path, thinPool string) error {
+	if _, err := lvm(ctx, "lvremove", "--yes", path); err != nil {
 		return err
 	}
 	out, err := lvm(ctx, "lvs", "--noheadings", "-o", "lv_name,pool_lv", vg)
@@ -105,15 +113,15 @@ func GlusterLVRemove(ctx context.Context, vg, vol string) error {
 	hasPool := false
 	for _, l := range strings.Split(out, "\n") {
 		f := strings.Fields(l)
-		if len(f) >= 1 && f[0] == GlusterThinPool {
+		if len(f) >= 1 && f[0] == thinPool {
 			hasPool = true
 		}
-		if len(f) == 2 && f[1] == GlusterThinPool {
+		if len(f) == 2 && f[1] == thinPool {
 			used = true
 		}
 	}
 	if hasPool && !used {
-		_, _ = lvm(ctx, "lvremove", "--yes", vg+"/"+GlusterThinPool)
+		_, _ = lvm(ctx, "lvremove", "--yes", vg+"/"+thinPool)
 	}
 	return nil
 }

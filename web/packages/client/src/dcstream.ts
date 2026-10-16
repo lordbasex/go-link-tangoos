@@ -3,6 +3,7 @@
 // en pedazos con files.download.begin {offset, length}. Sin SW (contexto no seguro o
 // navegador sin soporte) `dcReady()` es false y las apps usan Blob como antes.
 import { mimeFor } from "./rtc/files";
+import { t } from "./i18n";
 import type { Transfers } from "./transfers";
 
 /** Tamaño de cada pedazo pedido al NAS. */
@@ -76,7 +77,7 @@ function onMessage(e: MessageEvent) {
     const q = m.data as { pull?: boolean; cancel?: boolean };
     if (q.cancel) {
       ac.abort();
-      ent.onDone?.(new Error("cancelado"));
+      ent.onDone?.(new Error(t("cancelado")));
       return;
     }
     if (!q.pull) return;

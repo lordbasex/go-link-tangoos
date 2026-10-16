@@ -1,6 +1,7 @@
 // Piezas del sitio con la misma estructura que desk.go-link.org (SiteNav, SiteFooter, Head, Bullets…),
 // con la marca TangoOS. Las clases (lp-*) vienen de styles/landing.css de go-link.
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { LANGS, getLang, setLang, t } from "@tango/client";
 import { SIGNAL_URL } from "../config";
 import { Link } from "../router";
 import { setTheme, useTheme } from "../theme";
@@ -19,7 +20,7 @@ export function TangoMark({ size = 32 }: { size?: number }) {
 
 export function Brand() {
   return (
-    <Link className="lp-brand" to="/" aria-label="TangoOS Connect, inicio">
+    <Link className="lp-brand" to="/" aria-label={t("TangoOS Connect, inicio")}>
       <TangoMark />
       TangoOS <b>Connect</b>
     </Link>
@@ -85,8 +86,25 @@ export function ThemeToggle() {
   const theme = useTheme();
   return (
     <button type="button" className="lp-foot-link" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-      {theme === "dark" ? "Tema claro" : "Tema oscuro"}
+      {theme === "dark" ? t("Tema claro") : t("Tema oscuro")}
     </button>
+  );
+}
+
+/** Español · English: cambia el idioma de la interfaz (queda guardado en este navegador y recarga). */
+export function LangSwitch({ className }: { className?: string }) {
+  const cur = getLang();
+  return (
+    <span className={`tc-lang ${className ?? ""}`} role="group" aria-label={t("Idioma")}>
+      {LANGS.map((l, i) => (
+        <Fragment key={l.id}>
+          {i > 0 && <span aria-hidden="true">·</span>}
+          <button type="button" lang={l.id} aria-pressed={l.id === cur} onClick={() => l.id !== cur && setLang(l.id)}>
+            {l.name}
+          </button>
+        </Fragment>
+      ))}
+    </span>
   );
 }
 
@@ -94,22 +112,22 @@ export function SiteNav() {
   return (
     <header className="lp-nav">
       <Brand />
-      <nav className="lp-nav-links" aria-label="Secciones">
-        <a href="/#como">Cómo funciona</a>
-        <a href="/#funciones">Funciones</a>
-        <a href="/#galeria">Galería</a>
-        <a href="/#seguridad">Seguridad</a>
+      <nav className="lp-nav-links" aria-label={t("Secciones")}>
+        <a href="/#como">{t("Cómo funciona")}</a>
+        <a href="/#funciones">{t("Funciones")}</a>
+        <a href="/#galeria">{t("Galería")}</a>
+        <a href="/#seguridad">{t("Seguridad")}</a>
         <a href={REPO_URL} rel="noreferrer">
-          Código
+          {t("Código")}
         </a>
       </nav>
       <div className="lp-nav-cta">
         <Link className="lp-btn lp-btn-ghost" to="/nas">
-          Conectar mi NAS
+          {t("Conectar mi NAS")}
         </Link>
         {/* La demo entra con recarga completa: allí la red queda bloqueada (pages/Demo.tsx). */}
         <a className="lp-btn lp-btn-primary" href="/demo">
-          Probar la demo
+          {t("Probar la demo")}
         </a>
       </div>
     </header>
@@ -161,54 +179,54 @@ export function SiteFooter() {
         <div className="lp-foot-top">
           <div className="lp-foot-brand">
             <Brand />
-            <p>Tu NAS TangoOS desde cualquier lado, sin abrir puertos. El escritorio completo, cifrado de punta a punta, sobre la red de go-link.</p>
+            <p>{t("Tu NAS TangoOS desde cualquier lado, sin abrir puertos. El escritorio completo, cifrado de punta a punta, sobre la red de go-link.")}</p>
             <Link className="lp-foot-code" to="/nas/vincular">
-              000 000 000 <span>Vincular</span>
+              000 000 000 <span>{t("Vincular")}</span>
             </Link>
           </div>
-          <nav className="lp-foot-col" aria-label="Producto">
-            <h4>Producto</h4>
+          <nav className="lp-foot-col" aria-label={t("Producto")}>
+            <h4>{t("Producto")}</h4>
             <ul>
               <li>
-                <a href="/demo">Probar la demo</a>
+                <a href="/demo">{t("Probar la demo")}</a>
               </li>
               <li>
-                <Link to="/nas">Mis NAS</Link>
+                <Link to="/nas">{t("Mis NAS")}</Link>
               </li>
               <li>
-                <Link to="/nas/vincular">Vincular un NAS</Link>
+                <Link to="/nas/vincular">{t("Vincular un NAS")}</Link>
               </li>
               <li>
-                <a href="/#funciones">Funciones</a>
+                <a href="/#funciones">{t("Funciones")}</a>
               </li>
               <li>
-                <a href="/#galeria">Galería</a>
+                <a href="/#galeria">{t("Galería")}</a>
               </li>
               <li>
-                <a href={`${REPO_URL}/releases/latest`}>Descargar TangoOS (ISO)</a>
+                <a href={`${REPO_URL}/releases/latest`}>{t("Descargar TangoOS (ISO)")}</a>
               </li>
             </ul>
           </nav>
-          <nav className="lp-foot-col" aria-label="Ayuda">
-            <h4>Ayuda</h4>
+          <nav className="lp-foot-col" aria-label={t("Ayuda")}>
+            <h4>{t("Ayuda")}</h4>
             <ul>
               <li>
-                <a href="/#como">Cómo funciona</a>
+                <a href="/#como">{t("Cómo funciona")}</a>
               </li>
               <li>
-                <a href="/#seguridad">Seguridad</a>
+                <a href="/#seguridad">{t("Seguridad")}</a>
               </li>
               <li>
-                <a href="/#preguntas">Preguntas frecuentes</a>
+                <a href="/#preguntas">{t("Preguntas frecuentes")}</a>
               </li>
               <li>
                 <a href={`${REPO_URL}/blob/main/docs/16-tangoconnect.md`} rel="noreferrer">
-                  Documentación
+                  {t("Documentación")}
                 </a>
               </li>
               <li>
                 <a href={`${REPO_URL}/issues`} rel="noreferrer">
-                  Reportar un problema
+                  {t("Reportar un problema")}
                 </a>
               </li>
               <li>
@@ -216,17 +234,17 @@ export function SiteFooter() {
               </li>
             </ul>
           </nav>
-          <nav className="lp-foot-col" aria-label="Proyecto">
-            <h4>Proyecto</h4>
+          <nav className="lp-foot-col" aria-label={t("Proyecto")}>
+            <h4>{t("Proyecto")}</h4>
             <ul>
               <li>
                 <a href={REPO_URL} rel="noreferrer">
-                  Código fuente
+                  {t("Código fuente")}
                 </a>
               </li>
               <li>
                 <a href={`${REPO_URL}/blob/main/LICENSE`} rel="noreferrer">
-                  Licencia MIT
+                  {t("Licencia MIT")}
                 </a>
               </li>
               <li>
@@ -248,14 +266,17 @@ export function SiteFooter() {
             <path d="M12 10v4M12 17h.01" />
           </svg>
           <span>
-            <b>Privacidad.</b> Este portal no ve tus archivos ni tus contraseñas: todo viaja cifrado directo entre tu navegador y tu NAS. No usamos cookies de
-            seguimiento; los vínculos se guardan solo en este navegador.
+            <b>{t("Privacidad.")}</b>{" "}
+            {t(
+              "Este portal no ve tus archivos ni tus contraseñas: todo viaja cifrado directo entre tu navegador y tu NAS. No usamos cookies de seguimiento; los vínculos se guardan solo en este navegador.",
+            )}
           </span>
         </div>
         <div className="lp-foot-bottom">
-          <span>© 2026 TangoOS · MIT · TangoOS Connect, sobre la red de go-link</span>
+          <span>© 2026 TangoOS · MIT · {t("TangoOS Connect, sobre la red de go-link")}</span>
+          <LangSwitch />
           <span className={`lp-status lp-status-${status}`} role="status">
-            {status === "ok" ? "Señalización en línea" : status === "down" ? "Señalización sin respuesta" : "Comprobando señalización…"}
+            {status === "ok" ? t("Señalización en línea") : status === "down" ? t("Señalización sin respuesta") : t("Comprobando señalización…")}
           </span>
         </div>
       </div>

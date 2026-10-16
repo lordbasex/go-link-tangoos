@@ -383,7 +383,7 @@ cert.caDownload  null → {"filename":"tangoos-ca.crt","pem":"…"}
 services.list    null → [{"id":"smb|nfs|sftp|webdav|iscsi","enabled","running","port","detail"}]
 services.set     {"id","enabled", "options":{…}} → {"job"}
 nfs.exports.set  {"share","clients":[{"host":"192.168.1.0/24","access":"rw|ro"}]} → {}
-iscsi.targets.list / iscsi.targets.create {"name","volume","sizeBytes","chap":{"user","secret"}?} / iscsi.targets.delete {"name","typed"}
+iscsi.targets.list / iscsi.targets.create {"name","volume"|"pool"+"thin"?|"zvol","sizeBytes","chap":{"user","secret"}?} / iscsi.targets.delete {"name","typed"}
 // Notifications
 notify.channels.get null → {"email":{…},"ntfy":{…},"telegram":{…},"levels":["crit","warn"]}
 notify.channels.set {…} → {}
@@ -448,8 +448,13 @@ logs.query   {"unit"?: "tangod|tango-agent|smbd|docker|kernel", "q"?, "since"?, 
   deleting sends to the trash. Limitation: `x/net/webdav` answers 404 (not 403) to a denied write.
 - **NFS:** `/etc/exports.d/tango.exports` (`root_squash`, `sync`, `sec=sys`); `nfs-kernel-server` is
   installed when it is enabled. Permissions depend on matching UID/GID on the client (AUTH_SYS).
-- **iSCSI:** LIO through configfs (Go), LUN in `/<vol>/@iscsi/<name>.img` without CoW and thin-provisioned,
-  `generate_node_acls` + optional CHAP per TPG. The configuration is reapplied when `tangod` starts.
+- **iSCSI:** LIO through configfs (Go), `generate_node_acls` + optional CHAP per TPG. The LUN is one of:
+  a file `/<vol>/@iscsi/<name>.img` without CoW and thin-provisioned (`volume`); a **logical volume** `il_<name>` in a
+  storage pool (`pool` = Pool.id, thick or `thin` in the pool's `il_thin` thin pool, grown by size + 25 %), created with
+  the target and removed with it (agent ops `pool.lun.create|delete`, listed as `Pool.luns`; a pool with LUNs cannot be
+  deleted, `POOL_NOT_EMPTY`); or a ZFS block volume (`zvol`, §18). Block devices use an `iblock` backstore
+  (`udev_path`). `iscsi.targets.list` returns `lv` + `thin` or `zvol` for those. The name `thin` is reserved. The
+  configuration is reapplied when `tangod` starts.
 - **App proxy:** `apps.ticket` → `https://<host>:<port>/.tango/ticket?t=…` (single use, 60 s) → HMAC
   `tango_app` cookie (12 h, key in `app-gate.key`); without the cookie, 401. The TangoOS cookie never reaches the app.
 - **First boot:** `setup.state` is `pending` until `setup-done` exists or a user has already logged
@@ -857,12 +862,68 @@ ZfsPlan = {plan_id, expires, confirm_token, summary: {name, kind, layout, usable
 - A ZFS volume is a `Volume` with `kind: "zfs"`, `fs: "zfs"`, `pool: "zfs:<name>"`, `profile` = the pool layout and
   `id: "zfs-<dataset guid>"`. Its folders, snapshots, Files versions, Previous Versions, permissions and apps work through
   the existing methods (§7, §8, §10, §11). `storage.scrub.start` on a ZFS volume scrubs its pool.
-- Encrypted ZFS volumes use `storage.volumes.unlock|lock|passphrase` (§16); `useKeyDevice` → `NOT_SUPPORTED`.
+- Encrypted ZFS volumes use `storage.volumes.unlock|lock|passphrase|keyDevice` (§16), USB key included (ADR 0016):
+  the stick holds an X25519 private key and the volume the passphrase sealed for it (`tangoos:keyseal`, plus
+  `tangoos:keydev` = the stick's filesystem UUID, shown as `Volume.keyDevice`). The passphrase stays the ZFS key, so
+  `zfs load-key` with it works on any ZFS machine. Changing the passphrase re-seals it for the same key (no stick needed);
+  removing the key clears the seal. A volume with `keyDevice` locked at boot is unlocked by itself when the stick is in.
 - Disks: members of a ZFS pool come in `storage.disks.list` with `use: "member"`, `pool: "zfs:<name>"` and
   `role: "data"|"cache"|"log"`. A disk held open by the kernel (an imported pool) is never eligible.
 - iSCSI (§12): `iscsi.targets.create` accepts `zvol: "/dev/zvol/<pool>/zvol/<name>"` instead of `volume`/`sizeBytes`
   (backstore `iblock`); `iscsi.targets.list` returns `zvol` for those targets.
 - Agent ops (`pkg/agentproto/zfs.go`): `zfs.report {importable}`, `zfs.enable`, `zfs.pool.create|add|aux|replace|scrub|
-  import|export|destroy`, `zfs.volume.create|set|delete|unlock|lock|passphrase`, `zfs.zvol.create|delete`. Reads use
+  import|export|destroy`, `zfs.volume.create|set|delete|unlock {passphrase | useKeyDevice}|lock|passphrase|keyDevice`,
+  `zfs.zvol.create|delete`. Reads use
   `zpool status -j -p`, `zpool list -j -p`, `zfs list -j -p` (OpenZFS 2.3 JSON; `zpool import` has no `-j` and is parsed
   as text). Everything that mounts runs in the transient unit; passphrases only go through stdin inside the agent.
+
+### 18.1 Replication (ADR 0016)
+
+A task sends a ZFS volume to another pool of this NAS or to another TangoOS linked with a code and a fingerprint.
+All admin-only; progress through `jobs.*` (type `storage.zfs.repl`); `storage.changed {what: "repl"}` on every change.
+
+```jsonc
+storage.zfs.repl.status           null → ReplStatus
+storage.zfs.repl.receive          {enabled, pool} → {}        // this NAS accepts replicas from linked sources, in pool
+storage.zfs.repl.invite           null → {code, expires}      // one use, 15 min; needs receive on
+storage.zfs.repl.targets.probe    {address} → {probe, name, fingerprint, address}   // UNREACHABLE; shows the fingerprint
+storage.zfs.repl.targets.add      {probe, code} → ReplTarget  // PAIR_FAILED: wrong code or MAC
+storage.zfs.repl.targets.remove   {id} → {}                   // BUSY while a task sends to it
+storage.zfs.repl.sources.remove   {id} → {}                   // its replicas stay
+storage.zfs.repl.tasks.create     {volume, target: "local:<pool>"|ReplTarget.id, every: 0|1|6|12|24|168, runNow?} → {id, job?}
+storage.zfs.repl.tasks.update     {id, every, enabled} → {}
+storage.zfs.repl.tasks.delete     {id} → {}                   // the replica stays on the target; BUSY while sending
+storage.zfs.repl.tasks.run        {id} → {job}
+storage.zfs.repl.replicas.promote {pool, origin, vol, name, passphrase?} → {locked}   // the replica becomes volume <name>
+storage.zfs.repl.replicas.delete  {pool, origin, vol} → {}
+
+ReplStatus = {identity: {name, fingerprint}, receive: {enabled, pool, port, addrs, invite?: {code, expires}},
+  targets: ReplTarget[], sources: [{id, name, fingerprint, addedAt}], tasks: ReplTask[], replicas: ReplReplica[]}
+ReplTarget = {id, name, addr, fingerprint, addedAt}
+ReplTask = {id, pool, vol, target, targetLabel, every, enabled, pending?, lastOk?, next?, job?, volumeId?,
+  last?: {at, ok, error?, bytes, seconds, snap?}}
+ReplReplica = {pool, origin: "local"|<12 hex>, from, vol, used, encrypted, partial, lastSnap?, lastAt?, snapshots}
+```
+
+- Each run takes a recursive snapshot `tgrepl-<task>-<YYYYMMDDTHHMMSSZ>` (or reuses the one of a run that did not
+  finish) and sends every dataset of the volume (the volume, `shares`, `apps` and each folder or app) **separately and
+  raw** (`zfs send -w`): an encrypted volume travels encrypted and the target never needs the passphrase. Per dataset:
+  nothing if the target has the snapshot; `zfs send -t <token>` if the target has a cut receive; `-I <newest common>`
+  (with the scheduled snapshots in between) otherwise; a dataset the target lacks gets its oldest snapshot whole and
+  then `-I` up to the new one. Afterwards the source keeps only the task's last snapshot (the next base) and the target
+  drops the snapshots the source no longer has. A failed run is retried after 15 minutes and resumes where it stopped.
+- On the target the replica is `<pool>/tgrepl/<origin>/<vol>`: `origin` is `local` or the first 12 hex of the
+  source's key hash; `<pool>/tgrepl` has `canmount=off mountpoint=none readonly=on`, so nothing of it is mounted or
+  shared. Promoting renames it to `<pool>/<name>` with the TangoOS mountpoints; with the passphrase it loads the key
+  (folders that arrived as their own encryption root inherit the volume's again) and mounts, without it the volume
+  stays locked.
+- Between NAS: TLS 1.3 on TCP **24020**, open only while "Receive replicas" is on. Each NAS has its own ECDSA key and
+  self-signed certificate (`/var/lib/tango/repl`); the source pins the target's key (SHA-256 of the SPKI) and the
+  target accepts only client certificates whose key it linked. Linking: the source connects and shows the target's
+  fingerprint; after the user confirms, it sends `HMAC(code, "repl-pair", nonce, client SPKI, server certificate
+  hash, name)`, and the target answers `HMAC(code, "repl-done", nonce, server certificate hash)`. Five wrong codes
+  close the invitation. Target endpoints: `GET /info` (name), `POST /pair`, and with a linked client certificate
+  `GET /v1/state?vol=`, `POST /v1/recv?vol=&rel=&base=` (body = the stream), `POST /v1/mirror {vol, keep}`.
+- Agent ops (`pkg/agentproto/zfsrepl.go`): `zfs.repl.state|snapshot|wait|prune|mirror|abort|destroy|promote`;
+  `zfs.repl.send` and `zfs.repl.recv` answer with one end of a pipe by SCM_RIGHTS (the agent has no network) and
+  `zfs.repl.wait {id}` reports how `zfs send`/`zfs receive` ended (polled every 20 s on its own connection).

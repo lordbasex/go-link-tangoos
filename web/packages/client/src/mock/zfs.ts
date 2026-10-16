@@ -6,6 +6,7 @@ import type { DeletePlan, Disk, Job, Method, Notice, Params, Result, Scenario, T
 import type { ZfsImportable, ZfsLayout, ZfsPlan, ZfsPool, ZfsScrubSchedule, ZfsVdev } from "../protocol-zfs";
 import { zfsCheck, zfsLayoutLabel, zfsTolerance, zfsUsable } from "../protocol-zfs";
 import { fmtBytes } from "../format";
+import { t } from "../i18n";
 
 export interface MockZfsCtx {
   scenario: () => Scenario;
@@ -60,7 +61,7 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
         volumes: ["vol1", "vol2"], zvols: [{ name: "vm-windows", size: 500 * 1024 ** 3, used: 61 * 1024 ** 3, device: "/dev/zvol/tanque/zvol/vm-windows" }],
         encrypted: ["vol2"], disks: data.map((d) => d.id), other: [],
       });
-      importable = [{ name: "respaldo", guid: "9001237718201", state: "ONLINE", status: "Se usó por última vez en otro equipo.", disks: [] }];
+      importable = [{ name: "respaldo", guid: "9001237718201", state: "ONLINE", status: t("Se usó por última vez en otro equipo."), disks: [] }];
     }
     return pools;
   };
@@ -99,15 +100,15 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
     if (ds.some((d) => d.use !== "free" || d.foreign)) throw new RpcError("DEVICE_NOT_ELIGIBLE", "Uno de los discos ya está en uso");
     return ds;
   };
-  const planDisks = (ds: Disk[]) => ds.map((d) => ({ id: d.id, model: d.model, serial: d.serial, size: d.size, content: "Vacío: sin tabla de particiones" }));
+  const planDisks = (ds: Disk[]) => ds.map((d) => ({ id: d.id, model: d.model, serial: d.serial, size: d.size, content: t("Vacío: sin tabla de particiones") }));
   const summary = (name: string, kind: ZfsPlan["summary"]["kind"], layout: ZfsLayout, ds: Disk[]): ZfsPlan["summary"] => {
     const sizes = ds.map((d) => d.size);
     const m = Math.min(...sizes);
     const wasted = layout === "stripe" ? 0 : sizes.reduce((a, s) => a + s - m, 0);
     const tol = zfsTolerance(layout, ds.length);
-    const notes = [tol === 0 ? "Sin redundancia: si falla un disco se pierde el pool entero." : tol === 1 ? "Sigue funcionando si falla un disco." : `Sigue funcionando si fallan hasta ${tol} discos a la vez.`];
-    if (wasted > 0) notes.push(`Los discos tienen distinto tamaño: ZFS usa ${fmtBytes(m)} de cada uno y quedan ${fmtBytes(wasted)} sin usar.`);
-    notes.push("La capacidad es aproximada: ZFS reserva alrededor de un 3 % para sí mismo.");
+    const notes = [tol === 0 ? t("Sin redundancia: si falla un disco se pierde el pool entero.") : tol === 1 ? t("Sigue funcionando si falla un disco.") : t("Sigue funcionando si fallan hasta {n} discos a la vez.", { n: tol })];
+    if (wasted > 0) notes.push(t("Los discos tienen distinto tamaño: ZFS usa {size} de cada uno y quedan {wasted} sin usar.", { size: fmtBytes(m), wasted: fmtBytes(wasted) }));
+    notes.push(t("La capacidad es aproximada: ZFS reserva alrededor de un 3 % para sí mismo."));
     return { name, kind, layout, usable: zfsUsable(layout, sizes), raw: sizes.reduce((a, b) => a + b, 0), wasted, tolerance: tol, disks: planDisks(ds), notes };
   };
   const job = (type: string, title: string, detail: string, step: number, done: () => void) => {
@@ -123,11 +124,11 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
     },
     "storage.zfs.enable": () => {
       if (isEnabled()) throw new RpcError("INVALID_PARAMS", "ZFS ya está habilitado");
-      const j = ctx.startJob("storage.zfs.enable", "Habilitando ZFS", "Instala OpenZFS y compila el módulo del kernel (DKMS): tarda unos minutos", 0, 0.012, undefined, () => {
+      const j = ctx.startJob("storage.zfs.enable", t("Habilitando ZFS"), t("Instala OpenZFS y compila el módulo del kernel (DKMS): tarda unos minutos"), 0, 0.012, undefined, () => {
         enabled = true;
         enabling = undefined;
         changed();
-        ctx.notify("ok", "tango.storage", "ZFS está habilitado", "Ya podés crear o importar pools ZFS en Almacenamiento.");
+        ctx.notify("ok", "tango.storage", t("ZFS está habilitado"), t("Ya podés crear o importar pools ZFS en Almacenamiento."));
       });
       enabling = j.id;
       ctx.emit("storage.changed", { what: "zfs" });
@@ -137,12 +138,12 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
     "storage.zfs.plan": ({ name, layout, disks }) => {
       need();
       if (!/^[a-z][a-z0-9_]{0,31}$/.test(name) || /^(mirror|raidz|draid|log|cache|spare)/.test(name)) throw new RpcError("INVALID_PARAMS", "El nombre del pool debe empezar con una letra y tener solo minúsculas, números o _ (y no ser una palabra de ZFS)");
-      if (state().some((p) => p.name === name) || ctx.vols().some((v) => v.name === name)) throw new RpcError("POOL_EXISTS", `Ya existe ${name}`);
+      if (state().some((p) => p.name === name) || ctx.vols().some((v) => v.name === name)) throw new RpcError("POOL_EXISTS", t("Ya existe {name}", { name }));
       const why = zfsCheck(layout, disks.length);
       if (why) throw new RpcError("INVALID_PARAMS", why);
       const ds = freeDisks(disks);
       const s = summary(name, "create", layout, ds);
-      s.notes.push("Después creás uno o más volúmenes dentro del pool (con cifrado opcional).");
+      s.notes.push(t("Después creás uno o más volúmenes dentro del pool (con cifrado opcional)."));
       return { ...newPlan({ kind: "create", name, layout, disks }), summary: s };
     },
     "storage.zfs.create": (p) => {
@@ -156,11 +157,11 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
         vdevs: layout === "stripe" ? ds.map((d) => ({ name: d.id, type: "disk" as const, state: "ONLINE", read: 0, write: 0, cksum: 0, size: d.size, disks: [leafOf(d)] })) : [{ name: `${layout}-0`, type: layout, state: "ONLINE", read: 0, write: 0, cksum: 0, size: ds.reduce((a, d) => a + d.size, 0), disks: ds.map((d) => leafOf(d)) }],
         logs: [], cache: [], scan: null, volumes: [], zvols: [], encrypted: [], disks: rec.disks, other: [],
       };
-      return job("storage.zfs.create", `Creando el pool ZFS ${rec.name}`, `${zfsLayoutLabel(layout)} · ${ds.length} discos`, 0.08, () => {
+      return job("storage.zfs.create", t("Creando el pool ZFS {name}", { name: rec.name }), `${zfsLayoutLabel(layout)} · ${t("{n} discos", { n: ds.length })}`, 0.08, () => {
         state().push(pool);
         ds.forEach((d) => Object.assign(d, { use: "member", pool: pool.id, role: "data" }));
         changed();
-        ctx.notify("ok", "tango.storage", `El pool ${rec.name} está listo`, "Ya podés crear volúmenes en él.");
+        ctx.notify("ok", "tango.storage", t("El pool {name} está listo", { name: rec.name }), t("Ya podés crear volúmenes en él."));
       });
     },
 
@@ -172,22 +173,22 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
         if (p.layout === "mixed") throw new RpcError("NOT_SUPPORTED", "El pool mezcla formas de vdev");
         layout = p.layout;
         const why = zfsCheck(layout, ds.length);
-        if (why) throw new RpcError("INVALID_PARAMS", `El vdev nuevo tiene que ser ${zfsLayoutLabel(layout)}: ${why}`);
+        if (why) throw new RpcError("INVALID_PARAMS", t("El vdev nuevo tiene que ser {layout}: {why}", { layout: zfsLayoutLabel(layout), why }));
       } else {
         if (ds.length < 1 || ds.length > 2) throw new RpcError("INVALID_PARAMS", "Elegí uno o dos SSD");
         if (ds.some((d) => d.kind === "hdd")) throw new RpcError("NOT_SSD", "Elegí SSD o NVMe");
       }
       const s = summary(p.name, kind, layout, ds);
-      if (kind === "data") s.notes.unshift(`Se suma un vdev ${zfsLayoutLabel(layout)} al pool: la capacidad crece al instante. Un vdev no se puede quitar después.`);
-      if (kind === "cache") s.notes = ["Caché de lectura (L2ARC): acelera las lecturas repetidas. Si el SSD falla, no se pierde nada."];
-      if (kind === "log") s.notes = ["Registro de escritura (SLOG): acelera las escrituras sincrónicas (NFS, iSCSI, bases de datos)."];
+      if (kind === "data") s.notes.unshift(t("Se suma un vdev {layout} al pool: la capacidad crece al instante. Un vdev no se puede quitar después.", { layout: zfsLayoutLabel(layout) }));
+      if (kind === "cache") s.notes = [t("Caché de lectura (L2ARC): acelera las lecturas repetidas. Si el SSD falla, no se pierde nada.")];
+      if (kind === "log") s.notes = [t("Registro de escritura (SLOG): acelera las escrituras sincrónicas (NFS, iSCSI, bases de datos).")];
       return { ...newPlan({ kind: "add", name: p.name, addKind: kind, layout, disks }), summary: s };
     },
     "storage.zfs.add": (p) => {
       const rec = take("add", p);
       const pool = find(rec.name);
       const ds = freeDisks(rec.disks);
-      return job("storage.zfs.add", `Ampliando el pool ${pool.name}`, `${ds.length} discos`, 0.2, () => {
+      return job("storage.zfs.add", t("Ampliando el pool {name}", { name: pool.name }), t("{n} discos", { n: ds.length }), 0.2, () => {
         if (rec.addKind === "data") {
           const v: ZfsVdev = { name: `${rec.layout}-${pool.vdevs.length}`, type: rec.layout!, state: "ONLINE", read: 0, write: 0, cksum: 0, size: ds.reduce((a, d) => a + d.size, 0), disks: ds.map((d) => leafOf(d)) };
           pool.vdevs.push(v);
@@ -203,12 +204,12 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
         }
         ds.forEach((d) => Object.assign(d, { use: "member", pool: pool.id, role: rec.addKind }));
         changed();
-        ctx.notify("ok", "tango.storage", `Listo: ${pool.name}`, rec.addKind === "data" ? "El vdev nuevo ya suma espacio." : "El dispositivo ya está en uso.");
+        ctx.notify("ok", "tango.storage", t("Listo: {name}", { name: pool.name }), rec.addKind === "data" ? t("El vdev nuevo ya suma espacio.") : t("El dispositivo ya está en uso."));
       });
     },
     "storage.zfs.auxRemove": ({ pool, kind, vdev }) => {
       const p = find(pool);
-      return job("storage.zfs.aux", `Quitando ${vdev} de ${p.name}`, "", 0.3, () => {
+      return job("storage.zfs.aux", t("Quitando {vdev} de {pool}", { vdev, pool: p.name }), "", 0.3, () => {
         const ids = kind === "cache" ? p.cache.filter((l) => l.name === vdev).map((l) => l.id) : p.logs.filter((v) => v.name === vdev).flatMap((v) => v.disks.map((l) => l.id));
         if (kind === "cache") p.cache = p.cache.filter((l) => l.name !== vdev);
         else p.logs = p.logs.filter((v) => v.name !== vdev);
@@ -224,7 +225,7 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
       const ds = freeDisks([replacement]);
       return {
         ...newPlan({ kind: "replace", name: p.name, old: leaf.id, disks: [replacement] }),
-        summary: { ...summary(p.name, "replace", p.layout === "mixed" ? "stripe" : p.layout, ds), notes: [`Se reemplaza ${leaf.name} (${leaf.state.toLowerCase()}) y ZFS reconstruye solo los datos usados (resilver).`] },
+        summary: { ...summary(p.name, "replace", p.layout === "mixed" ? "stripe" : p.layout, ds), notes: [t("Se reemplaza {disk} ({state}) y ZFS reconstruye solo los datos usados (resilver).", { disk: leaf.name, state: leaf.state.toLowerCase() })] },
       };
     },
     "storage.zfs.replace": (p) => {
@@ -232,7 +233,7 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
       const pool = find(rec.name);
       const [nd] = freeDisks(rec.disks);
       pool.scan = { function: "resilver", state: "scanning", progress: 0, errors: 0, start: new Date().toISOString() };
-      const j = ctx.startJob("storage.zfs.replace", `Reemplazando un disco de ${pool.name}`, "Resilver: ZFS copia solo los datos usados", 0, 0.05, undefined, () => {
+      const j = ctx.startJob("storage.zfs.replace", t("Reemplazando un disco de {name}", { name: pool.name }), t("Resilver: ZFS copia solo los datos usados"), 0, 0.05, undefined, () => {
         for (const v of pool.vdevs) v.disks = v.disks.map((l) => (l.id === rec.old ? leafOf(nd) : l));
         pool.vdevs.forEach((v) => (v.state = "ONLINE"));
         Object.assign(pool, { health: "ONLINE", state: "healthy", scan: { function: "resilver", state: "finished", progress: 1, errors: 0, end: new Date().toISOString() } });
@@ -242,7 +243,7 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
           if (d.id === nd.id) Object.assign(d, { use: "member", pool: pool.id, role: "data" });
         });
         changed();
-        ctx.notify("ok", "tango.storage", `${pool.name} recuperó la redundancia`, "El resilver terminó.");
+        ctx.notify("ok", "tango.storage", t("{name} recuperó la redundancia", { name: pool.name }), t("El resilver terminó."));
       });
       j.onTick = (x) => {
         if (pool.scan) pool.scan.progress = x;
@@ -260,10 +261,10 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
       }
       if (p.scan?.state === "scanning") throw new RpcError("VOLUME_BUSY", "El pool ya está verificándose o reconstruyéndose");
       p.scan = { function: "scrub", state: "scanning", progress: 0, errors: 0, start: new Date().toISOString() };
-      const j = ctx.startJob("storage.zfs.scrub", `Verificando el pool ${p.name}`, "Scrub de ZFS: lee todo y compara checksums", 0, 0.04, undefined, () => {
+      const j = ctx.startJob("storage.zfs.scrub", t("Verificando el pool {name}", { name: p.name }), t("Scrub de ZFS: lee todo y compara checksums"), 0, 0.04, undefined, () => {
         p.scan = { function: "scrub", state: "finished", progress: 1, errors: 0, start: p.scan?.start, end: new Date().toISOString() };
         changed();
-        ctx.notify("ok", "tango.storage", `Verificación de ${p.name} terminada`, "Sin errores: todos los bloques coinciden con sus checksums.");
+        ctx.notify("ok", "tango.storage", t("Verificación de {name} terminada", { name: p.name }), t("Sin errores: todos los bloques coinciden con sus checksums."));
       });
       j.onTick = (x) => {
         if (p.scan) p.scan.progress = x;
@@ -284,7 +285,7 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
       need();
       const im = importable.find((x) => x.name === pool || x.guid === pool);
       if (!im) throw new RpcError("POOL_NOT_FOUND", "No se encontró ese pool en los discos");
-      return job("storage.zfs.import", `Importando el pool ${im.name}`, readonly ? `solo lectura, en /import/${im.name}` : "lectura y escritura", 0.15, () => {
+      return job("storage.zfs.import", t("Importando el pool {name}", { name: im.name }), readonly ? t("solo lectura, en /import/{name}", { name: im.name }) : t("lectura y escritura"), 0.15, () => {
         importable = importable.filter((x) => x !== im);
         state().push({
           id: `zfs:${im.name}`, name: im.name, guid: im.guid, health: "ONLINE", state: readonly ? "readonly" : "healthy", readonly, layout: "mirror",
@@ -294,13 +295,13 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
           other: [{ name: `${im.name}/fotos`, mountpoint: `/import/${im.name}/fotos`, mounted: true, used: 0.9 * TiB }, { name: `${im.name}/viejo`, mountpoint: `/import/${im.name}/viejo`, mounted: true, used: 0.3 * TiB }],
         });
         changed();
-        ctx.notify("ok", "tango.storage", `Se importó el pool ${im.name}`, readonly ? `Está en solo lectura en /import/${im.name}.` : "Sus volúmenes ya están montados.");
+        ctx.notify("ok", "tango.storage", t("Se importó el pool {name}", { name: im.name }), readonly ? t("Está en solo lectura en /import/{name}.", { name: im.name }) : t("Sus volúmenes ya están montados."));
       });
     },
     "storage.zfs.export": ({ pool }) => {
       const p = find(pool);
       if (p.volumes.length) throw new RpcError("VOLUME_BUSY", "En la demo, exportá un pool sin volúmenes (los volúmenes tienen carpetas en uso)");
-      return job("storage.zfs.export", `Exportando el pool ${p.name}`, "Queda listo para llevarlo a otro equipo", 0.25, () => {
+      return job("storage.zfs.export", t("Exportando el pool {name}", { name: p.name }), t("Queda listo para llevarlo a otro equipo"), 0.25, () => {
         pools = state().filter((x) => x !== p);
         importable.push({ name: p.name, guid: p.guid, state: "ONLINE", disks: p.disks });
         ctx.disks().filter((d) => d.pool === p.id).forEach((d) => Object.assign(d, { use: "free", pool: undefined, role: undefined }));
@@ -309,25 +310,25 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
     },
     "storage.zfs.destroyPlan": ({ pool }) => {
       const p = find(pool);
-      if (p.zvols.length) throw new RpcError("VOLUME_BUSY", `Borrá primero los volúmenes de bloque de ${p.name}`);
+      if (p.zvols.length) throw new RpcError("VOLUME_BUSY", t("Borrá primero los volúmenes de bloque de {name}", { name: p.name }));
       const vols = ctx.vols().filter((v) => v.pool === p.id);
       const ds = ctx.disks().filter((d) => d.pool === p.id);
       const plan: DeletePlan = {
         ...newPlan({ kind: "destroy", name: p.name, disks: ds.map((d) => d.id) }),
         summary: { name: p.name, shares: [], snapshots: 0, used: p.allocated, disks: ds.map((d) => ({ id: d.id, model: d.model, serial: d.serial })) },
       } as DeletePlan;
-      if (vols.length) plan.summary.shares = vols.map((v) => `(volumen ${v.name})`);
+      if (vols.length) plan.summary.shares = vols.map((v) => t("(volumen {name})", { name: v.name }));
       return plan;
     },
     "storage.zfs.destroy": (p) => {
       const rec = take("destroy", p);
       const pool = find(rec.name);
-      return job("storage.zfs.destroy", `Destruyendo el pool ${pool.name}`, `${rec.disks.length} discos quedan libres`, 0.2, () => {
+      return job("storage.zfs.destroy", t("Destruyendo el pool {name}", { name: pool.name }), t("{n} discos quedan libres", { n: rec.disks.length }), 0.2, () => {
         pools = state().filter((x) => x !== pool);
         ctx.setVols(ctx.vols().filter((v) => v.pool !== pool.id));
         ctx.disks().filter((d) => d.pool === pool.id).forEach((d) => Object.assign(d, { use: "free", pool: undefined, role: undefined }));
         changed("shares");
-        ctx.notify("ok", "tango.storage", `Se destruyó el pool ${pool.name}`, "Sus discos quedaron libres.");
+        ctx.notify("ok", "tango.storage", t("Se destruyó el pool {name}", { name: pool.name }), t("Sus discos quedaron libres."));
       });
     },
 
@@ -335,22 +336,22 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
       const p = find(pool);
       if (p.readonly) throw new RpcError("NOT_SUPPORTED", "El pool está importado en solo lectura");
       if (!/^[a-z][a-z0-9]{0,31}$/.test(name)) throw new RpcError("INVALID_PARAMS", "El nombre debe empezar con una letra y tener solo minúsculas y números");
-      if (ctx.vols().some((v) => v.name === name)) throw new RpcError("VOLUME_EXISTS", `Ya existe ${name}`);
+      if (ctx.vols().some((v) => v.name === name)) throw new RpcError("VOLUME_EXISTS", t("Ya existe {name}", { name }));
       if (encryption && encryption.passphrase.length < 8) throw new RpcError("INVALID_PARAMS", "La frase tiene que tener entre 8 y 512 caracteres");
       const id = `zvol_${Math.random().toString(36).slice(2, 7)}`;
-      return job("storage.zfs.volume.create", `Creando el volumen ${name}`, `Dataset ZFS en ${p.name}${encryption ? " · cifrado (AES-256-GCM)" : ""}`, 0.2, () => {
+      return job("storage.zfs.volume.create", t("Creando el volumen {name}", { name }), t("Dataset ZFS en {pool}", { pool: p.name }) + (encryption ? ` · ${t("cifrado (AES-256-GCM)")}` : ""), 0.2, () => {
         const v: Volume = { id, name, mount: `/${name}`, kind: "zfs", pool: p.id, profile: p.layout, fs: "zfs", size: quota || p.free, used: 0, state: "healthy", disks: p.disks, lastScrub: p.scan?.end ?? null, growth30d: [], encrypted: !!encryption };
         ctx.setVols([...ctx.vols(), v]);
         p.volumes.push(id);
         if (encryption) p.encrypted.push(id);
         changed();
-        ctx.notify("ok", "tango.storage", `El volumen ${name} está listo`, "Ya podés crear carpetas compartidas en él.");
+        ctx.notify("ok", "tango.storage", t("El volumen {name} está listo", { name }), t("Ya podés crear carpetas compartidas en él."));
       });
     },
     "storage.zfs.volumes.set": ({ volume, quota }) => {
       const v = ctx.vols().find((x) => x.id === volume && x.kind === "zfs");
       if (!v) throw new RpcError("VOLUME_NOT_FOUND", "No existe el volumen ZFS");
-      if (quota && quota < v.used) throw new RpcError("INVALID_PARAMS", `La cuota no puede ser menor que lo que ya ocupa (${fmtBytes(v.used)})`);
+      if (quota && quota < v.used) throw new RpcError("INVALID_PARAMS", t("La cuota no puede ser menor que lo que ya ocupa ({size})", { size: fmtBytes(v.used) }));
       const p = find(v.pool!);
       ctx.setVols(ctx.vols().map((x) => (x.id === volume ? { ...x, size: quota || p.free + x.used } : x)));
       changed();
@@ -363,7 +364,7 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
     },
     "storage.zfs.volumes.delete": (p) => {
       const rec = take("voldelete", p);
-      return job("storage.zfs.volume.delete", `Eliminando el volumen ${rec.name}`, "Borra el dataset, sus carpetas e instantáneas", 0.3, () => {
+      return job("storage.zfs.volume.delete", t("Eliminando el volumen {name}", { name: rec.name }), t("Borra el dataset, sus carpetas e instantáneas"), 0.3, () => {
         const v = ctx.vols().find((x) => x.id === rec.volume);
         ctx.setVols(ctx.vols().filter((x) => x.id !== rec.volume));
         if (v?.pool) {
@@ -377,8 +378,8 @@ export function zfsHandlers(ctx: MockZfsCtx): { [M in Method]?: (p: Params<M>) =
       const p = find(pool);
       if (!/^[a-z][a-z0-9_-]{0,31}$/.test(name)) throw new RpcError("INVALID_PARAMS", "Nombre inválido");
       if (size < 64 * 1024 ** 2) throw new RpcError("INVALID_PARAMS", "Al menos 64 MiB");
-      if (p.zvols.some((z) => z.name === name)) throw new RpcError("ALREADY_EXISTS", `Ya existe ${name}`);
-      if (!sparse && size > p.free) throw new RpcError("NO_SPACE", `No hay ${fmtBytes(size)} libres en ${p.name}`);
+      if (p.zvols.some((z) => z.name === name)) throw new RpcError("ALREADY_EXISTS", t("Ya existe {name}", { name }));
+      if (!sparse && size > p.free) throw new RpcError("NO_SPACE", t("No hay {size} libres en {pool}", { size: fmtBytes(size), pool: p.name }));
       p.zvols.push({ name, size, used: 0, device: `/dev/zvol/${p.name}/zvol/${name}` });
       if (!sparse) p.free -= size;
       changed();

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fmtBytes, fmtDuration, useLive, fmtMem } from "@tango/client";
+import { fmtBytes, fmtDuration, useLive, fmtMem, t, tn } from "@tango/client";
 import { Button, Group, Row, Status } from "@tango/ui";
 import { TangoLogo } from "@tango/theme-milonga";
 import { Value, demoApply } from "./common";
@@ -11,8 +11,8 @@ export function General() {
   useEffect(() => {
     if (!info) return;
     setUp(info.uptimeSec);
-    const t = setInterval(() => setUp((u) => u + 60), 60_000);
-    return () => clearInterval(t);
+    const iv = setInterval(() => setUp((u) => u + 60), 60_000);
+    return () => clearInterval(iv);
   }, [info]);
 
   if (!info) return null;
@@ -26,57 +26,57 @@ export function General() {
           <TangoLogo size={54} color="#fff" />
         </div>
         <h1>TangoOS</h1>
-        <div className="tset-about-ver">Versión {info.version}</div>
+        <div className="tset-about-ver">{t("Versión {v}", { v: info.version })}</div>
         <div className="tset-about-model">{info.model}</div>
       </div>
 
-      <Group title="Acerca de este NAS">
-        <Row label="Nombre">
+      <Group title={t("Acerca de este NAS")}>
+        <Row label={t("Nombre")}>
           <Value>{info.hostname}.local</Value>
         </Row>
-        <Row label="Procesador">
+        <Row label={t("Procesador")}>
           <Value>
-            {info.cpu} · {info.cores} núcleos
+            {info.cpu} · {tn(info.cores, "{n} núcleo", "{n} núcleos")}
           </Value>
         </Row>
-        <Row label="Memoria">
+        <Row label={t("Memoria")}>
           <Value>{fmtMem(info.memTotal)} DDR5</Value>
         </Row>
-        <Row label="Almacenamiento">
-          <Value>{total ? `${fmtBytes(total - used)} libres de ${fmtBytes(total)}` : "Sin volúmenes"}</Value>
+        <Row label={t("Almacenamiento")}>
+          <Value>{total ? t("{free} libres de {total}", { free: fmtBytes(total - used), total: fmtBytes(total) }) : t("Sin volúmenes")}</Value>
         </Row>
-        <Row label="Número de serie">
+        <Row label={t("Número de serie")}>
           <Value>{info.serial}</Value>
         </Row>
-        <Row label="Encendido desde hace">
+        <Row label={t("Encendido desde hace")}>
           <Value>{fmtDuration(up)}</Value>
         </Row>
       </Group>
 
-      <Group title="Software">
-        <Row label="TangoOS" hint="Interfaz, gestión y tiempo real: tangod + tango-agent">
+      <Group title={t("Software")}>
+        <Row label="TangoOS" hint={t("Interfaz, gestión y tiempo real: tangod + tango-agent")}>
           <Value>{info.version}</Value>
         </Row>
-        <Row label="Sistema base" hint="Recibe los parches de seguridad de Debian">
+        <Row label={t("Sistema base")} hint={t("Recibe los parches de seguridad de Debian")}>
           <Value>{info.debian}</Value>
         </Row>
         <Row label="Kernel">
           <Value>{info.kernel}</Value>
         </Row>
-        <Row label="Licencia">
-          <Value>MIT · código abierto</Value>
+        <Row label={t("Licencia")}>
+          <Value>{t("MIT · código abierto")}</Value>
         </Row>
       </Group>
 
-      <Group title="Estado">
-        <Row label="Servicios" hint="tangod, tango-agent, Samba, Avahi">
-          <Status tone="ok">Funcionando</Status>
+      <Group title={t("Estado")}>
+        <Row label={t("Servicios")} hint="tangod, tango-agent, Samba, Avahi">
+          <Status tone="ok">{t("Funcionando")}</Status>
         </Row>
-        <Row label="Nombre del NAS" hint="Cómo aparece en la red y en las apps">
-          <Button onClick={() => demoApply("El nuevo nombre")}>Cambiar nombre…</Button>
+        <Row label={t("Nombre del NAS")} hint={t("Cómo aparece en la red y en las apps")}>
+          <Button onClick={() => demoApply(t("El nuevo nombre"))}>{t("Cambiar nombre…")}</Button>
         </Row>
       </Group>
-      <p className="tset-foot">TangoOS es un proyecto independiente, no afiliado a Apple Inc. ni a ningún fabricante de NAS.</p>
+      <p className="tset-foot">{t("TangoOS es un proyecto independiente, no afiliado a Apple Inc. ni a ningún fabricante de NAS.")}</p>
     </>
   );
 }

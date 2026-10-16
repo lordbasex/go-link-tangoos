@@ -1,5 +1,5 @@
 import { SearchX } from "lucide-react";
-import { fmtBytes } from "@tango/client";
+import { fmtBytes, t, tr } from "@tango/client";
 import type { CatalogApp } from "@tango/client";
 import { EmptyState } from "@tango/ui";
 import type { AppsCtx } from "./App";
@@ -14,37 +14,37 @@ export function GetButton({ app, ctx, big }: { app: CatalogApp; ctx: AppsCtx; bi
   if (busy) {
     const pct = Math.round((tj?.job.progress ?? 0) * 100);
     return (
-      <span className={`${cls} tapp-get-busy`} role="status" aria-label={`Instalando ${pct} %`}>
+      <span className={`${cls} tapp-get-busy`} role="status" aria-label={t("Instalando {pct} %", { pct })}>
         <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
           <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeOpacity=".25" strokeWidth="2.4" />
           <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2.4" strokeDasharray={50.3} strokeDashoffset={50.3 * (1 - (tj?.job.progress ?? 0))} transform="rotate(-90 10 10)" strokeLinecap="round" />
         </svg>
-        {pct ? `${pct} %` : "Instalando…"}
+        {pct ? `${pct} %` : t("Instalando…")}
       </span>
     );
   }
   if (inst?.state === "running" && inst.url)
     return (
       <button type="button" className={cls} onClick={(e) => (e.stopPropagation(), ctx.launch(inst))}>
-        Abrir
+        {t("Abrir")}
       </button>
     );
   return (
     <button type="button" className={cls} onClick={(e) => (e.stopPropagation(), ctx.openDetail(app.id))}>
-      {inst ? "Ver" : "Obtener"}
+      {inst ? t("Ver") : t("Obtener")}
     </button>
   );
 }
 
 export function Featured({ app, ctx }: { app: CatalogApp; ctx: AppsCtx }) {
   return (
-    <section className="tapp-featured" onClick={() => ctx.openDetail(app.id)} aria-label={`Destacada: ${app.name}`}>
+    <section className="tapp-featured" onClick={() => ctx.openDetail(app.id)} aria-label={t("Destacada: {name}", { name: app.name })}>
       <div className="tapp-featured-glow" style={{ backgroundImage: `url("${app.icon}")` }} aria-hidden="true" />
       <img src={app.icon} alt="" className="tapp-featured-icon" />
       <div className="tapp-featured-text">
-        <span className="tapp-featured-kicker">Destacada · {app.category}</span>
+        <span className="tapp-featured-kicker">{t("Destacada · {category}", { category: t(app.category) })}</span>
         <h2>{app.name}</h2>
-        <p>{app.description}</p>
+        <p>{tr(app.description)}</p>
       </div>
       <GetButton app={app} ctx={ctx} big />
     </section>
@@ -54,8 +54,8 @@ export function Featured({ app, ctx }: { app: CatalogApp; ctx: AppsCtx }) {
 export function AppGrid({ apps, ctx, heading, query }: { apps: CatalogApp[]; ctx: AppsCtx; heading?: string; query?: string }) {
   if (!apps.length)
     return (
-      <EmptyState icon={SearchX} title={query ? `Nada coincide con «${query}»` : "No hay apps en esta categoría"}>
-        Probá con otra búsqueda o mirá todas las apps en Descubrir.
+      <EmptyState icon={SearchX} title={query ? t("Nada coincide con «{query}»", { query }) : t("No hay apps en esta categoría")}>
+        {t("Probá con otra búsqueda o mirá todas las apps en Descubrir.")}
       </EmptyState>
     );
   return (
@@ -67,8 +67,8 @@ export function AppGrid({ apps, ctx, heading, query }: { apps: CatalogApp[]; ctx
             <img src={a.icon} alt="" className="tapp-card-icon" />
             <div className="tapp-card-text">
               <strong>{a.name}</strong>
-              <span className="tapp-card-cat">{a.category}</span>
-              <p>{a.description}</p>
+              <span className="tapp-card-cat">{t(a.category)}</span>
+              <p>{tr(a.description)}</p>
             </div>
             <div className="tapp-card-foot">
               <span className="tg-muted">{fmtBytes(a.sizeHint)}</span>

@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 // Tipos del protocolo tango/1. Escritos a mano para el prototipo.
 // TODO(codegen): se generan desde /protocol/schema (docs/03 §5, docs/10).
 
@@ -306,7 +307,7 @@ export type Result<M extends Method> = Methods[M]["result"];
 export interface Topics {
   metrics: MetricsFrame;
   "jobs.changed": Job;
-  "storage.changed": { what: "disks" | "volumes" | "pools" | "zfs" | "shares" };
+  "storage.changed": { what: "disks" | "volumes" | "pools" | "zfs" | "shares" | "repl" };
   "shares.changed": { id?: string };
   "snapshots.changed": { share: string };
   "files.changed": { dir: string };
@@ -321,12 +322,13 @@ export interface Evt<T extends Topic = Topic> {
   data: Topics[T];
 }
 
+/** Error de un método. El mensaje llega en español y se traduce acá (i18n.tr). */
 export class RpcError extends Error {
   constructor(
     readonly code: string,
     message: string,
   ) {
-    super(message);
+    super(tr(message));
   }
 }
 
@@ -339,3 +341,4 @@ export * from "./protocol-connect";
 export * from "./protocol-pools";
 export * from "./protocol-cluster";
 export * from "./protocol-zfs";
+export * from "./protocol-zfsrepl";

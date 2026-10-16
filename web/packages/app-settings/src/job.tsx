@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useTopic } from "@tango/client";
+import { t, tr, useTopic } from "@tango/client";
 import type { Job } from "@tango/client";
 import { Progress } from "@tango/ui";
 
@@ -19,7 +19,7 @@ export function useJobLog(onEnd?: (j: Job) => void) {
     if (j.state === "succeeded" || j.state === "failed" || j.state === "interrupted" || j.state === "cancelled") endRef.current?.(j);
   });
 
-  const start = useCallback((jobId: string, first = "Preparando…") => {
+  const start = useCallback((jobId: string, first = t("Preparando…")) => {
     setId(jobId);
     setJob(null);
     setLines([first]);
@@ -48,7 +48,7 @@ export function JobLog({ job, lines, failed }: { job: Job | null; lines: string[
       <pre ref={box} aria-live="polite">
         {lines.map((l, i) => (
           <span key={i} data-last={i === lines.length - 1 || undefined}>
-            {l}
+            {tr(l)}
             {"\n"}
           </span>
         ))}

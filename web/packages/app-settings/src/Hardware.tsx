@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Fan, Thermometer, Timer } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useMetrics, fmtCpuTemp, fmtRpm } from "@tango/client";
+import { useMetrics, fmtCpuTemp, fmtRpm, t } from "@tango/client";
 import { Button, Group, Row, Segmented, Toggle } from "@tango/ui";
 import { Value, demoApply } from "./common";
 import { UpsCard } from "./Ups";
@@ -23,42 +23,42 @@ export function Hardware() {
 
   return (
     <>
-      <Group title="Refrigeración">
-        <Row icon={<Icon icon={Thermometer} color="#F97316" />} label="Temperatura del procesador">
+      <Group title={t("Refrigeración")}>
+        <Row icon={<Icon icon={Thermometer} color="#F97316" />} label={t("Temperatura del procesador")}>
           <Value>{fmtCpuTemp(last?.tempCpu)}</Value>
         </Row>
-        <Row icon={<Icon icon={Fan} color="#0ea5e9" />} label="Ventilador" hint={`${fmtRpm(last?.fanRpm)} ahora`}>
+        <Row icon={<Icon icon={Fan} color="#0ea5e9" />} label={t("Ventilador")} hint={t("{rpm} ahora", { rpm: fmtRpm(last?.fanRpm) })}>
           <Segmented
-            label="Modo del ventilador"
+            label={t("Modo del ventilador")}
             value={fan}
-            onChange={(v) => (setFan(v), demoApply("El modo del ventilador"))}
+            onChange={(v) => (setFan(v), demoApply(t("El modo del ventilador")))}
             options={[
-              { value: "quiet", label: "Silencioso" },
-              { value: "balanced", label: "Equilibrado" },
-              { value: "cool", label: "Frío" },
+              { value: "quiet", label: t("Silencioso") },
+              { value: "balanced", label: t("Equilibrado") },
+              { value: "cool", label: t("Frío") },
             ]}
           />
         </Row>
       </Group>
 
-      <Group title="Discos">
-        <Row label="Detener discos inactivos" hint="Los discos rígidos se detienen después de 20 minutos sin uso">
-          <Toggle checked={hdd} onChange={(v) => (setHdd(v), demoApply("La hibernación de discos"))} label="Detener discos inactivos" />
+      <Group title={t("Discos")}>
+        <Row label={t("Detener discos inactivos")} hint={t("Los discos rígidos se detienen después de 20 minutos sin uso")}>
+          <Toggle checked={hdd} onChange={(v) => (setHdd(v), demoApply(t("La hibernación de discos")))} label={t("Detener discos inactivos")} />
         </Row>
       </Group>
 
       <UpsCard />
-      <Group title="Energía">
-        <Row icon={<Icon icon={Timer} color="#8B5CF6" />} label="Encendido y apagado programados" hint={sched ? "Apaga a las 01:00 y enciende a las 07:30, todos los días" : "Siempre encendido"}>
-          <Toggle checked={sched} onChange={setSched} label="Programar" />
+      <Group title={t("Energía")}>
+        <Row icon={<Icon icon={Timer} color="#8B5CF6" />} label={t("Encendido y apagado programados")} hint={sched ? t("Apaga a las 01:00 y enciende a las 07:30, todos los días") : t("Siempre encendido")}>
+          <Toggle checked={sched} onChange={setSched} label={t("Programar")} />
         </Row>
-        <Row label="Al volver la luz" hint="Qué hace el NAS después de un corte">
-          <Value>Encenderse solo</Value>
+        <Row label={t("Al volver la luz")} hint={t("Qué hace el NAS después de un corte")}>
+          <Value>{t("Encenderse solo")}</Value>
         </Row>
       </Group>
       <div className="tset-actions">
-        <Button variant="primary" onClick={() => demoApply("La configuración de energía")}>
-          Aplicar
+        <Button variant="primary" onClick={() => demoApply(t("La configuración de energía"))}>
+          {t("Aplicar")}
         </Button>
       </div>
     </>

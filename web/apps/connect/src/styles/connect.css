@@ -52,3 +52,14 @@
   min-height: 100dvh;
   box-sizing: border-box;
 }
+
+/* Idioma (Español · English): discreto, en el pie del sitio y al final de las páginas de la web app. */
+.tc-lang { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-faint, currentColor); }
+.tc-lang button { font: inherit; color: var(--color-text-muted, inherit); background: none; border: 0; padding: 0; cursor: pointer; }
+.tc-lang button:hover { color: var(--color-accent-text, inherit); }
+.tc-lang button[aria-pressed="true"] { color: var(--color-text, inherit); font-weight: 600; cursor: default; }
+.ios .tc-lang { color: var(--ios-3); font-size: 13px; }
+.ios .tc-lang button { color: var(--ios-2); }
+.ios .tc-lang button:hover { color: var(--ios-accent); }
+.ios .tc-lang button[aria-pressed="true"] { color: var(--ios-text); }
+.tc-lang-row { display: flex; justify-content: center; }

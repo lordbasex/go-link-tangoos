@@ -1,5 +1,6 @@
 // Fase M4: producto (protocol/README.md §12). Se suma a Methods por module augmentation para no
 // chocar con otros cambios en protocol.ts.
+import { t } from "./i18n";
 
 export interface SetupState {
   state: "pending" | "done";
@@ -61,10 +62,16 @@ export interface NfsClient {
 export interface IscsiTarget {
   name: string;
   iqn: string;
+  /** Volume.id (archivo), "zfs:<pool>" (zvol) o Pool.id (LV). */
   volume: string;
   sizeBytes: number;
   chap: boolean;
   sessions: number;
+  /** LUN sobre un volumen de bloque ZFS. */
+  zvol?: string;
+  /** LUN sobre un volumen lógico de un grupo (/dev/<grupo>/il_<nombre>). */
+  lv?: string;
+  thin?: boolean;
 }
 
 export interface NotifyChannels {
@@ -113,7 +120,11 @@ declare module "./protocol" {
     "nfs.exports.get": { params: { share: string }; result: { clients: NfsClient[] } };
     "nfs.exports.set": { params: { share: string; clients: NfsClient[] }; result: Record<string, never> };
     "iscsi.targets.list": { params: void; result: IscsiTarget[] };
-    "iscsi.targets.create": { params: { name: string; volume: string; sizeBytes: number; chap?: { user: string; secret: string } }; result: { job: string } };
+    /** Un LUN va en un archivo de `volume`, en el zvol `zvol` o en un LV nuevo del grupo `pool` (`thin` opcional). */
+    "iscsi.targets.create": {
+      params: { name: string; volume?: string; sizeBytes: number; chap?: { user: string; secret: string }; zvol?: string; pool?: string; thin?: boolean };
+      result: { job: string };
+    };
     "iscsi.targets.delete": { params: { name: string; typed: string }; result: { job: string } };
     "notify.channels.get": { params: void; result: NotifyChannels };
     "notify.channels.set": { params: NotifyChannels; result: Record<string, never> };
@@ -143,10 +154,10 @@ export interface PasswordStrength {
 const COMMON = ["123456", "password", "contraseña", "qwerty", "admin", "tango", "111111", "abc123", "iloveyou", "argentina"];
 
 export function passwordStrength(pw: string, context: string[] = []): PasswordStrength {
-  if (!pw) return { score: 0, label: "", hint: "Usá al menos 10 caracteres." };
+  if (!pw) return { score: 0, label: "", hint: t("Usá al menos 10 caracteres.") };
   const lower = pw.toLowerCase();
   if (COMMON.some((c) => lower.includes(c)) || context.some((c) => c && c.length >= 3 && lower.includes(c.toLowerCase())))
-    return { score: 0, label: "Muy débil", hint: "Evitá palabras comunes o tu nombre." };
+    return { score: 0, label: t("Muy débil"), hint: t("Evitá palabras comunes o tu nombre.") };
   let classes = 0;
   if (/[a-z]/.test(pw)) classes++;
   if (/[A-Z]/.test(pw)) classes++;
@@ -169,13 +180,13 @@ export function passwordStrength(pw: string, context: string[] = []): PasswordSt
     "Buena contraseña.",
     "Excelente.",
   ];
-  return { score, label: labels[score], hint: hints[score] };
+  return { score, label: t(labels[score]), hint: t(hints[score]) };
 }
 
 /** Nombre de host válido (RFC 1123, una etiqueta): minúsculas, números y guiones. */
 export function validHostname(h: string): string | null {
-  if (!h) return "Elegí un nombre.";
-  if (h.length > 63) return "Máximo 63 caracteres.";
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(h)) return "Solo minúsculas, números y guiones (sin empezar ni terminar con guion).";
+  if (!h) return t("Elegí un nombre.");
+  if (h.length > 63) return t("Máximo 63 caracteres.");
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(h)) return t("Solo minúsculas, números y guiones (sin empezar ni terminar con guion).");
   return null;
 }

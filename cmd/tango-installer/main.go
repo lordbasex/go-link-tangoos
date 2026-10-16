@@ -25,7 +25,7 @@ var version = "dev"
 func main() {
 	listen := flag.String("listen", ":80", "dirección HTTP")
 	engine := flag.String("engine", "/usr/local/sbin/tango-install", "motor de instalación")
-	lang := flag.String("lang", "es", "idioma de la pantalla local (es|en)")
+	lang := flag.String("lang", "es", "idioma de la pantalla local (es|en|pt)")
 	banner := flag.Bool("banner", false, "mostrar en la consola la URL y el código (sin pantalla gráfica)")
 	flag.Parse()
 	if *banner {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Download, KeyRound } from "lucide-react";
-import { RpcError, fmtDate, saveBlob, useIsReal, useLive, useTransport } from "@tango/client";
+import { RpcError, fmtDate, saveBlob, t, tr, useIsReal, useLive, useTransport } from "@tango/client";
 import { toast } from "@tango/shell";
 import { Button, DemoBadge, Group, Row, Segmented, Status } from "@tango/ui";
 import { Value } from "./common";
@@ -16,54 +16,54 @@ const STEPS: Record<OS, string[]> = {
 };
 
 export function Certificate() {
-  const t = useTransport();
+  const tp = useTransport();
   const real = useIsReal("cert.info");
   const { data: cert, reload } = useLive("cert.info", undefined);
   const [os, setOs] = useState<OS>(() => (/Mac/.test(navigator.platform) ? "mac" : /Win/.test(navigator.platform) ? "win" : "linux"));
   const log = useJobLog((j) => {
     reload();
-    if (j.state === "succeeded") toast({ level: "ok", title: "CA local activa", body: "Descargá el certificado raíz e instalalo en tus equipos.", app: "tango.settings" });
+    if (j.state === "succeeded") toast({ level: "ok", title: t("CA local activa"), body: t("Descargá el certificado raíz e instalalo en tus equipos."), app: "tango.settings" });
   });
 
   const useLocal = async () => {
     try {
-      const { job } = await t.call("cert.localca", undefined);
-      log.start(job, "Generando la autoridad certificante…");
+      const { job } = await tp.call("cert.localca", undefined);
+      log.start(job, t("Generando la autoridad certificante…"));
     } catch (e) {
-      toast({ level: "crit", title: "No se pudo crear la CA local", body: e instanceof RpcError ? e.message : String(e), app: "tango.settings" });
+      toast({ level: "crit", title: t("No se pudo crear la CA local"), body: e instanceof RpcError ? e.message : tr(String(e)), app: "tango.settings" });
     }
   };
 
   const download = async () => {
     try {
-      const r = await t.call("cert.caDownload", undefined);
+      const r = await tp.call("cert.caDownload", undefined);
       saveBlob(new Blob([r.pem], { type: "application/x-x509-ca-cert" }), r.filename);
     } catch (e) {
-      toast({ level: "warn", title: "No se pudo descargar", body: e instanceof RpcError ? e.message : String(e), app: "tango.settings" });
+      toast({ level: "warn", title: t("No se pudo descargar"), body: e instanceof RpcError ? e.message : tr(String(e)), app: "tango.settings" });
     }
   };
 
-  const modeLabel = cert?.mode === "localca" ? "CA local de TangoOS" : cert?.mode === "acme" ? "Let's Encrypt" : "Autofirmado";
+  const modeLabel = cert?.mode === "localca" ? t("CA local de TangoOS") : cert?.mode === "acme" ? "Let's Encrypt" : t("Autofirmado");
 
   return (
     <>
       <Group
         title={
           <>
-            Certificado HTTPS {!real && <DemoBadge />}
+            {t("Certificado HTTPS")} {!real && <DemoBadge />}
           </>
         }
       >
-        <Row label="Origen" hint={cert?.mode === "selfsigned" ? "El navegador muestra una advertencia y no se pueden ver videos ni hacer descargas grandes en streaming." : "Instalá la raíz en cada equipo una sola vez."}>
+        <Row label={t("Origen")} hint={cert?.mode === "selfsigned" ? t("El navegador muestra una advertencia y no se pueden ver videos ni hacer descargas grandes en streaming.") : t("Instalá la raíz en cada equipo una sola vez.")}>
           <Status tone={cert?.mode === "selfsigned" ? "warn" : "ok"}>{modeLabel}</Status>
         </Row>
-        <Row label="Nombres" hint={cert?.subject}>
+        <Row label={t("Nombres")} hint={cert?.subject}>
           <Value>{cert?.sans.join(", ") ?? "—"}</Value>
         </Row>
-        <Row label="Vence">
+        <Row label={t("Vence")}>
           <Value>{cert ? fmtDate(cert.notAfter) : "—"}</Value>
         </Row>
-        <Row label="Huella" hint={<span className="tset-mono tset-fp">{cert?.fingerprint ?? "—"}</span>} />
+        <Row label={t("Huella")} hint={<span className="tset-mono tset-fp">{cert?.fingerprint ?? "—"}</span>} />
       </Group>
 
       {log.id && <JobLog job={log.job} lines={log.lines} failed={log.failed} />}
@@ -71,33 +71,33 @@ export function Certificate() {
       <div className="tset-actions">
         {cert?.mode !== "localca" && (
           <Button variant="primary" onClick={() => void useLocal()} disabled={log.running}>
-            <KeyRound size={14} /> Usar CA local
+            <KeyRound size={14} /> {t("Usar CA local")}
           </Button>
         )}
         {cert?.mode === "localca" && (
           <Button variant="primary" onClick={() => void download()}>
-            <Download size={14} /> Descargar certificado raíz
+            <Download size={14} /> {t("Descargar certificado raíz")}
           </Button>
         )}
       </div>
 
       {cert?.mode === "localca" && (
-        <Group title="Cómo instalarlo">
+        <Group title={t("Cómo instalarlo")}>
           <div className="tset-osteps">
             <Segmented
-              label="Sistema"
+              label={t("Sistema")}
               value={os}
               onChange={setOs}
               options={[
                 { value: "mac", label: "macOS" },
                 { value: "win", label: "Windows" },
                 { value: "linux", label: "Linux" },
-                { value: "mobile", label: "iOS y Android" },
+                { value: "mobile", label: t("iOS y Android") },
               ]}
             />
             <ol>
               {STEPS[os].map((s) => (
-                <li key={s}>{s}</li>
+                <li key={s}>{t(s)}</li>
               ))}
             </ol>
           </div>

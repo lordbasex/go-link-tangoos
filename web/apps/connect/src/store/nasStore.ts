@@ -1,6 +1,8 @@
 // "Mis NAS": NAS vinculados a este navegador. Vive en IndexedDB del origen del portal
 // (nunca en cookies: nada de Domain=.go-link.org). El device_token es la llave del vínculo.
 
+import { t } from "@tango/client";
+
 export interface LinkedNas {
   deviceId: string;
   /** Id del vínculo en el NAS (connect.link → linkId). */
@@ -83,8 +85,8 @@ export class NasStore {
   }
 
   async save(n: LinkedNas) {
-    if (!/^[0-9a-f-]{36}$/i.test(n.deviceId)) throw new Error("device_id inválido");
-    if (!n.token || !n.linkId) throw new Error("falta el token del vínculo");
+    if (!/^[0-9a-f-]{36}$/i.test(n.deviceId)) throw new Error(t("device_id inválido"));
+    if (!n.token || !n.linkId) throw new Error(t("falta el token del vínculo"));
     await this.b.put(n);
   }
 

@@ -7,7 +7,7 @@
 // 4. Inyecta los <link rel=stylesheet> y el <script type=module> del index.html del NAS, con rutas
 //    relativas a /nas-bundle/<deviceId>/ (el build del escritorio usa base "./").
 // El escritorio del NAS toma el transporte ya abierto de window.__TANGO_TRANSPORT__.
-import type { RtcTransport, Transport } from "@tango/client";
+import { t, tr, type RtcTransport, type Transport } from "@tango/client";
 import { contentType, sha256Hex, validateManifestShape, verifyManifest, type BundleManifestResult } from "./manifest";
 
 export type LoadStage = { kind: "manifest" } | { kind: "files"; done: number; total: number; bytes: number; totalBytes: number } | { kind: "mount" };
@@ -35,15 +35,15 @@ export function callerOf(t: Transport): Caller {
  * (el SW deja pasar todo lo que no sea /nas-bundle/) y se espera el `controllerchange` de clients.claim().
  */
 async function ensureServiceWorker(): Promise<void> {
-  if (!("serviceWorker" in navigator)) throw new BundleError("NO_SW", "Este navegador no admite Service Workers (hace falta para abrir el escritorio).");
+  if (!("serviceWorker" in navigator)) throw new BundleError("NO_SW", t("Este navegador no admite Service Workers (hace falta para abrir el escritorio)."));
   await navigator.serviceWorker.register("/bundle-sw.js", { scope: "/" });
   if (navigator.serviceWorker.controller) return;
   await new Promise<void>((resolve, reject) => {
-    const t = setTimeout(() => reject(new BundleError("NO_SW", "El Service Worker del portal no tomó la página.")), 10_000);
+    const timer = setTimeout(() => reject(new BundleError("NO_SW", t("El Service Worker del portal no tomó la página."))), 10_000);
     navigator.serviceWorker.addEventListener(
       "controllerchange",
       () => {
-        clearTimeout(t);
+        clearTimeout(timer);
         resolve();
       },
       { once: true },
@@ -59,13 +59,13 @@ export async function loadNasDesktop(opts: {
 }): Promise<{ version: string; mount: (root: HTMLElement) => Promise<void> }> {
   const call = callerOf(opts.transport);
   opts.onStage({ kind: "manifest" });
-  if (!opts.transport.isReal?.("bundle.manifest" as never)) throw new BundleError("NO_BUNDLE", "Este NAS todavía no entrega su escritorio por TangoConnect.");
+  if (!opts.transport.isReal?.("bundle.manifest" as never)) throw new BundleError("NO_BUNDLE", t("Este NAS todavía no entrega su escritorio por TangoConnect."));
   const r = (await call("bundle.manifest", null)) as BundleManifestResult;
-  if (!r?.signature) throw new BundleError("BAD_SIGNATURE", "El escritorio de este NAS no está firmado (build de desarrollo): no lo abrimos.");
+  if (!r?.signature) throw new BundleError("BAD_SIGNATURE", t("El escritorio de este NAS no está firmado (build de desarrollo): no lo abrimos."));
   const m = await verifyManifest(r, opts.publicKey);
-  if (!m) throw new BundleError("BAD_SIGNATURE", "La firma del escritorio no es válida: no lo abrimos.");
+  if (!m) throw new BundleError("BAD_SIGNATURE", t("La firma del escritorio no es válida: no lo abrimos."));
   const shape = validateManifestShape(m);
-  if (shape) throw new BundleError("BAD_MANIFEST", `Manifiesto inválido: ${shape}`);
+  if (shape) throw new BundleError("BAD_MANIFEST", t("Manifiesto inválido: {reason}", { reason: shape }));
 
   await ensureServiceWorker();
   const cacheName = `tangoos-bundle-${opts.deviceId}-${m.version}`;
@@ -84,9 +84,9 @@ export async function loadNasDesktop(opts: {
       try {
         body = await opts.transport.fetchBundleFile(f.path);
       } catch (e) {
-        throw new BundleError("TRANSFER", `No se pudo bajar ${f.path}: ${(e as Error).message}`);
+        throw new BundleError("TRANSFER", t("No se pudo bajar {path}: {error}", { path: f.path, error: tr((e as Error).message) }));
       }
-      if ((await sha256Hex(body)) !== f.sha256) throw new BundleError("BAD_HASH", `${f.path} no coincide con el manifiesto firmado.`);
+      if ((await sha256Hex(body)) !== f.sha256) throw new BundleError("BAD_HASH", t("{path} no coincide con el manifiesto firmado.", { path: f.path }));
       await cache.put(url, new Response(body as BodyInit, { headers: { "content-type": contentType(f.path), "x-sha256": f.sha256 } }));
     }
     bytes += body.byteLength;
@@ -111,7 +111,7 @@ export async function loadNasDesktop(opts: {
         document.head.appendChild(el);
       }
       const script = doc.querySelector<HTMLScriptElement>('script[type="module"][src]');
-      if (!script) throw new BundleError("BAD_MANIFEST", "El index.html del NAS no tiene script de entrada.");
+      if (!script) throw new BundleError("BAD_MANIFEST", t("El index.html del NAS no tiene script de entrada."));
       root.id = "root";
       await import(/* @vite-ignore */ resolve(script.getAttribute("src")!));
     },

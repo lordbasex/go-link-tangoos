@@ -64,7 +64,7 @@ var reservedVol = map[string]bool{
 	"bin": true, "boot": true, "dev": true, "etc": true, "home": true, "lib": true, "lib32": true, "lib64": true,
 	"libx32": true, "media": true, "mnt": true, "opt": true, "proc": true, "root": true, "run": true, "sbin": true,
 	"srv": true, "sys": true, "tmp": true, "usr": true, "var": true, "import": true, "lost": true, "snap": true,
-	"cluster": true,
+	"cluster": true, "tgrepl": true, "zvol": true,
 }
 
 // ValidPoolName valida el nombre de un pool. Sin guiones ni mayúsculas: así nunca

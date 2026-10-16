@@ -35,8 +35,17 @@ type Pool struct {
 	CacheDisks []string   `json:"cacheDisks"`
 	Tiers      []PoolTier `json:"tiers"`
 	Volumes    []string   `json:"volumes"`
+	LUNs       []PoolLUN  `json:"luns"` // LUN de iSCSI en un LV del grupo
 	Task       string     `json:"task,omitempty"`
 	Progress   *float64   `json:"progress,omitempty"`
+}
+
+// PoolLUN es el LV de un LUN de iSCSI (destino Name).
+type PoolLUN struct {
+	Name string `json:"name"`
+	Dev  string `json:"dev"`
+	Size uint64 `json:"size"`
+	Thin bool   `json:"thin"`
 }
 
 // PoolTier es exactamente el PoolTier de TS.
@@ -134,7 +143,7 @@ func (inv *Inventory) poolsRaw(ctx context.Context) []Pool {
 	out := []Pool{}
 	for _, p := range rep.Pools {
 		pl := Pool{ID: p.UUID, Name: p.Name, Profile: p.Profile, State: "healthy", Disks: []string{}, CacheDisks: []string{},
-			Tiers: []PoolTier{}, Volumes: []string{}}
+			Tiers: []PoolTier{}, Volumes: []string{}, LUNs: []PoolLUN{}}
 		data, cache := map[string]bool{}, map[string]bool{}
 		for _, pv := range p.PVs {
 			if pv.Role == "cache" {
@@ -185,6 +194,9 @@ func (inv *Inventory) poolsRaw(ctx context.Context) []Pool {
 		sort.Strings(pl.CacheDisks)
 		for _, lv := range p.LVs {
 			pl.Volumes = append(pl.Volumes, lv.UUID)
+		}
+		for _, l := range p.LUNs {
+			pl.LUNs = append(pl.LUNs, PoolLUN{Name: l.Name, Dev: l.Dev, Size: l.Size, Thin: l.Thin})
 		}
 		out = append(out, pl)
 	}

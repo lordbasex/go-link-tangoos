@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -155,7 +156,18 @@ func TestValidate(t *testing.T) {
 	if err != nil || args[len(args)-1] != "192.168.1.50/24,192.168.1.1,192.168.1.1" {
 		t.Fatalf("IP fija: %v %v", args, err)
 	}
+	tz := ok
+	tz.Timezone = "America/Sao_Paulo"
+	if args, err = Validate(tz, disks); err != nil || !strings.HasSuffix(strings.Join(args, " "), "--timezone America/Sao_Paulo") {
+		t.Fatalf("zona horaria: %v %v", args, err)
+	}
+	if z := Timezones(); !slices.Contains(z, "UTC") || !slices.Contains(z, "America/Argentina/Buenos_Aires") || !slices.IsSorted(z) {
+		t.Fatalf("zonas: %d", len(z))
+	}
 	bad := map[string]func(r *Request){
+		"zona inventada":     func(r *Request) { r.Timezone = "Mars/Olympus" },
+		"zona con ruta":      func(r *Request) { r.Timezone = "../../etc/passwd" },
+		"zona relativa":      func(r *Request) { r.Timezone = "America/../../x" },
 		"disco ajeno":        func(r *Request) { r.Disk, r.Confirm = "/dev/sr0", "/dev/sr0" },
 		"sin confirmar":      func(r *Request) { r.Confirm = "" },
 		"confirma otro":      func(r *Request) { r.Confirm = "/dev/sdb" },

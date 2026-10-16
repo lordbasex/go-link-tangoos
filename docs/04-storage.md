@@ -209,7 +209,9 @@ Quotas on Btrfs volumes, native Btrfs RAID1 (ADR 0004), scheduled scrub of md/Bt
 - **Packages:** `lvm2`, `cryptsetup-bin`, `thin-provisioning-tools` (`cache_check`) are dependencies, `xfsprogs` recommended;
   `/usr/lib/modules-load.d/tangoos.conf` loads `dm_crypt`, `dm_cache`, `dm_cache_smq` at boot (the agent runs with
   `ProtectKernelModules=yes`, so LVM cannot `modprobe` them; found in the lab).
-- **Limits today:** an LV-backed iSCSI LUN is not offered (LUNs are still files on Btrfs); hybrid growth requires the new
+- **iSCSI on an LV:** a target can live in a logical volume `il_<name>` of a storage pool (thick, or thin in the pool's
+  `il_thin` thin pool), exported with an `iblock` backstore; the LV is created with the target and removed with it.
+- **Limits today:** hybrid growth requires the new
   disk to be at least as large as the largest one; one SSD cache per volume; the key file stays on the device when the key
   slot is removed (it no longer opens anything).
 
@@ -234,8 +236,17 @@ Quotas on Btrfs volumes, native Btrfs RAID1 (ADR 0004), scheduled scrub of md/Bt
   (see ADR 0013); the scheduler, retention, Files versions and `vfs_shadow_copy2` are unchanged.
 - **Encryption:** per volume, `aes-256-gcm`, passphrase through stdin in the agent; lock = unmount + `unload-key`; after a
   reboot the volume stays locked until unlocked (tested with a real reboot); 5 wrong tries → 10 min lockout.
+- **USB key (ADR 0016):** the stick holds an X25519 key and the volume the passphrase sealed for it (`tangoos:keyseal`,
+  `tangoos:keydev`). With the stick plugged in at boot the volume unlocks by itself (the same loop as LUKS); the
+  passphrase still opens it anywhere. Changing the passphrase re-seals it; a lost stick is revoked by removing the key
+  and then changing the passphrase.
+- **Replication (ADR 0016):** Storage → Replication. A task sends a volume to another ZFS pool of this NAS or to another
+  TangoOS linked with a code and its fingerprint (TLS on TCP 24020, only while that NAS has "Receive replicas" on). Every
+  dataset travels raw and separately: encrypted volumes stay encrypted, a cut transfer resumes, the first run copies the
+  snapshots' history and the next ones only the changes. Replicas live unmounted in `<pool>/tgrepl/<origin>/<vol>` and
+  can be converted into a normal volume (disaster recovery).
 - **GlusterFS bricks on ZFS:** a ZFS volume named `volumeN` qualifies as a brick origin as is (docs/17 §4): the brick
   directory inherits `xattr=sa` and `acltype=posixacl` from the pool.
-- **Limits today:** no `zfs send` replication; no key file on a USB device for ZFS volumes (passphrase only); dRAID and
+- **Limits today:** replicas mirror the source's snapshots (no separate retention on the target); dRAID and
   special/dedup vdevs are not offered; adding a vdev requires the pool's shape (mixed pools are shown but not grown).
 

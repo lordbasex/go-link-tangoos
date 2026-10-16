@@ -3,11 +3,12 @@
 // Se entra y se sale con recarga completa (no con navegación SPA): la red queda bloqueada y los
 // estilos del escritorio no se mezclan con los del sitio.
 import { useEffect, useRef, useState } from "react";
+import { t, tr } from "@tango/client";
 
 /** Corta toda salida de red de la página mientras dura la demo. */
 export function blockNetwork() {
   const deny = () => {
-    throw new Error("Demo: sin red");
+    throw new Error(t("Demo: sin red"));
   };
   const w = window as unknown as Record<string, unknown>;
   w.WebSocket = function DemoWebSocket() {
@@ -23,7 +24,7 @@ export function blockNetwork() {
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, location.href);
     // Solo archivos propios del sitio (chunks, fuentes, imágenes): nunca otro origen.
-    if (url.origin !== location.origin) return Promise.reject(new TypeError("Demo: sin red"));
+    if (url.origin !== location.origin) return Promise.reject(new TypeError(t("Demo: sin red")));
     return realFetch(input, init);
   };
   navigator.sendBeacon = () => false;
@@ -38,8 +39,8 @@ export function Demo() {
     Promise.all([import("../desktop/mountDesktop"), import("@tango/client")])
       .then(([{ mountTangoDesktop }, { MockTransport }]) => {
         if (cancelled || !host.current) return;
-        const t = new MockTransport("lab");
-        mountTangoDesktop(host.current, t, { skipLogin: { name: "federico", full: "Federico Pereira", color: "#2F7CF6" } });
+        const mock = new MockTransport("lab");
+        mountTangoDesktop(host.current, mock, { skipLogin: { name: "federico", full: "Federico Pereira", color: "#2F7CF6" } });
       })
       .catch((e: Error) => setError(e.message));
     return () => {
@@ -49,10 +50,10 @@ export function Demo() {
   return (
     <>
       <div className="tc-demo-pill" role="note">
-        <span>Demo: datos simulados en tu navegador</span>
-        <a href="/">Conectá tu NAS</a>
+        <span>{t("Demo: datos simulados en tu navegador")}</span>
+        <a href="/">{t("Conectá tu NAS")}</a>
       </div>
-      {error && <p className="tc-banner">No se pudo abrir la demo: {error}</p>}
+      {error && <p className="tc-banner">{t("No se pudo abrir la demo: {error}", { error: tr(error) })}</p>}
       <div className="tc-desktop-host" ref={host} />
     </>
   );
