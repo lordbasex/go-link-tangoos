@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"os"
@@ -111,33 +112,17 @@ func registerGluster2(r *agentproto.Registry, log *slog.Logger) {
 	})
 
 	agentproto.Register(r, agentproto.OpGlusterQuota, validateGlusterQuota, func(ctx context.Context, a *agentproto.GlusterQuotaArgs) (any, *agentproto.Error) {
-		args, _ := gluster.ArgsQuota(a.Name, a.Op, a.Path, a.Limit)
-		// Las cuotas usan un montaje auxiliar del volumen (red y mount): fuera del sandbox.
-		out, err := runGlusterUnit(ctx, "tango-gluster-quota", args)
+		if a.Op == "enable" || a.Op == "disable" {
+			if err := glusterQuotaOn(ctx, a.Name, a.Op == "enable"); err != nil {
+				return nil, glusterAgentErr(err)
+			}
+			a = &agentproto.GlusterQuotaArgs{Name: a.Name, Op: "list"}
+		}
+		res, err := runSquotaHelper(ctx, a)
 		if err != nil {
 			return nil, glusterAgentErr(err)
 		}
-		if a.Op == "list" {
-			q, err := gluster.ParseQuota(out)
-			if err != nil {
-				if strings.Contains(err.Error(), "not enabled") {
-					return []gluster.Quota{}, nil
-				}
-				return nil, glusterAgentErr(err)
-			}
-			return q, nil
-		}
-		if err := gluster.ParseResult(out, 0); err != nil {
-			return nil, glusterAgentErr(err)
-		}
-		// GlusterFS 11 cuenta el uso pero deja pasar las escrituras
-		// (feature.simple-quota-pass-through=true por defecto): sin esto, la cuota no frena.
-		if a.Op == "enable" {
-			if err := glusterDo(ctx, gluster.ArgsQuotaEnforce(a.Name)); err != nil {
-				return nil, glusterAgentErr(err)
-			}
-		}
-		return struct{}{}, nil
+		return res, nil
 	})
 
 	agentproto.Register(r, agentproto.OpGlusterRebalance, validateGlusterRebalance, func(ctx context.Context, a *agentproto.GlusterRebalanceArgs) (any, *agentproto.Error) {
@@ -211,6 +196,58 @@ func restartUnit(ctx context.Context, unit string) error {
 
 // runGlusterUnit corre `gluster --mode=script --xml <args>` en una unidad transitoria
 // (red del host y montajes auxiliares) y devuelve su salida XML.
+// glusterQuotaOn prende o apaga simple-quota. Un volumen con la cuota clásica de antes
+// (features.quota) la apaga primero: no frena y su montaje auxiliar traba remove-brick.
+func glusterQuotaOn(ctx context.Context, vol string, on bool) error {
+	if out, code, err := runGluster(ctx, "volume", "info", vol); err == nil && gluster.ParseResult(out, code) == nil {
+		if vs, err := gluster.ParseVolumes(out, nil); err == nil && len(vs) == 1 && vs[0].Options["features.quota"] == "on" {
+			// la cuota clásica usa un montaje auxiliar del volumen: fuera del sandbox
+			out, err := runGlusterUnit(ctx, "tango-gluster-quota", []string{"volume", "quota", vol, "disable"})
+			if err != nil {
+				return err
+			}
+			if err := gluster.ParseResult(out, 0); err != nil {
+				return err
+			}
+		}
+	}
+	for _, args := range gluster.ArgsQuotaOn(vol, on) {
+		if err := glusterDo(ctx, args); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// runSquotaHelper corre el ayudante de cuotas (squota_helper_linux.go) y lee su RESULT.
+func runSquotaHelper(ctx context.Context, a *agentproto.GlusterQuotaArgs) (*gluster.QuotaResult, error) {
+	var rb [4]byte
+	_, _ = rand.Read(rb[:])
+	id := "squota-" + hex.EncodeToString(rb[:])
+	var res *gluster.QuotaResult
+	var last string
+	err := runHelperJSON(ctx, func(float64, string) {}, "gluster-squota", id, a, func(l string) {
+		if b, ok := strings.CutPrefix(l, "RESULT "); ok {
+			var r gluster.QuotaResult
+			if json.Unmarshal([]byte(b), &r) == nil {
+				res = &r
+			}
+		} else if strings.TrimSpace(l) != "" && !strings.HasPrefix(l, "STAGE ") {
+			last = strings.TrimSpace(l)
+		}
+	})
+	if err != nil || res == nil {
+		if last != "" {
+			return nil, errors.New(last)
+		}
+		if err == nil {
+			err = errors.New("el ayudante de cuotas no devolvió resultado")
+		}
+		return nil, err
+	}
+	return res, nil
+}
+
 func runGlusterUnit(ctx context.Context, unit string, args []string) ([]byte, error) {
 	if !glusterInstalled() {
 		return nil, errGlusterMissing

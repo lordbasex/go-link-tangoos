@@ -284,6 +284,34 @@ Product bugs found and fixed by this battery:
   mountpoint, which then made a new volume with that name "in use" (found by the reboot run).
 - OpenZFS ≥ 2.2 reports `xattr=sa` as `on` (alias).
 
+## Cluster: CA rotation, quotas with simple-quota (2026-10-16)
+
+Same lab, rebuilt (VMs 112–114). `make e2e-cluster2`: **15/15 subtests pass (281 s)**, with the branch build
+installed on the three nodes (`tests/cluster-deploy.sh` now forces `--reinstall`: with the same version apt skipped the
+new package and an earlier run tested the old agent).
+
+| Step | Result |
+|---|---|
+| Quotas on a replica 3 (TLS, XFS thin bricks) | `/datos` already has files and a subfolder opened before the limit: the limit starts a count job (bricks restart one node at a time, heal between), the listing shows the existing 3 MB, writes in the subfolder stop at the 4th 5 MB block (`Disk quota exceeded`), "full" at 99 %; removing the limit lets writes through; an empty folder needs no job; `/datos/x` refused (top level only) |
+| Quotas on the distributed volume (2×3 after adding folder bricks) | the new bricks get the namespace and the limit from the listing; with the total shared on every listing a 30 MB limit stops writes before 45 MB |
+| Users after adding bricks | can still write in the volume (the root permissions are put back) |
+| Remove the set with quotas on | `remove-brick commit` ok (no auxiliary quota mount any more) |
+| CA rotation (row 29) | after removing n3, rotate with TLS on and `gv_rev` mounted: new CA on every node, node fingerprints unchanged, pending list empty, n3's and n1's old certificates refused on 24010 and by the bricks, file intact |
+
+Product bugs found and fixed:
+
+- **Quotas did not stop writes** (any volume): the classic quota accounted but never enforced, and turning
+  simple-quota's pass-through off alone does nothing, because simple-quota only limits namespaces, which TangoOS never
+  marked. Moved to simple-quota (ADR 0015); limits are kept in the volume option `user.tango.quotas`.
+- **After `add-brick` the volume root became `000`** on every brick (GlusterFS heals the root from the new brick and
+  clears the ACL mask): users could no longer open any folder. TangoOS puts back the share permissions on the root when
+  the job ends (`gluster.mount` `action: acl`).
+- **A volume exported by NFS could not be unmounted after the export was removed**: `knfsd` kept it busy.
+  `exportfs -f` after `exportfs -ra`.
+
+Seen once and not reproduced in 3 later runs: `remove-brick commit` failed on one node, which had stayed one volume
+version behind (`version=29` vs 30); restarting its glusterd resynced it and the commit went through.
+
 ## Cluster, second stage: TLS, dedicated bricks, brick operations, quotas, snapshots, NFS (2026-10-15)
 
 `make e2e-cluster2 CLUSTER=172.17.0.48,172.17.0.49,172.17.0.50` (resets the three lab VMs 112–114 first; each has
@@ -298,7 +326,7 @@ Product bugs found and fixed by this battery:
 | Mount on two nodes with an SMB share | the `tg-clustertls-rw` GID is the same on both nodes (fixed, ≥ 60000) |
 | Turn TLS on (controlled stop) with the volume mounted and in use | 21 s; `secure-access` and certificates on all nodes, `client.ssl`/`server.ssl` on, `auth.ssl-allow` = 3 CNs, remounted where it was, 40 files intact |
 | Traffic encrypted, no certificate no entry | tcpdump of ~440 KB of brick traffic while writing a marker: no plaintext; `openssl s_client` to 24007 shows the cluster CA; a client without certificate is cut at the brick handshake |
-| Quotas | enable, limit `/datos` 20 MB, list, remove, disable: ok. **Enforcement: not on this TLS + XFS volume** (GlusterFS reports 0 used); on a folder brick without TLS it stops writes at the limit (manual) — pending, docs/17 §6 |
+| Quotas | see "Cluster quotas with simple-quota" below (2026-10-16) |
 | Add a replica set (folder bricks), rebalance, remove the set (start → status → commit) | 1×3 → 2×3 → 1×3, rebalance and migration reach "completed", file count unchanged |
 | Snapshot, delete data, restore | restore refused while started (`VOLUME_STARTED`); after stop + restore + start the 40 files are back; bricks become `snap` |
 | Replace a brick (restored brick on node 3 → folder on `volume2`) | healed: 40 files in the new brick |
@@ -320,7 +348,8 @@ Product bugs found and fixed by this battery:
 - The brick mount unit was `RequiredBy=glusterd`: stopping it (cleaning an orphan) **stopped glusterd**. Now `WantedBy`.
 - After restoring a snapshot GlusterFS runs the volume on `/run/gluster/snaps/<id>/brickN/brick`: accepted as a brick
   form; the unused LV is an orphan and its snapshot LVs are cleaned with it.
-- GlusterFS 11 quotas only account by default: TangoOS sets `feature.simple-quota-pass-through=false`.
+- GlusterFS 11 quotas only account by default: TangoOS sets `feature.simple-quota-pass-through=false` (not enough:
+  replaced by simple-quota namespaces, ADR 0015, below).
 - `Another transaction is in progress` while other nodes poll the status: management operations retry.
 - A just-joined node stays "Accepted peer request" for seconds: volume creation answers `PEER_JOINING` instead of failing.
 - A FUSE mount that exists but does not answer is redone; mounting waits until the new mount answers.

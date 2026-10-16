@@ -549,6 +549,9 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 	unitPath := filepath.Join("/etc/systemd/system", unit)
 	mnt := gluster.MountPath(a.Name)
 	prevShare := glusterShares()[mnt]
+	if a.Action == "acl" {
+		return glusterRootACL(ctx, mnt, prevShare, log)
+	}
 
 	// La carpeta SMB se saca antes de desmontar (y si cambió de nombre).
 	if a.Action == "" && prevShare != "" && prevShare != a.Share {
@@ -671,6 +674,27 @@ func glusterMount(ctx context.Context, a *agentproto.GlusterMountArgs, log *slog
 		}
 		log.Warn("gluster smb", "err", err, "output", execOutput(err))
 		return nil, agentproto.Errf(agentproto.CodeFailed, "Samba rechazó la configuración")
+	}
+	return struct{}{}, nil
+}
+
+// glusterRootACL vuelve a poner los permisos de la carpeta SMB en la raíz del volumen
+// montado (sin carpeta SMB o sin montar no hay nada que poner).
+func glusterRootACL(ctx context.Context, mnt, share string, log *slog.Logger) (any, *agentproto.Error) {
+	if share == "" || !isMountedAt(mnt) {
+		return struct{}{}, nil
+	}
+	rwG, roG := diskops.ShareGroups(share)
+	rwGID, err := diskops.EnsureClusterGroup(ctx, rwG)
+	if err != nil {
+		return nil, userErr(err, log)
+	}
+	roGID, err := diskops.EnsureClusterGroup(ctx, roG)
+	if err != nil {
+		return nil, userErr(err, log)
+	}
+	if err := diskops.ApplyShareRootACL(mnt, rwGID, roGID); err != nil {
+		return nil, agentproto.Errf(agentproto.CodeFailed, "no se pudieron aplicar los permisos: %v", err)
 	}
 	return struct{}{}, nil
 }

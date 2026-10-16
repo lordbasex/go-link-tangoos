@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -131,51 +132,112 @@ func ArgsSetManaged(vol, key, val string) ([]string, error) {
 }
 
 // ---- Cuotas ---------------------------------------------------------------------------
+//
+// GlusterFS 11 trae dos cuotas. La clásica (`volume quota enable`: marker, quotad y un
+// montaje auxiliar de glusterd) cuenta el uso pero no frena las escrituras en estos
+// volúmenes, y su montaje auxiliar traba `remove-brick commit`. TangoOS usa la nueva,
+// simple-quota (ADR 0015): cada carpeta con límite es un "namespace" del volumen y cada
+// brick cuenta lo que se escribe en ella y frena al pasarse. Se maneja con xattrs desde
+// un montaje con el pid de cliente del ayudante de cuotas (QuotaHelperPID).
 
-var quotaPathRe = regexp.MustCompile(`^/([A-Za-z0-9][A-Za-z0-9 ._-]{0,63})(/[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}){0,7}$`)
+// Atributos de simple-quota y del namespace.
+const (
+	NamespaceXattr  = "trusted.glusterfs.namespace"
+	QuotaLimitXattr = "trusted.gfs.squota.limit"
+	QuotaSizeXattr  = "trusted.gfs.squota.size"
+	// QuotaResetXattr hace que cada brick vuelva a leer el uso de su disco.
+	QuotaResetXattr = "glusterfs.quota.reset"
+	// QuotaTotalXattr le da a cada brick el uso total de un volumen distribuido.
+	QuotaTotalXattr = "glusterfs.quota.total-usage"
+	// QuotaHelperPID (GF_CLIENT_PID_QUOTA_HELPER): con este pid el montaje puede marcar
+	// namespaces y su statfs guarda en disco el uso que cada brick tiene en memoria.
+	QuotaHelperPID = -14
+	// QuotaSoftPercent: desde dónde la app avisa (simple-quota no tiene límite blando).
+	QuotaSoftPercent = 80
+	// QuotaNoLimit es lo que se escribe en memoria al quitar un límite: simple-quota
+	// ignora un límite 0 hasta que el brick reinicia.
+	QuotaNoLimit = 1 << 62
+)
 
-// ValidQuotaPath valida un directorio del volumen (/carpeta[/sub…]); nunca la raíz con "..".
-func ValidQuotaPath(p string) error {
-	if p == "/" {
-		return nil
+// QuotaOption guarda los límites en el volumen ("/Docs=1073741824/Fotos=…"): es lo que
+// vale. Los xattrs de cada brick se vuelven a poner en cada listado, así los bricks que se
+// agregan después también los tienen.
+const QuotaOption = "user.tango.quotas"
+
+// ParseQuotaOption lee QuotaOption (carpeta → límite); ignora lo que no entiende.
+func ParseQuotaOption(v string) map[string]uint64 {
+	out := map[string]uint64{}
+	for _, it := range strings.Split(v, "/") {
+		name, n, ok := strings.Cut(it, "=")
+		l, err := strconv.ParseUint(n, 10, 64)
+		if ok && err == nil && ValidQuotaPath("/"+name) == nil && ValidQuotaLimit(l) == nil {
+			out["/"+name] = l
+		}
 	}
+	return out
+}
+
+// FormatQuotaOption es el valor de QuotaOption, ordenado ("" sin límites).
+func FormatQuotaOption(m map[string]uint64) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		fmt.Fprintf(&b, "%s=%d", k, m[k])
+	}
+	return b.String()
+}
+
+var quotaPathRe = regexp.MustCompile(`^/[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$`)
+
+// ValidQuotaPath valida una carpeta de primer nivel del volumen (/Documentos). Solo
+// primer nivel: un namespace adentro de otro saca su uso del de arriba.
+func ValidQuotaPath(p string) error {
 	if !quotaPathRe.MatchString(p) || strings.Contains(p, "..") {
-		return fmt.Errorf("directorio inválido: %q (por ejemplo /Documentos)", p)
+		return fmt.Errorf("carpeta inválida: %q (una carpeta de primer nivel, por ejemplo /Documentos)", p)
 	}
 	return nil
 }
 
-// ArgsQuota arma las operaciones de cuota: enable, disable, limit (bytes), remove, list.
-func ArgsQuota(vol, op, path string, limit uint64) ([]string, error) {
-	switch op {
-	case "enable", "disable":
-		return []string{"volume", "quota", vol, op}, nil
-	case "list":
-		return []string{"volume", "quota", vol, "list"}, nil
-	case "limit":
-		if err := ValidQuotaPath(path); err != nil {
-			return nil, err
-		}
-		if limit < 1<<20 || limit > 1<<50 {
-			return nil, fmt.Errorf("el límite tiene que estar entre 1 MB y 1 PB")
-		}
-		return []string{"volume", "quota", vol, "limit-usage", path, strconv.FormatUint(limit, 10) + "B"}, nil
-	case "remove":
-		if err := ValidQuotaPath(path); err != nil {
-			return nil, err
-		}
-		return []string{"volume", "quota", vol, "remove", path}, nil
+// ValidQuotaLimit: entre 1 MB y 1 PB.
+func ValidQuotaLimit(limit uint64) error {
+	if limit < 1<<20 || limit > 1<<50 {
+		return fmt.Errorf("el límite tiene que estar entre 1 MB y 1 PB")
 	}
-	return nil, fmt.Errorf("operación de cuota inválida: %q", op)
+	return nil
 }
 
-// ArgsQuotaEnforce hace que GlusterFS 11 aplique los límites: por defecto el traductor de
-// cuotas solo cuenta el uso (feature.simple-quota-pass-through=true).
-func ArgsQuotaEnforce(vol string) []string {
-	return []string{"volume", "set", vol, "feature.simple-quota-pass-through", "false"}
+// ArgsQuotaOn prende o apaga la aplicación de los límites (los límites quedan guardados).
+func ArgsQuotaOn(vol string, on bool) [][]string {
+	if !on {
+		return [][]string{{"volume", "set", vol, "feature.simple-quota-pass-through", "true"}}
+	}
+	return [][]string{
+		{"volume", "set", vol, "features.tag-namespaces", "on"},
+		{"volume", "set", vol, "feature.simple-quota-pass-through", "false"},
+	}
 }
 
-// Quota es el límite de un directorio.
+// QuotaOn dice si el volumen aplica cuotas (simple-quota sin pass-through).
+func QuotaOn(opts map[string]string) bool {
+	return opts["feature.simple-quota-pass-through"] == "false" && opts["features.tag-namespaces"] == "on"
+}
+
+// QuotaHelperMount es el comando que monta el volumen como ayudante de cuotas.
+func QuotaHelperMount(vol, dir string) []string {
+	return []string{"/usr/sbin/glusterfs", "--process-name", "fuse", "-s", "localhost", "--volfile-id", vol,
+		"--client-pid=" + strconv.Itoa(QuotaHelperPID), "-l", "/var/log/glusterfs/tango-squota-" + vol + ".log", dir}
+}
+
+// ParseXattrInt lee un número de un xattr de simple-quota (texto, a veces con NUL).
+func ParseXattrInt(b []byte) (int64, error) {
+	return strconv.ParseInt(strings.TrimRight(strings.TrimSpace(string(b)), "\x00"), 10, 64)
+}
+
+// Quota es el límite de una carpeta.
 type Quota struct {
 	Path        string `json:"path"`
 	Limit       uint64 `json:"limit"`
@@ -186,29 +248,33 @@ type Quota struct {
 	HardOver    bool   `json:"hardOver"`
 }
 
-// ParseQuota lee `volume quota <vol> list`.
-func ParseQuota(b []byte) ([]Quota, error) {
-	var o struct {
-		Limits []struct {
-			Path   string `xml:"path"`
-			Hard   uint64 `xml:"hard_limit"`
-			SoftP  string `xml:"soft_limit_percent"`
-			Used   uint64 `xml:"used_space"`
-			Avail  uint64 `xml:"avail_space"`
-			SoftEx string `xml:"sl_exceeded"`
-			HardEx string `xml:"hl_exceeded"`
-		} `xml:"volQuota>limit"`
+// NewQuota arma la fila de una carpeta con su límite y su uso.
+func NewQuota(path string, limit, used uint64) Quota {
+	q := Quota{Path: path, Limit: limit, SoftPercent: QuotaSoftPercent, Used: used}
+	if used < limit {
+		q.Avail = limit - used
 	}
-	if err := decode(b, &o); err != nil {
-		return nil, err
+	q.SoftOver = used*100 >= limit*QuotaSoftPercent
+	// simple-quota frena la escritura que se pasaría: el uso queda apenas debajo del límite.
+	q.HardOver = used*100 >= limit*99
+	return q
+}
+
+// QuotaResult es lo que devuelve el agente: los límites y, al poner uno, si la carpeta
+// ya tenía contenido (hay que contarlo y reiniciar los bricks).
+type QuotaResult struct {
+	Quotas   []Quota `json:"quotas"`
+	NonEmpty bool    `json:"nonEmpty,omitempty"`
+}
+
+// NodeUUID lee el UUID de este nodo de /var/lib/glusterd/glusterd.info.
+func NodeUUID(info []byte) string {
+	for _, l := range strings.Split(string(info), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "UUID="); ok {
+			return v
+		}
 	}
-	out := []Quota{}
-	for _, l := range o.Limits {
-		sp, _ := strconv.Atoi(strings.TrimSuffix(l.SoftP, "%"))
-		out = append(out, Quota{Path: l.Path, Limit: l.Hard, SoftPercent: sp, Used: l.Used, Avail: l.Avail,
-			SoftOver: strings.EqualFold(l.SoftEx, "yes"), HardOver: strings.EqualFold(l.HardEx, "yes")})
-	}
-	return out, nil
+	return ""
 }
 
 // ---- Rebalance y remove-brick ---------------------------------------------------------

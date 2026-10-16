@@ -79,6 +79,12 @@ func runM4Helper(task string, args []string) error {
 			return err
 		}
 		return helperGlusterInstall(ctx, &a)
+	case "gluster-squota":
+		var a agentproto.GlusterQuotaArgs
+		if err := readArgs(args, &a); err != nil {
+			return err
+		}
+		return helperSquota(ctx, &a)
 	case "iscsi-apply":
 		var a agentproto.ISCSIApplyArgs
 		if err := readArgs(args, &a); err != nil {

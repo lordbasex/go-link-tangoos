@@ -29,7 +29,7 @@ type clusterAgent2 interface {
 	GlusterTLS(ctx context.Context, a agentproto.GlusterTLSArgs) (*agentproto.GlusterTLSState, error)
 	GlusterVolumeTLS(ctx context.Context, a agentproto.GlusterVolumeTLSArgs) error
 	GlusterBrickLV(ctx context.Context, a agentproto.GlusterBrickLVArgs) (*agentproto.GlusterBrickLVResult, error)
-	GlusterQuota(ctx context.Context, a agentproto.GlusterQuotaArgs) ([]gluster.Quota, error)
+	GlusterQuota(ctx context.Context, a agentproto.GlusterQuotaArgs) (*gluster.QuotaResult, error)
 	GlusterRebalance(ctx context.Context, a agentproto.GlusterRebalanceArgs) (*gluster.Task, error)
 	GlusterBricksTask(ctx context.Context, a agentproto.GlusterBricksArgs) (*gluster.Task, error)
 	GlusterSnapshot(ctx context.Context, a agentproto.GlusterSnapshotArgs) ([]gluster.Snapshot, error)
@@ -193,6 +193,7 @@ func (c *clusterAPI) localMounts(ctx context.Context, q ctlMountsReq) ([]string,
 		switch {
 		case q.Op == "stop" && m.Mounted:
 		case q.Op == "start" && slices.Contains(q.Names, m.Name):
+		case q.Op == "acl" && slices.Contains(q.Names, m.Name) && m.Mounted && m.Share != "":
 		default:
 			continue
 		}
@@ -628,6 +629,31 @@ func (c *clusterAPI) restoreMounts(ctx context.Context, mounted map[string][]str
 	}
 }
 
+// reapplyRootACL: al agregar bricks, GlusterFS cura la raíz del volumen con el modo del
+// brick nuevo (000) y deja a los usuarios afuera. Cada nodo que lo tiene montado con una
+// carpeta SMB vuelve a poner sus permisos (alcanza con uno: quedan en GlusterFS).
+func (c *clusterAPI) reapplyRootACL(ctx context.Context, vol string) {
+	st, err := c.agentStatus(ctx, true)
+	if err != nil {
+		return
+	}
+	time.Sleep(3 * time.Second) // que los clientes FUSE tomen el volumen con los bricks nuevos
+	for _, p := range st.Peers {
+		if !p.Connected && !p.Self {
+			continue
+		}
+		q := ctlMountsReq{Op: "acl", Names: []string{vol}}
+		if p.Self {
+			_, err = c.localMounts(ctx, q)
+		} else {
+			_, err = c.nodeMounts(ctx, p.Host, q)
+		}
+		if err != nil {
+			c.m.a.d.Log.Warn("cluster: permisos de la raíz", "host", p.Host, "vol", vol, "err", err)
+		}
+	}
+}
+
 // waitPeers espera que n nodos (sin contar este) estén conectados.
 func (c *clusterAPI) waitPeers(ctx context.Context, n int, max time.Duration) error {
 	deadline := time.Now().Add(max)
@@ -819,6 +845,8 @@ func (c *clusterAPI) register2(r *rtcrpc.Router, admin func(fn func(ctx context.
 				undo()
 				return agentErr(err)
 			}
+			h.Update(0.9, "Restableciendo los permisos de la raíz")
+			c.reapplyRootACL(ctx, q.Name)
 			return nil
 		}, nil)
 		return map[string]string{"job": j.ID}, nil
@@ -891,28 +919,7 @@ func (c *clusterAPI) register2(r *rtcrpc.Router, admin func(fn func(ctx context.
 		return map[string]any{"task": t}, nil
 	}))
 
-	r.Handle("cluster.volume.quota", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
-		var q agentproto.GlusterQuotaArgs
-		if err := decode(p, &q); err != nil {
-			return nil, err
-		}
-		ag2, err := c.ag2()
-		if err != nil {
-			return nil, err
-		}
-		list, err := ag2.GlusterQuota(ctx, q)
-		if err != nil {
-			return nil, agentErr(err)
-		}
-		if q.Op != "list" {
-			c.publish(ctx)
-			list, _ = ag2.GlusterQuota(ctx, agentproto.GlusterQuotaArgs{Name: q.Name, Op: "list"})
-		}
-		if list == nil {
-			list = []gluster.Quota{}
-		}
-		return map[string]any{"quotas": list}, nil
-	}))
+	c.quotaRoutes(r, admin, decode)
 
 	r.Handle("cluster.volume.snapshot", admin(func(ctx context.Context, p json.RawMessage) (any, error) {
 		var q agentproto.GlusterSnapshotArgs

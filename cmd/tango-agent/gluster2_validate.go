@@ -110,7 +110,25 @@ func validateGlusterQuota(a *agentproto.GlusterQuotaArgs) *agentproto.Error {
 	if err := gluster.ValidVolumeName(a.Name); err != nil {
 		return badArgs(err)
 	}
-	if _, err := gluster.ArgsQuota(a.Name, a.Op, a.Path, a.Limit); err != nil {
+	switch a.Op {
+	case "enable", "disable", "list":
+		if a.Path != "" || a.Limit != 0 || a.Restart {
+			return agentproto.Errf(agentproto.CodeInvalidArgs, "argumentos de más para %s", a.Op)
+		}
+		return nil
+	case "limit":
+		if err := gluster.ValidQuotaLimit(a.Limit); err != nil {
+			return badArgs(err)
+		}
+	case "remove":
+	case "count", "reset": // sin carpeta: todas las que tienen límite
+		if a.Path == "" {
+			return nil
+		}
+	default:
+		return agentproto.Errf(agentproto.CodeInvalidArgs, "operación de cuota inválida: %q", a.Op)
+	}
+	if err := gluster.ValidQuotaPath(a.Path); err != nil {
 		return badArgs(err)
 	}
 	return nil

@@ -12,4 +12,4 @@ for n in 1 2 3; do
 	scp -q -i "$K" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -- "$deb" "root@$ip:/tmp/tangoos.deb" &
 done
 wait
-"$(dirname "$0")/cluster-ssh.sh" all 'DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends --allow-downgrades /tmp/tangoos.deb >/dev/null 2>&1 && echo "$(dpkg-query -W -f="\${Version}" tangoos) tangod=$(systemctl is-active tangod)"'
+"$(dirname "$0")/cluster-ssh.sh" all 'DEBIAN_FRONTEND=noninteractive apt-get install -y -q --reinstall --no-install-recommends --allow-downgrades /tmp/tangoos.deb >/dev/null 2>&1 && echo "$(dpkg-query -W -f="\${Version}" tangoos) tangod=$(systemctl is-active tangod)"'

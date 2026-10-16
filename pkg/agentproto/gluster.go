@@ -131,7 +131,8 @@ type GlusterBricksArgs struct {
 // lo publica por SMB con los permisos de TangoOS (grupos tg-<carpeta>-rw/-ro).
 type GlusterMountArgs struct {
 	// Action "stop" o "start" solo detiene o arranca el montaje ya configurado (sin tocar
-	// la carpeta SMB): lo usa la parada controlada al prender o apagar TLS.
+	// la carpeta SMB): lo usa la parada controlada al prender o apagar TLS. "acl" vuelve a
+	// poner los permisos de la carpeta SMB en la raíz (GlusterFS los pierde al agregar bricks).
 	Action  string   `json:"action,omitempty"`
 	Name    string   `json:"name"`
 	Enabled bool     `json:"enabled"`

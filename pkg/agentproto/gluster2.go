@@ -81,12 +81,16 @@ type GlusterLVBrick struct {
 	Snaps int `json:"snaps"`
 }
 
-// GlusterQuotaArgs: Op enable | disable | limit | remove | list.
+// GlusterQuotaArgs: Op enable | disable | limit | remove | list (los de la app) y
+// count | reset (los arma el clúster). count cuenta en los bricks de este nodo lo que ya
+// hay en Path (o en todas las carpetas con límite), reiniciándolos antes si Restart;
+// reset hace que los bricks vuelvan a leer ese uso.
 type GlusterQuotaArgs struct {
-	Name  string `json:"name"`
-	Op    string `json:"op"`
-	Path  string `json:"path"`
-	Limit uint64 `json:"limit"`
+	Name    string `json:"name"`
+	Op      string `json:"op"`
+	Path    string `json:"path"`
+	Limit   uint64 `json:"limit"`
+	Restart bool   `json:"restart,omitempty"`
 }
 
 // GlusterRebalanceArgs: Action start | status | stop.

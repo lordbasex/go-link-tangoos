@@ -734,14 +734,16 @@ func (c *clusterAPI) publish(ctx context.Context) {
 func (c *clusterAPI) loop() {
 	t := time.NewTicker(20 * time.Second)
 	defer t.Stop()
-	for range t.C {
+	for n := 1; ; n++ {
+		<-t.C
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		c.tick(ctx)
+		c.tick(ctx, n%3 == 0)
 		cancel()
 	}
 }
 
-func (c *clusterAPI) tick(ctx context.Context) {
+// tick: con quotas (cada minuto) además guarda el uso de las cuotas (syncQuotas).
+func (c *clusterAPI) tick(ctx context.Context, quotas bool) {
 	st, err := c.agentStatus(ctx, true)
 	if err != nil || !st.Installed {
 		return
@@ -784,6 +786,9 @@ func (c *clusterAPI) tick(ctx context.Context) {
 	}
 	c.mu.Unlock()
 	c.refreshNodeInfo(ctx, st)
+	if quotas {
+		c.syncQuotas(ctx, st)
+	}
 	withHeal := *st
 	withHeal.Volumes = c.withHeal(st.Volumes)
 	c.alerts(&withHeal)

@@ -363,8 +363,9 @@ func validLUNFile(f string) error {
 	return services.ValidTargetName(strings.TrimSuffix(parts[2], ".img"))
 }
 
-// runHelperJSON escribe args en un archivo 0600 y corre el helper con su ruta.
-func runHelperJSON(ctx context.Context, step stepFn, task, opID string, args any) error {
+// runHelperJSON escribe args en un archivo 0600 y corre el helper con su ruta. lines
+// recibe además cada línea de su salida.
+func runHelperJSON(ctx context.Context, step stepFn, task, opID string, args any, lines ...func(string)) error {
 	if err := os.MkdirAll(m4StateDir, 0o700); err != nil {
 		return err
 	}
@@ -378,6 +379,9 @@ func runHelperJSON(ctx context.Context, step stepFn, task, opID string, args any
 	logp := filepath.Join(m4LogDir, opID+".log")
 	step(0.1, "Aplicando la configuración")
 	onLine := func(l string) {
+		for _, f := range lines {
+			f(l)
+		}
 		if strings.HasPrefix(l, "STAGE ") {
 			parts := strings.SplitN(strings.TrimPrefix(l, "STAGE "), " ", 2)
 			if len(parts) == 2 {

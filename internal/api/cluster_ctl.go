@@ -236,7 +236,7 @@ type ctlBrickReq struct {
 }
 
 type ctlMountsReq struct {
-	Op    string   `json:"op"` // stop | start
+	Op    string   `json:"op"` // stop | start | acl
 	Names []string `json:"names"`
 }
 
@@ -317,6 +317,7 @@ func (c *clusterAPI) ctlServer(addr string) *http.Server {
 		ctlReply(w, map[string][]string{"names": names}, err)
 	}))
 	c.ctlRotateRoutes(mux)
+	c.ctlQuotaRoutes(mux)
 	return &http.Server{Addr: addr, Handler: mux, TLSConfig: cfg, ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout: 30 * time.Second, WriteTimeout: 5 * time.Minute, MaxHeaderBytes: 16 << 10}
 }

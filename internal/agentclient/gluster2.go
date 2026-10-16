@@ -32,16 +32,17 @@ func (c *Client) GlusterBrickLV(ctx context.Context, a agentproto.GlusterBrickLV
 	return &r, nil
 }
 
-// GlusterQuota cambia o lista cuotas (list devuelve los límites).
-func (c *Client) GlusterQuota(ctx context.Context, a agentproto.GlusterQuotaArgs) ([]gluster.Quota, error) {
-	if a.Op != "list" {
-		return nil, c.CallOnce(ctx, agentproto.OpGlusterQuota, a, nil)
+// GlusterQuota cambia o lista cuotas; devuelve los límites que quedan.
+func (c *Client) GlusterQuota(ctx context.Context, a agentproto.GlusterQuotaArgs) (*gluster.QuotaResult, error) {
+	var r gluster.QuotaResult
+	call := c.CallOnce
+	if a.Op == "list" {
+		call = c.Call
 	}
-	var r []gluster.Quota
-	if err := c.Call(ctx, agentproto.OpGlusterQuota, a, &r); err != nil {
+	if err := call(ctx, agentproto.OpGlusterQuota, a, &r); err != nil {
 		return nil, err
 	}
-	return r, nil
+	return &r, nil
 }
 
 // GlusterRebalance arranca, consulta o detiene un rebalance.

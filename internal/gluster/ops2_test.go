@@ -68,21 +68,50 @@ func TestTLSManaged(t *testing.T) {
 }
 
 func TestQuota(t *testing.T) {
-	a, err := ArgsQuota("gv0", "limit", "/Documentos/Facturas", 10<<30)
-	if err != nil || !slices.Equal(a, []string{"volume", "quota", "gv0", "limit-usage", "/Documentos/Facturas", "10737418240B"}) {
-		t.Fatalf("%v %v", a, err)
+	for _, p := range []string{"/Documentos", "/Fotos 2026", "/a.b_c-d"} {
+		if err := ValidQuotaPath(p); err != nil {
+			t.Errorf("rechazó %q: %v", p, err)
+		}
 	}
-	for _, p := range []string{"Docs", "/../etc", "/a/../b", "/-x", "/a//b"} {
-		if _, err := ArgsQuota("gv0", "limit", p, 1<<30); err == nil {
+	// solo primer nivel: un namespace adentro de otro saca su uso del de arriba
+	for _, p := range []string{"/", "Docs", "/../etc", "/a/b", "/-x", "/a//b", "/.."} {
+		if ValidQuotaPath(p) == nil {
 			t.Errorf("aceptó %q", p)
 		}
 	}
-	if _, err := ArgsQuota("gv0", "limit", "/docs", 100); err == nil {
-		t.Error("aceptó un límite de 100 bytes")
+	if ValidQuotaLimit(100) == nil || ValidQuotaLimit(1<<20) != nil {
+		t.Error("límites")
 	}
-	q, err := ParseQuota(fixture(t, "quota-list.xml"))
-	if err != nil || len(q) != 1 || q[0].Path != "/docs" || q[0].Limit != 104857600 || q[0].SoftPercent != 80 || q[0].HardOver {
-		t.Fatalf("%+v %v", q, err)
+	on := ArgsQuotaOn("gv0", true)
+	if len(on) != 2 || !slices.Equal(on[1], []string{"volume", "set", "gv0", "feature.simple-quota-pass-through", "false"}) {
+		t.Fatalf("%v", on)
+	}
+	if !QuotaOn(map[string]string{"feature.simple-quota-pass-through": "false", "features.tag-namespaces": "on"}) ||
+		QuotaOn(map[string]string{"features.quota": "on"}) {
+		t.Error("QuotaOn")
+	}
+	if v, err := ParseXattrInt([]byte("20971520\x00")); err != nil || v != 20971520 {
+		t.Fatalf("%d %v", v, err)
+	}
+	m := ParseQuotaOption("/Fotos 2026=2097152/Docs=1048576/bad=1/..=1048576/")
+	if len(m) != 2 || m["/Docs"] != 1<<20 || m["/Fotos 2026"] != 2<<20 {
+		t.Fatalf("%v", m)
+	}
+	if FormatQuotaOption(m) != "/Docs=1048576/Fotos 2026=2097152" || FormatQuotaOption(nil) != "" {
+		t.Fatalf("%q", FormatQuotaOption(m))
+	}
+	q := NewQuota("/docs", 100<<20, 85<<20)
+	if !q.SoftOver || q.HardOver || q.Avail != 15<<20 {
+		t.Fatalf("%+v", q)
+	}
+	if q := NewQuota("/docs", 20971520, 20914176); !q.HardOver { // frenó apenas debajo del límite
+		t.Fatalf("%+v", q)
+	}
+	if q := NewQuota("/docs", 100<<20, 120<<20); !q.HardOver || q.Avail != 0 {
+		t.Fatalf("%+v", q)
+	}
+	if NodeUUID([]byte("UUID=e58cfe8d-156e\noperating-version=110000\n")) != "e58cfe8d-156e" {
+		t.Error("NodeUUID")
 	}
 }
 

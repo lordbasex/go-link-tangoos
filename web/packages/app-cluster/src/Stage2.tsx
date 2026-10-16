@@ -627,16 +627,21 @@ export function QuotaSheet({ v, onClose }: { v: ClusterVolume; onClose: () => vo
   const t = useTransport();
   const act = useAct();
   const [list, setList] = useState<ClusterQuota[]>([]);
-  const [path, setPath] = useState("/");
+  const [path, setPath] = useState("");
   const [gb, setGb] = useState("50");
   const load = () => void t.call("cluster.volume.quota", { name: v.name, op: "list" }).then((r) => setList(r.quotas)).catch(() => setList([]));
   useEffect(load, [t, v.name]);
   const run = (title: string, op: "enable" | "disable" | "limit" | "remove", extra: { path?: string; limit?: number } = {}) =>
-    void act(title, async () => setList((await t.call("cluster.volume.quota", { name: v.name, op, ...extra })).quotas));
+    void act(title, async () => {
+      const r = await t.call("cluster.volume.quota", { name: v.name, op, ...extra });
+      setList(r.quotas);
+      if (r.job) toast({ level: "info", title: op === "limit" ? `Contando lo que ya hay en ${extra.path}` : "Contando el uso de las carpetas", body: "El uso se actualiza cuando termina.", app: APP });
+    });
+  const folder = path.trim() && !path.trim().startsWith("/") ? `/${path.trim()}` : path.trim();
   return (
     <Sheet open onClose={onClose} width={560} footer={<Button onClick={onClose}>Cerrar</Button>}>
       <h2 className="tg-h2">Cuotas de {v.name}</h2>
-      <Row label="Cuotas por directorio" hint="Límite de espacio para cada carpeta del volumen, en todo el clúster.">
+      <Row label="Cuotas por carpeta" hint="Límite de espacio para cada carpeta de primer nivel del volumen, en todo el clúster.">
         <Toggle checked={v.quota} label="Cuotas" onChange={(on) => run(on ? "No se pudieron activar" : "No se pudieron desactivar", on ? "enable" : "disable")} />
       </Row>
       {v.quota && (
@@ -653,14 +658,16 @@ export function QuotaSheet({ v, onClose }: { v: ClusterVolume; onClose: () => vo
             ))}
           </Group>
           <div className="tcl-inline">
-            <TextInput aria-label="Directorio" value={path} placeholder="/Documentos" onChange={(e) => setPath(e.target.value)} />
+            <TextInput aria-label="Carpeta" value={path} placeholder="/Documentos" onChange={(e) => setPath(e.target.value)} />
             <TextInput aria-label="Límite en GB" value={gb} style={{ width: 70 }} onChange={(e) => setGb(e.target.value.replace(/[^\d.]/g, ""))} />
             <span className="tcl-sum">GB</span>
-            <Button onClick={() => run("No se pudo poner el límite", "limit", { path: path.trim() || "/", limit: Math.round(Number(gb) * GB) })} disabled={!Number(gb)}>
+            <Button onClick={() => run("No se pudo poner el límite", "limit", { path: folder, limit: Math.round(Number(gb) * GB) })} disabled={!Number(gb) || !folder}>
               <Plus size={13} /> Poner límite
             </Button>
           </div>
-          <p className="tcl-note">GlusterFS aplica el límite con unos segundos de retraso y no limita a root.</p>
+          <p className="tcl-note">
+            La carpeta tiene que existir. Si ya tiene archivos, TangoOS cuenta lo que ocupan y reinicia los bricks del volumen de a un nodo. Los límites no frenan a root.
+          </p>
         </>
       )}
     </Sheet>

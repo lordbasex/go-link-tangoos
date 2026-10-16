@@ -237,7 +237,7 @@ declare module "./protocol" {
     "cluster.volume.bricks.replace": { params: { name: string; from: { host: string; path: string }; to: ClusterBrickSpec }; result: { job: string } };
     "cluster.volume.bricks.remove": { params: { name: string; replica?: number; bricks: { host: string; path: string }[]; phase: "start" | "status" | "commit" }; result: { task: ClusterTask | null } };
     "cluster.volume.rebalance": { params: { name: string; action: "start" | "status" | "stop" }; result: { task: ClusterTask | null } };
-    "cluster.volume.quota": { params: { name: string; op: "enable" | "disable" | "limit" | "remove" | "list"; path?: string; limit?: number }; result: { quotas: ClusterQuota[] } };
+    "cluster.volume.quota": { params: { name: string; op: "enable" | "disable" | "limit" | "remove" | "list"; path?: string; limit?: number }; result: { quotas: ClusterQuota[]; job?: string } };
     "cluster.volume.snapshot": { params: { name: string; op: "create" | "delete" | "restore" | "info"; snap?: string; desc?: string }; result: { snapshots: ClusterSnapshot[] } };
     "cluster.volume.nfs": { params: { name: string; clients: NFSClientRule[] }; result: { job: string } };
     "cluster.peer.remove": { params: { host: string }; result: Empty };

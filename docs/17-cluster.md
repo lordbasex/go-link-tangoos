@@ -17,7 +17,7 @@ Several TangoOS boxes joined with GlusterFS, managed from the **Cluster** app. D
 | Start, stop, delete; heal now | Volume view |
 | Change options (allow-list only) | Volume → Options |
 | Add bricks (one more replica set for space, or one more copy per set), remove a set (data migrates first, with progress), replace a brick, rebalance (with progress) | Volume → Bricks |
-| Quotas per directory | Volume → Quotas |
+| Quotas per top-level folder | Volume → Quotas |
 | Snapshots: create, restore, delete (all bricks must be thin dedicated volumes) | Volume → Snapshots |
 | Mount on this NAS at `/cluster/<volume>` and share it over SMB | Volume → Mount… |
 | Export the mounted volume over NFS | Volume → NFS |
@@ -163,12 +163,16 @@ ZFS volumes like any other mounted volume.
   `--timeout` so the app never hangs.
 - A node that just joined spends a few seconds in "Accepted peer request"; volume creation waits for
   "Peer in Cluster" on every node (`PEER_JOINING`).
-- Quotas: GlusterFS 11 only *accounts* by default (`feature.simple-quota-pass-through=true`); TangoOS turns
-  enforcement on when quotas are enabled. Limits apply a few seconds late (`features.hard-timeout`) and not to
-  root. Verified on a folder brick without TLS (writes stop at the limit); **on the lab volume with TLS and XFS
-  bricks GlusterFS did not account usage** (limit, list and remove work, enforcement does not) — see §6. With
-  quotas on, glusterd sometimes cannot unmount its auxiliary quota mount and a later `remove-brick commit` fails:
-  turn quotas off before removing bricks. Quota commands run outside the agent sandbox (auxiliary mount).
+- Quotas (ADR 0015): GlusterFS 11 simple-quota, on top-level folders. Turning them on sets
+  `features.tag-namespaces=on` and `feature.simple-quota-pass-through=false`; the agent marks each folder as a
+  namespace and sets its limit from a short mount with the quota helper's client pid. The folder must exist. If
+  it already has files, a job counts them and restarts the volume's bricks one node at a time (every node with
+  bricks must be connected). One node lists the quotas every minute: that saves usage to disk and, on
+  distributed volumes, gives every brick the total (until then each replica set stops at the whole limit on its
+  own). Limits are kept in the volume option `user.tango.quotas` and put again on every brick each minute (bricks
+  added later get them). Limits never apply to root. Removing bricks works with quotas on.
+- Adding bricks leaves the volume root as `000` (GlusterFS heals it from the new brick): when the job ends TangoOS puts
+  back the share permissions on the root of every node that mounts it with an SMB share.
 - Snapshots need every brick on a thin LV. Restoring needs the volume stopped (`VOLUME_STARTED`), consumes the
   snapshot and moves the volume onto the snapshot LVs (`snap` bricks). The restored root comes back without its
   permissions: mount it again with its SMB share to re-apply them. GlusterFS does not reliably remove bricks
@@ -182,9 +186,6 @@ ZFS volumes like any other mounted volume.
 - Deleting a volume leaves the data in each brick (orphans, above). A node with bricks cannot be detached.
 
 ## 6. Pending
-
-- Quota accounting on volumes with TLS and XFS bricks (GlusterFS 11 reports 0 used there in the lab), and the
-  auxiliary quota mount that blocks `remove-brick commit` while quotas are on.
 
 - Geo-replication; scheduled snapshots of cluster volumes.
 - ZFS datasets as bricks (hook in `brickForms`).

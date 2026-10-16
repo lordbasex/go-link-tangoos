@@ -96,6 +96,10 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
   let revoke: ClusterStatus["tls"]["revoke"] = [];
   let nfs: ClusterStatus["nfs"] = {};
   const quotas: Record<string, ClusterQuota[]> = {};
+  const QUOTA_ON = { "features.tag-namespaces": "on", "feature.simple-quota-pass-through": "false" };
+  const quotaRow = (path: string, limit: number, used: number): ClusterQuota => ({
+    path, limit, softPercent: 80, used, avail: Math.max(0, limit - used), softOver: used >= limit * 0.8, hardOver: used >= limit * 0.99,
+  });
   const snaps: Record<string, ClusterSnapshot[]> = {};
   const joins: Record<string, { host: string }> = {};
   const tasks: Record<string, { progress: number; files: number }> = {};
@@ -158,13 +162,13 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     v.healPending = v.bricks.reduce((s, b) => s + Math.max(0, b.healPending), 0);
     v.splitBrain = v.bricks.reduce((s, b) => s + b.splitBrain, 0);
     v.tls = v.options["client.ssl"] === "on" && v.options["server.ssl"] === "on";
-    v.quota = v.options["features.quota"] === "on";
+    v.quota = v.options["feature.simple-quota-pass-through"] === "false" && v.options["features.tag-namespaces"] === "on";
     v.snapshotCount = snaps[v.name]?.length ?? 0;
     return v;
   };
   const demoVolumes = (): ClusterVolume[] => [
         mkVol("gv_tel_config", ["tango", "tango-b", "tango-c"].map((h) => brick(h, "gv_tel_config", "", { kind: "lv", path: "/srv/gluster/gv_tel_config/brick", fsName: "xfs", sizeTotal: 100 * GB, sizeFree: 92.5 * GB })), { ...prodOpts }, PROD_ORDER),
-        mkVol("gv_tel_locuciones", ["tango", "tango-b", "tango-c"].map((h, i) => brick(h, "gv_tel_locuciones", "volume1", i < 2 ? { healPending: 214 } : {})), { ...prodOpts, "features.quota": "on" }, PROD_ORDER),
+        mkVol("gv_tel_locuciones", ["tango", "tango-b", "tango-c"].map((h, i) => brick(h, "gv_tel_locuciones", "volume1", i < 2 ? { healPending: 214 } : {})), { ...prodOpts, ...QUOTA_ON }, PROD_ORDER),
         mkVol("gv_backups", ["tango", "tango-b", "tango-c", "tango", "tango-b", "tango-c"].map((h, i) => brick(h, "gv_backups", i < 3 ? "volume1" : "volume2", i === 1 ? { splitBrain: 2 } : {})), { "cluster.quorum-type": "auto", "nfs.disable": "on" }, ["cluster.quorum-type", "nfs.disable"]),
       ];
 
@@ -335,16 +339,23 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     "cluster.volume.quota": ({ name, op, path, limit }) => {
       const v = vol(name);
       quotas[name] ??= [];
-      if (op === "enable") v.options["features.quota"] = "on";
-      if (op === "disable") {
-        delete v.options["features.quota"];
-        quotas[name] = [];
+      if ((op === "limit" || op === "remove") && !/^\/[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/.test(path ?? ""))
+        throw new RpcError("INVALID_ARGS", `carpeta inválida: "${path ?? ""}" (una carpeta de primer nivel, por ejemplo /Documentos)`);
+      if (op === "enable") Object.assign(v.options, QUOTA_ON);
+      if (op === "disable") v.options["feature.simple-quota-pass-through"] = "true";
+      let job: string | undefined;
+      if (op === "limit" && path && limit) {
+        quotas[name] = [...quotas[name].filter((q) => q.path !== path), quotaRow(path, limit, 0)].sort((a, b) => a.path.localeCompare(b.path));
+        // En la demo toda carpeta ya tiene archivos: un job los cuenta.
+        job = ctx.startJob("cluster.quota.count", `Contando lo que ya ocupa ${path} en ${name}`, "Los bricks reinician de a un nodo", 0, 0.25, undefined, () => {
+          quotas[name] = quotas[name].map((q) => (q.path === path ? quotaRow(path, limit, Math.round(limit * 0.35)) : q));
+          changed();
+        }).id;
       }
-      if (op === "limit" && path && limit) quotas[name] = [...quotas[name].filter((q) => q.path !== path), { path, limit, softPercent: 80, used: 0, avail: limit, softOver: false, hardOver: false }];
       if (op === "remove") quotas[name] = quotas[name].filter((q) => q.path !== path);
       recompute(v);
       if (op !== "list") changed();
-      return { quotas: v.quota ? [...quotas[name]] : [] };
+      return { quotas: [...quotas[name]], ...(job ? { job } : {}) };
     },
     "cluster.volume.snapshot": ({ name, op, snap, desc }) => {
       const v = vol(name);

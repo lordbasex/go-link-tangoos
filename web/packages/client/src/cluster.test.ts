@@ -80,8 +80,14 @@ describe("clúster GlusterFS (mock y helpers)", () => {
     expect(() => call("cluster.volume.snapshot", { name: "gv_docs", op: "create", snap: "s1" })).toThrow(/thin/);
     // Cuotas
     call("cluster.volume.quota", { name: "gv_docs", op: "enable" });
-    const q = call<{ quotas: { path: string }[] }>("cluster.volume.quota", { name: "gv_docs", op: "limit", path: "/Fotos", limit: 10 * 1024 ** 3 });
+    const q = call<{ quotas: { path: string }[]; job?: string }>("cluster.volume.quota", { name: "gv_docs", op: "limit", path: "/Fotos", limit: 10 * 1024 ** 3 });
     expect(q.quotas.map((x) => x.path)).toEqual(["/Fotos"]);
+    expect(q.job).toBeTruthy(); // lo que ya hay en la carpeta se cuenta con un job
+    finish();
+    const used = call<{ quotas: { used: number }[] }>("cluster.volume.quota", { name: "gv_docs", op: "list" }).quotas[0].used;
+    expect(used).toBeGreaterThan(0);
+    // Solo carpetas de primer nivel
+    expect(() => call("cluster.volume.quota", { name: "gv_docs", op: "limit", path: "/Fotos/2026", limit: 1024 ** 3 })).toThrow(/primer nivel/);
     // Agregar un conjunto y rebalancear hasta terminar
     call("cluster.volume.bricks.add", { name: "gv_docs", bricks: ["tango", "nas-b", "nas-c"].map((host) => ({ host, kind: "lv", pool: "data", size: 1024 ** 3, thin: true })) });
     finish();
