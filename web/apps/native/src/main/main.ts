@@ -44,6 +44,16 @@ function nasSession(n: SavedNas): Session {
   return ses;
 }
 
+/** Abre en el navegador del sistema solo http(s): nunca otros esquemas (file:, smb:, ms-…). */
+function external(url: string) {
+  try {
+    const u = new URL(url);
+    if (u.protocol === "https:" || u.protocol === "http:") void shell.openExternal(u.toString());
+  } catch {
+    /* URL inválida: se ignora */
+  }
+}
+
 const sameNas = (n: SavedNas, url: string) => {
   try {
     const u = new URL(url);
@@ -80,12 +90,12 @@ function openNas(id: string) {
   win.webContents.on("will-navigate", (e, url) => {
     if (!sameNas(n, url)) {
       e.preventDefault();
-      void shell.openExternal(url);
+      external(url);
     }
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (sameNas(n, url)) return { action: "allow", overrideBrowserWindowOptions: { autoHideMenuBar: true, webPreferences: { session: ses, preload: preload("nas"), contextIsolation: true, sandbox: true } } };
-    if (/^https?:/.test(url)) void shell.openExternal(url);
+    external(url);
     return { action: "deny" };
   });
   win.webContents.on("did-fail-load", (_e, code, desc, url) => {
@@ -112,11 +122,11 @@ function openPortal() {
   win.webContents.on("will-navigate", (e, url) => {
     if (!inPortal(url)) {
       e.preventDefault();
-      void shell.openExternal(url);
+      external(url);
     }
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/.test(url)) void shell.openExternal(url);
+    external(url);
     return { action: "deny" };
   });
   void win.loadURL(PORTAL + "/nas");
