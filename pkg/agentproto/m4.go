@@ -152,6 +152,7 @@ type ISCSITarget struct {
 	IQN        string `json:"iqn"`
 	File       string `json:"file"`           // /<vol>/@iscsi/<name>.img
 	Zvol       string `json:"zvol,omitempty"` // o /dev/zvol/<pool>/zvol/<name> (ZFS, ADR 0013)
+	LV         string `json:"lv,omitempty"`   // o /dev/<grupo>/il_<name> (LV de un grupo de almacenamiento)
 	SizeBytes  int64  `json:"size_bytes"`
 	CHAPUser   string `json:"chap_user,omitempty"`
 	CHAPSecret string `json:"chap_secret,omitempty"`

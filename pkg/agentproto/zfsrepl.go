@@ -58,7 +58,9 @@ type ZfsReplSnapshotArgs struct {
 	Name string `json:"name"`
 }
 
-// ZfsReplSendArgs: Token retoma; si no, Snap (con From, incremental -I).
+// ZfsReplSendArgs: Token retoma; si no, Snap (con From, incremental -I). Pool, Vol y Rel
+// van siempre: el agente comprueba que el token (que viene del destino) sea de ese
+// dataset, de una instantánea de TangoOS y raw.
 type ZfsReplSendArgs struct {
 	Pool  string `json:"pool"`
 	Vol   string `json:"vol"`

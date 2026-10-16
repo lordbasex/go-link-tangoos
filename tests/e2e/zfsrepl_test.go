@@ -95,6 +95,7 @@ func TestZfsKeyAndReplication(t *testing.T) {
 		t.Skip("exportá TANGO_E2E_REPL con origen,destino")
 	}
 	srcIP, dstIP := ips[0], ips[1]
+	top := t
 	src, dst := nodeAdmin(t, srcIP), nodeAdmin(t, dstIP)
 	pass := randomSecret(14)
 	const data = "datos"
@@ -107,9 +108,10 @@ func TestZfsKeyAndReplication(t *testing.T) {
 		for _, ip := range ips {
 			_, _ = sshTo(ip, "for p in tanque copias respaldo; do zpool list $p >/dev/null 2>&1 && zpool destroy -f $p; done; rm -rf /var/lib/tango/repl; systemctl restart tangod; true")
 		}
-		src, dst = nodeAdmin(t, srcIP), nodeAdmin(t, dstIP)
-		mustSSH(t, srcIP, "wipefs -a /dev/disk/by-id/scsi-*TANGO-KEY1 >/dev/null; mkfs.vfat -n LLAVE /dev/disk/by-id/scsi-*TANGO-KEY1 >/dev/null && udevadm settle")
-		mustSSH(t, dstIP, "wipefs -a /dev/disk/by-id/scsi-*TANGO-KEY2 >/dev/null; udevadm settle")
+		time.Sleep(3 * time.Second) // el agente guarda zfs.report 2 s
+		src, dst = nodeAdmin(top, srcIP), nodeAdmin(top, dstIP)
+		mustSSH(t, srcIP, `D=$(lsblk -dnpo NAME,SERIAL | awk '$2=="TANGO-KEY1"{print $1}'); wipefs -a $D >/dev/null; mkfs.vfat -n LLAVE $D >/dev/null && udevadm settle`)
+		mustSSH(t, dstIP, `D=$(lsblk -dnpo NAME,SERIAL | awk '$2=="TANGO-KEY2"{print $1}'); wipefs -a $D >/dev/null; udevadm settle`)
 		p, _ := createZpool(t, src, "tanque", "stripe", []string{"TANGO-Z1"})
 		createZpool(t, dst, "copias", "stripe", []string{"TANGO-Z2"})
 		createZpool(t, dst, "respaldo", "stripe", []string{"TANGO-KEY2"})
@@ -159,7 +161,7 @@ func TestZfsKeyAndReplication(t *testing.T) {
 		// Al arrancar con la llave puesta se desbloquea solo (tangod la prueba cada 10 s).
 		src.call("storage.volumes.lock", map[string]string{"volume": v.ID}, nil)
 		mustSSH(t, srcIP, "systemctl restart tangod")
-		src = nodeAdmin(t, srcIP)
+		src = nodeAdmin(top, srcIP)
 		src.waitVolume(secret, "healthy", 2*time.Minute)
 		// Quitar la llave: sin sello y no abre más con la llave.
 		v = src.poolVolumes()[secret]
@@ -266,7 +268,7 @@ func TestZfsKeyAndReplication(t *testing.T) {
 		if j := src.waitJobAny(r.Job, 5*time.Minute); j.State == "succeeded" {
 			t.Skip("el envío terminó antes del corte")
 		}
-		dst = nodeAdmin(t, dstIP)
+		dst = nodeAdmin(top, dstIP)
 		partial := false
 		for _, rp := range dst.repl().Replicas {
 			partial = partial || rp.Vol == data && rp.Partial
@@ -316,15 +318,22 @@ func TestZfsKeyAndReplication(t *testing.T) {
 		var r struct {
 			ID string `json:"id"`
 		}
-		dst.callErr("storage.zfs.repl.tasks.create", map[string]any{"volume": dst.poolVolumes()["datos2"].ID, "target": "local:copias", "every": 0}, "INVALID_PARAMS")
-		dst.call("storage.zfs.repl.tasks.create", map[string]any{"volume": dst.poolVolumes()["datos2"].ID, "target": "local:respaldo", "every": 0}, &r)
+		p, _ := dst.zpool("copias")
+		chico := createZvolume(t, dst, p, "chico", "")
+		ensureShare(t, dst, "Chico", chico.ID)
+		mustSSH(t, dstIP, "head -c 20M /dev/urandom >/chico/@shares/Chico/c.bin; sync")
+		dst.callErr("storage.zfs.repl.tasks.create", map[string]any{"volume": chico.ID, "target": "local:copias", "every": 0}, "INVALID_PARAMS")
+		dst.call("storage.zfs.repl.tasks.create", map[string]any{"volume": chico.ID, "target": "local:respaldo", "every": 0}, &r)
 		runTask(t, dst, r.ID, true)
 		rs := dst.repl().Replicas
-		if len(rs) != 1 || rs[0].Origin != "local" || rs[0].Pool != "respaldo" {
+		if len(rs) != 1 || rs[0].Origin != "local" || rs[0].Pool != "respaldo" || rs[0].Vol != "chico" {
 			t.Fatalf("réplica local: %+v", rs)
 		}
 		dst.call("storage.zfs.repl.tasks.delete", map[string]string{"id": r.ID}, nil)
-		dst.call("storage.zfs.repl.replicas.delete", map[string]string{"pool": "respaldo", "origin": "local", "vol": "datos2"}, nil)
+		dst.call("storage.zfs.repl.replicas.delete", map[string]string{"pool": "respaldo", "origin": "local", "vol": "chico"}, nil)
+		if len(dst.repl().Replicas) != 0 {
+			t.Fatal("la réplica local sigue")
+		}
 	})
 
 	t.Run("desarmar", func(t *testing.T) {

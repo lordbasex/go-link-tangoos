@@ -209,15 +209,27 @@ export function m4Handlers(ctx: MockM4Ctx): { [M in Method]?: (p: Params<M>) => 
       return {};
     },
     "iscsi.targets.list": () => st.iscsi,
-    "iscsi.targets.create": ({ name, volume, sizeBytes, chap }) => {
-      if (!/^[a-z0-9][a-z0-9-]{0,30}$/.test(name)) throw new RpcError("INVALID_PARAMS", "Usá minúsculas, números y guiones");
+    "iscsi.targets.create": ({ name, volume, sizeBytes, chap, zvol, pool, thin }) => {
+      if (!/^[a-z0-9][a-z0-9-]{0,30}$/.test(name) || name === "thin") throw new RpcError("INVALID_PARAMS", "Usá minúsculas, números y guiones");
       if (st.iscsi.some((t) => t.name === name)) throw new RpcError("TARGET_EXISTS", "Ya existe un destino con ese nombre");
-      const v = ctx.vols().find((x) => x.id === volume);
-      if (!v) throw new RpcError("VOLUME_NOT_FOUND", "No existe el volumen");
-      if (sizeBytes <= 0 || sizeBytes > v.size - v.used) throw new RpcError("NO_SPACE", "No hay espacio suficiente en el volumen");
       if (chap && (chap.secret.length < 12 || chap.secret.length > 16)) throw new RpcError("INVALID_PARAMS", "El secreto CHAP debe tener entre 12 y 16 caracteres");
-      const j = ctx.startJob("iscsi.targets.create", `Creando destino ${name}`, "LUN sobre archivo en Btrfs (nodatacow)", 0, 0.2, undefined, () => {
-        st.iscsi.push({ name, iqn: `iqn.2026-10.local.${st.hostname}:${name}`, volume, sizeBytes, chap: !!chap, sessions: 0 });
+      let target: IscsiTarget;
+      let detail = "LUN sobre archivo en Btrfs (nodatacow)";
+      if (pool) {
+        if (sizeBytes < 64 * 1024 ** 2) throw new RpcError("INVALID_PARAMS", "El tamaño debe estar entre 64 MB y 64 TB");
+        target = { name, iqn: `iqn.2026-10.local.${st.hostname}:${name}`, volume: pool, sizeBytes, chap: !!chap, sessions: 0, lv: `/dev/${pool.replace(/^pool_/, "")}/il_${name}`, thin: !!thin };
+        detail = `LUN en un volumen lógico${thin ? " thin" : ""} del grupo`;
+      } else if (zvol) {
+        target = { name, iqn: `iqn.2026-10.local.${st.hostname}:${name}`, volume: "zfs:tanque", sizeBytes, chap: !!chap, sessions: 0, zvol };
+        detail = "LUN sobre un volumen de bloque ZFS";
+      } else {
+        const v = ctx.vols().find((x) => x.id === volume);
+        if (!v) throw new RpcError("VOLUME_NOT_FOUND", "No existe el volumen");
+        if (sizeBytes <= 0 || sizeBytes > v.size - v.used) throw new RpcError("NO_SPACE", "No hay espacio suficiente en el volumen");
+        target = { name, iqn: `iqn.2026-10.local.${st.hostname}:${name}`, volume: v.id, sizeBytes, chap: !!chap, sessions: 0 };
+      }
+      const j = ctx.startJob("iscsi.targets.create", `Creando destino ${name}`, detail, 0, 0.2, undefined, () => {
+        st.iscsi.push(target);
         ctx.emit("services.changed", { id: "iscsi" });
       });
       audit("iscsi.targets.create", name);

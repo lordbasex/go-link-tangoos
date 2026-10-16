@@ -31,6 +31,8 @@ export interface Pool {
   cacheDisks: string[];
   tiers: PoolTier[];
   volumes: string[];
+  /** LUN de iSCSI en volúmenes lógicos del grupo. */
+  luns?: { name: string; dev: string; size: Bytes; thin: boolean }[];
   task?: "rebuild" | "reshape" | "resync";
   progress?: number;
 }

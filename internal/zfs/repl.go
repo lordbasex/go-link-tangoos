@@ -134,6 +134,9 @@ func ArgsSend(ds, snap, from, token string, dry bool) ([]string, error) {
 		if err := ValidToken(token); err != nil {
 			return nil, err
 		}
+		if dry {
+			a = append(a, "-v") // muestra el contenido del token (CheckToken)
+		}
 		return append(a, "-t", token), nil
 	}
 	if err := ValidAnySnap(snap); err != nil {
@@ -151,13 +154,43 @@ func ArgsSend(ds, snap, from, token string, dry bool) ([]string, error) {
 
 // ArgsRecv arma el argv de zfs receive: -s guarda el estado si se corta, -u no monta;
 // -F en un incremental vuelve a la última instantánea (la réplica es de solo lectura,
-// pero atime o un montaje manual la pueden haber tocado).
+// pero atime o un montaje manual la pueden haber tocado). El stream lo arma el origen,
+// que no es de confianza para las propiedades: una réplica nunca se monta, nunca se
+// comparte y queda de solo lectura, diga lo que diga el stream.
 func ArgsRecv(target string, incremental bool) []string {
-	a := []string{"receive", "-s", "-u"}
+	a := []string{"receive", "-s", "-u", "-o", "canmount=off", "-o", "mountpoint=none", "-o", "readonly=on", "-x", "sharenfs", "-x", "sharesmb"}
 	if incremental {
 		a = append(a, "-F")
 	}
 	return append(a, target)
+}
+
+// CheckToken revisa lo que dice un token de reanudación (salida de zfs send -nvPt): el
+// token lo entrega el destino, que no es de confianza para elegir qué se manda. Tiene que
+// ser de ds, de una instantánea de TangoOS y, si ds está cifrado, raw (si no, con la clave
+// cargada saldría descifrado). En un dataset sin cifrar `send -w` no marca rawok.
+func CheckToken(out, ds string, encrypted bool) error {
+	toname, raw := "", false
+	for _, l := range strings.Split(out, "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(l), "=")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(k) {
+		case "toname":
+			toname = strings.TrimSpace(v)
+		case "rawok":
+			raw = strings.TrimSpace(v) == "1"
+		}
+	}
+	d, snap, ok := strings.Cut(toname, "@")
+	if !ok || d != ds || ValidAnySnap(snap) != nil {
+		return fmt.Errorf("el token de reanudación no es de %s", ds)
+	}
+	if encrypted && !raw {
+		return fmt.Errorf("el token de reanudación no es de un envío raw")
+	}
+	return nil
 }
 
 // ParseSendSize lee el "size <bytes>" de zfs send -nP.

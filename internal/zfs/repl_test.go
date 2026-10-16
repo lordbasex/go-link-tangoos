@@ -64,11 +64,36 @@ func TestArgsSendRecv(t *testing.T) {
 	if _, err := ArgsSend("", "", "", "1-zz", false); err == nil {
 		t.Fatal("aceptó un token inválido")
 	}
-	if strings.Join(ArgsRecv("tank/tgrepl/local/v", true), " ") != "receive -s -u -F tank/tgrepl/local/v" {
+	if strings.Join(ArgsRecv("tank/tgrepl/local/v", true), " ") != "receive -s -u -o canmount=off -o mountpoint=none -o readonly=on -x sharenfs -x sharesmb -F tank/tgrepl/local/v" {
 		t.Fatal("recv")
 	}
 	if ParseSendSize("full\ttank/v@s\t12345\nsize\t12345\n") != 12345 {
 		t.Fatal("size")
+	}
+}
+
+func TestCheckToken(t *testing.T) {
+	out := "resume token contents:\nnvlist version: 0\n\tobject = 0x2\n\toffset = 0x760000\n\ttoguid = 0xacb7951a9004e571\n\ttoname = tank/v/shares/A@tgrepl-abc123-20261016T123005Z\n\tcompressok = 1\n\trawok = 1\nfull\ttank/v/shares/A@tgrepl-abc123-20261016T123005Z\t55195780\nsize\t55195780\n"
+	if err := CheckToken(out, "tank/v/shares/A", true); err != nil {
+		t.Fatal(err)
+	}
+	if ParseSendSize(out) != 55195780 {
+		t.Fatal("size")
+	}
+	// Otro dataset (otro volumen del NAS), uno que no es raw o una instantánea ajena: no.
+	for _, bad := range []string{
+		strings.Replace(out, "tank/v/shares/A@", "tank/otro@", 1),
+		strings.Replace(out, "\trawok = 1\n", "", 1),
+		strings.Replace(out, "@tgrepl-abc123-20261016T123005Z\n\tcompressok", "@manual\n\tcompressok", 1),
+		"",
+	} {
+		if CheckToken(bad, "tank/v/shares/A", true) == nil {
+			t.Fatalf("aceptó:\n%s", bad)
+		}
+	}
+	// Sin cifrar, send -w no marca rawok: se acepta.
+	if err := CheckToken(strings.Replace(out, "\trawok = 1\n", "", 1), "tank/v/shares/A", false); err != nil {
+		t.Fatal(err)
 	}
 }
 

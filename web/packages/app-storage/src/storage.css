@@ -600,3 +600,7 @@
 .ts-repl-confirm { margin-top: 0; padding-bottom: 8px; }
 .ts-repl-confirm .tg-input { max-width: 180px; }
 .ts-card-subtitle { margin-top: 16px; font-size: 12px; font-weight: 600; color: var(--tg-text-2); }
+
+/* ---- iSCSI: dónde va el disco ---- */
+.ts-iscsi-backing { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; }
+.ts-iscsi-backing small { font-weight: 400; font-size: 11.5px; line-height: 1.45; }

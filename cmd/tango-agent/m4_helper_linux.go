@@ -403,9 +403,9 @@ func helperISCSI(ctx context.Context, a *agentproto.ISCSIApplyArgs) error {
 	for _, t := range want {
 		i++
 		stage(0.4+0.5*float64(i)/float64(len(want)+1), "Configurando "+t.Name)
-		if t.Zvol != "" { // LUN sobre zvol: el dispositivo lo crea ZFS (storage.zfs.zvols.create)
-			if !fileExists(t.Zvol) {
-				return fmt.Errorf("%s: no existe el volumen de bloque %s", t.Name, t.Zvol)
+		if dev := services.Block(t); dev != "" { // LUN sobre zvol o LV: el dispositivo ya existe
+			if !fileExists(dev) {
+				return fmt.Errorf("%s: no existe el volumen de bloque %s", t.Name, dev)
 			}
 		} else if err := ensureLUNFile(t); err != nil {
 			return err
@@ -486,8 +486,15 @@ func applyPlan(steps []services.Step) error {
 			if cur, err := os.ReadFile(s.Path); err == nil && strings.TrimSpace(string(cur)) == s.Value {
 				continue
 			}
-			if strings.HasSuffix(s.Path, "/control") || strings.HasSuffix(s.Path, "/vpd_unit_serial") {
-				if b, err := os.ReadFile(filepath.Join(filepath.Dir(strings.TrimSuffix(s.Path, "/wwn/vpd_unit_serial")), "enable")); err == nil && strings.TrimSpace(string(b)) == "1" {
+			// control y el serial no se pueden cambiar con el backstore habilitado.
+			bs := ""
+			if strings.HasSuffix(s.Path, "/control") {
+				bs = filepath.Dir(s.Path)
+			} else if strings.HasSuffix(s.Path, "/wwn/vpd_unit_serial") {
+				bs = strings.TrimSuffix(s.Path, "/wwn/vpd_unit_serial")
+			}
+			if bs != "" {
+				if b, err := os.ReadFile(filepath.Join(bs, "enable")); err == nil && strings.TrimSpace(string(b)) == "1" {
 					continue
 				}
 			}

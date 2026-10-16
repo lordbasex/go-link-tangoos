@@ -199,6 +199,21 @@ e2e-cluster:
 ##   cuotas, instantáneas, agregar/quitar/reemplazar bricks, rebalance, NFS y revocación. Además de lo de
 ##   e2e-cluster, cada nodo necesita un disco libre TANGO-P<n> (grupo gpool). Empieza reseteando los nodos
 ##   (tests/cluster-reset.sh: solo para el laboratorio de 3 VMs del clúster).
+## e2e-repl: llave USB de ZFS y replicación entre dos NAS (ADR 0016). REPL=origen,destino con ZFS y los
+##   discos TANGO-Z<n> y TANGO-KEY<n> libres.
+.PHONY: e2e-repl
+e2e-repl:
+	@test -n "$(REPL)" || { echo "definí REPL=ip-origen,ip-destino"; exit 1; }
+	TANGO_SSH_KEY=$(SSH_KEY) TANGO_E2E_DESTRUCTIVE=1 TANGO_E2E_REPL=$(REPL) \
+	go test -tags e2e ./tests/e2e -run 'TestZfsKeyAndReplication$$' -v -count=1 -timeout 60m
+
+## e2e-iscsi-lv: LUN de iSCSI en un volumen lógico de un grupo. ISCSI_LV=ip con un grupo con 3 GB libres.
+.PHONY: e2e-iscsi-lv
+e2e-iscsi-lv:
+	@test -n "$(ISCSI_LV)" || { echo "definí ISCSI_LV=ip"; exit 1; }
+	TANGO_SSH_KEY=$(SSH_KEY) TANGO_E2E_DESTRUCTIVE=1 TANGO_E2E_ISCSI_LV=$(ISCSI_LV) \
+	go test -tags e2e ./tests/e2e -run 'TestIscsiOnLV$$' -v -count=1 -timeout 20m
+
 .PHONY: e2e-cluster2
 e2e-cluster2:
 	@test -n "$(CLUSTER)" || { echo "definí CLUSTER=ip1,ip2,ip3"; exit 1; }

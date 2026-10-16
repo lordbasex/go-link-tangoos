@@ -1,10 +1,12 @@
-// iSCSI (protocol §12): destinos LIO con un LUN sobre archivo en un volumen.
+// iSCSI (protocol §12): destinos LIO con un LUN sobre un archivo en un volumen, un volumen
+// lógico de un grupo de almacenamiento o un volumen de bloque ZFS.
 import { useMemo, useState } from "react";
 import { Copy, HardDrive, Network, Plus, Trash2 } from "lucide-react";
 import { RpcError, fmtBytes, useIsReal, useLive, useTopic, useTransport } from "@tango/client";
-import type { IscsiTarget, Job, Volume } from "@tango/client";
+import { useAvailable } from "./util";
+import type { IscsiTarget, Job, Pool, Volume, ZfsZvol } from "@tango/client";
 import { openApp, toast } from "@tango/shell";
-import { Button, DemoBadge, EmptyState, Progress, Sheet, Status, TextInput, Toggle } from "@tango/ui";
+import { Button, DemoBadge, EmptyState, Progress, Segmented, Sheet, Status, TextInput, Toggle } from "@tango/ui";
 
 const GB = 1e9;
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}$/;
@@ -22,14 +24,26 @@ export function Iscsi({ vols }: { vols: Volume[] }) {
   const svc = useLive("services.list", undefined, ["services.changed"]).data?.find((s) => s.id === "iscsi");
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<IscsiTarget | null>(null);
-  const usable = vols.filter((v) => v.state === "healthy" || v.state === "scrubbing");
+  const usable = vols.filter((v) => (v.state === "healthy" || v.state === "scrubbing") && v.mount && (v.fs === "btrfs" || v.fs === "zfs"));
+  const poolsOn = useAvailable("storage.pools.list");
+  const pools = (useLive("storage.pools.list", undefined, ["storage.changed"]).data ?? []).filter((p) => poolsOn && p.state !== "building");
+  const zfsOn = useAvailable("storage.zfs.status");
+  const zst = useLive("storage.zfs.status", undefined, ["storage.changed"]).data;
+  const used = new Set((targets ?? []).map((x) => x.zvol).filter(Boolean));
+  const zvols = zfsOn && zst?.enabled ? zst.pools.flatMap((p) => p.zvols.map((z) => ({ ...z, pool: p.name }))).filter((z) => !used.has(z.device)) : [];
+  const canCreate = usable.length > 0 || pools.length > 0 || zvols.length > 0;
+  const where = (tg: IscsiTarget) => {
+    if (tg.lv) return `un volumen lógico${tg.thin ? " thin" : ""} del grupo ${pools.find((p) => p.id === tg.volume)?.name ?? tg.lv.split("/")[2]}`;
+    if (tg.zvol) return `el volumen de bloque ZFS ${tg.zvol.split("/").pop()}`;
+    return vols.find((v) => v.id === tg.volume)?.name ?? tg.volume;
+  };
 
   return (
     <div className="ts-iscsi">
       <div className="ts-iscsi-head">
         <div>
           <p className="tg-lead" style={{ margin: 0 }}>
-            Un destino iSCSI es un disco de red: una máquina virtual o un servidor lo ve como un disco propio y le da formato. TangoOS lo guarda como un archivo dentro de un volumen.
+            Un destino iSCSI es un disco de red: una máquina virtual o un servidor lo ve como un disco propio y le da formato. TangoOS lo guarda como un archivo dentro de un volumen, en un volumen lógico de un grupo o en un volumen de bloque ZFS.
           </p>
           {svc && !svc.enabled && (
             <div className="ts-iscsi-warn">
@@ -42,18 +56,18 @@ export function Iscsi({ vols }: { vols: Volume[] }) {
         </div>
         <div className="ts-iscsi-actions">
           {!real && <DemoBadge />}
-          <Button variant="primary" onClick={() => setCreating(true)} disabled={!usable.length}>
+          <Button variant="primary" onClick={() => setCreating(true)} disabled={!canCreate}>
             <Plus size={14} /> Nuevo destino
           </Button>
         </div>
       </div>
 
-      {!usable.length && !targets?.length && (
+      {!canCreate && !targets?.length && (
         <EmptyState icon={HardDrive} title="Primero creá un volumen" action={<Button onClick={() => openApp("tango.storage", { action: "create" })}>Crear volumen…</Button>}>
           Los destinos iSCSI se guardan dentro de un volumen.
         </EmptyState>
       )}
-      {usable.length > 0 && targets?.length === 0 && (
+      {canCreate && targets?.length === 0 && (
         <EmptyState icon={Network} title="Sin destinos iSCSI" action={<Button onClick={() => setCreating(true)}>Crear el primero</Button>}>
           Creá un disco de red para una máquina virtual de Proxmox, VMware o Hyper-V.
         </EmptyState>
@@ -73,7 +87,7 @@ export function Iscsi({ vols }: { vols: Volume[] }) {
               </Button>
             </div>
             <small>
-              {fmtBytes(tg.sizeBytes)} en {vols.find((v) => v.id === tg.volume)?.name ?? tg.volume} · {tg.chap ? "con CHAP" : "sin autenticación"} · {tg.sessions ? `${tg.sessions} sesión${tg.sessions > 1 ? "es" : ""} conectada${tg.sessions > 1 ? "s" : ""}` : "sin conexiones"}
+              {fmtBytes(tg.sizeBytes)} en {where(tg)} · {tg.chap ? "con CHAP" : "sin autenticación"} · {tg.sessions ? `${tg.sessions} sesión${tg.sessions > 1 ? "es" : ""} conectada${tg.sessions > 1 ? "s" : ""}` : "sin conexiones"}
             </small>
           </div>
           <Button variant="plain" onClick={() => setDeleting(tg)} aria-label={`Eliminar ${tg.name}`} title={`Eliminar ${tg.name}`}>
@@ -96,7 +110,7 @@ export function Iscsi({ vols }: { vols: Volume[] }) {
         </div>
       )}
 
-      {creating && <NewTarget vols={usable} existing={targets ?? []} onClose={() => setCreating(false)} />}
+      {creating && <NewTarget vols={usable} pools={pools} zvols={zvols} existing={targets ?? []} onClose={() => setCreating(false)} />}
       {deleting && <DeleteTarget target={deleting} onClose={() => setDeleting(null)} />}
     </div>
   );
@@ -109,10 +123,16 @@ function useJob() {
   return { id, job, start: setId, done: job?.state === "succeeded", failed: !!job && ["failed", "interrupted", "cancelled"].includes(job.state) };
 }
 
-function NewTarget({ vols, existing, onClose }: { vols: Volume[]; existing: IscsiTarget[]; onClose: () => void }) {
+type Backing = "file" | "lv" | "zvol";
+
+function NewTarget({ vols, pools, zvols, existing, onClose }: { vols: Volume[]; pools: Pool[]; zvols: (ZfsZvol & { pool: string })[]; existing: IscsiTarget[]; onClose: () => void }) {
   const t = useTransport();
   const [name, setName] = useState("vm-disk1");
+  const [backing, setBacking] = useState<Backing>(vols.length ? "file" : pools.length ? "lv" : "zvol");
   const [volume, setVolume] = useState(vols[0]?.id ?? "");
+  const [pool, setPool] = useState(pools[0]?.id ?? "");
+  const [thin, setThin] = useState(false);
+  const [zvol, setZvol] = useState(zvols[0]?.device ?? "");
   const [size, setSize] = useState("50");
   const [chap, setChap] = useState(false);
   const [user, setUser] = useState("");
@@ -122,15 +142,17 @@ function NewTarget({ vols, existing, onClose }: { vols: Volume[]; existing: Iscs
   const job = useJob();
 
   const vol = vols.find((v) => v.id === volume);
-  const free = vol ? vol.size - vol.used : 0;
-  const bytes = Math.round(Number(size.replace(",", ".")) * GB);
+  const pl = pools.find((p) => p.id === pool);
+  const free = backing === "file" ? (vol ? vol.size - vol.used : 0) : backing === "lv" ? (pl ? (thin ? pl.free * 0.8 : pl.free) : 0) : Infinity;
+  const where = backing === "file" ? vol?.name : `el grupo ${pl?.name}`;
+  const bytes = backing === "zvol" ? (zvols.find((z) => z.device === zvol)?.size ?? 0) : Math.round(Number(size.replace(",", ".")) * GB);
   const errors = useMemo(
     () => ({
-      name: !NAME_RE.test(name) ? "Usá minúsculas, números y guiones (hasta 31)." : existing.some((x) => x.name === name) ? "Ya existe un destino con ese nombre." : null,
-      size: !(bytes > 0) ? "Indicá un tamaño en GB." : bytes > free ? `No entra: quedan ${fmtBytes(free)} libres en ${vol?.name}.` : null,
+      name: !NAME_RE.test(name) || name === "thin" ? "Usá minúsculas, números y guiones (hasta 31)." : existing.some((x) => x.name === name) ? "Ya existe un destino con ese nombre." : null,
+      size: backing === "zvol" ? (zvol ? null : "Elegí un volumen de bloque.") : !(bytes > 0) ? "Indicá un tamaño en GB." : bytes > free ? `No entra: quedan ${fmtBytes(free)} libres en ${where}.` : null,
       chap: chap && (!user || secret.length < 12 || secret.length > 16) ? "CHAP necesita usuario y un secreto de 12 a 16 caracteres." : null,
     }),
-    [name, existing, bytes, free, vol, chap, user, secret],
+    [name, existing, bytes, free, where, backing, zvol, chap, user, secret],
   );
   const valid = !errors.name && !errors.size && !errors.chap;
 
@@ -138,7 +160,11 @@ function NewTarget({ vols, existing, onClose }: { vols: Volume[]; existing: Iscs
     setBusy(true);
     setErr(null);
     try {
-      const r = await t.call("iscsi.targets.create", { name, volume, sizeBytes: bytes, chap: chap ? { user, secret } : undefined });
+      const c = chap ? { user, secret } : undefined;
+      const r = await t.call(
+        "iscsi.targets.create",
+        backing === "lv" ? { name, pool, thin, sizeBytes: bytes, chap: c } : backing === "zvol" ? { name, zvol, sizeBytes: bytes, chap: c } : { name, volume, sizeBytes: bytes, chap: c },
+      );
       job.start(r.job);
     } catch (e) {
       setErr(e instanceof RpcError ? e.message : String(e));
@@ -179,20 +205,75 @@ function NewTarget({ vols, existing, onClose }: { vols: Volume[]; existing: Iscs
             <TextInput value={name} onChange={(e) => setName(e.target.value.toLowerCase())} aria-invalid={!!errors.name} />
           </label>
           {errors.name && <span className="ts-err">{errors.name}</span>}
-          <label>
-            <span>Volumen</span>
-            <select className="tg-input" value={volume} onChange={(e) => setVolume(e.target.value)}>
-              {vols.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name} · {fmtBytes(v.size - v.used)} libres
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Tamaño (GB)</span>
-            <TextInput value={size} inputMode="decimal" onChange={(e) => setSize(e.target.value)} aria-invalid={!!errors.size} />
-          </label>
+          <div className="ts-iscsi-backing">
+            <span>Dónde va el disco</span>
+            <Segmented<Backing>
+              label="Dónde va el disco"
+              value={backing}
+              onChange={setBacking}
+              options={[
+                ...(vols.length ? [{ value: "file" as const, label: "Archivo en un volumen" }] : []),
+                ...(pools.length ? [{ value: "lv" as const, label: "Volumen lógico de un grupo" }] : []),
+                ...(zvols.length ? [{ value: "zvol" as const, label: "Volumen de bloque ZFS" }] : []),
+              ]}
+            />
+            <small className="tg-muted">
+              {backing === "file"
+                ? "Un archivo dentro del volumen: lo más simple, entra en las instantáneas de la carpeta del volumen."
+                : backing === "lv"
+                  ? "Un volumen lógico del grupo, sin sistema de archivos en el medio: el camino más directo a los discos."
+                  : "Un volumen de bloque de un pool ZFS, creado antes en Pools ZFS."}
+            </small>
+          </div>
+          {backing === "file" && (
+            <label>
+              <span>Volumen</span>
+              <select className="tg-input" value={volume} onChange={(e) => setVolume(e.target.value)}>
+                {vols.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} · {fmtBytes(v.size - v.used)} libres
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {backing === "lv" && (
+            <>
+              <label>
+                <span>Grupo</span>
+                <select className="tg-input" value={pool} onChange={(e) => setPool(e.target.value)}>
+                  {pools.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {fmtBytes(p.free)} libres
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Reservar solo lo que se escribe (thin)</span>
+                <Toggle checked={thin} onChange={setThin} label="Thin" />
+              </label>
+              {thin && <small className="tg-muted">El pool thin se agranda un 25 % más que el disco. Si se llena, el disco deja de aceptar escrituras: dejá espacio libre en el grupo.</small>}
+            </>
+          )}
+          {backing === "zvol" && (
+            <label>
+              <span>Volumen de bloque</span>
+              <select className="tg-input" value={zvol} onChange={(e) => setZvol(e.target.value)}>
+                {zvols.map((z) => (
+                  <option key={z.device} value={z.device}>
+                    {z.name} (pool {z.pool}) · {fmtBytes(z.size)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {backing !== "zvol" && (
+            <label>
+              <span>Tamaño (GB)</span>
+              <TextInput value={size} inputMode="decimal" onChange={(e) => setSize(e.target.value)} aria-invalid={!!errors.size} />
+            </label>
+          )}
           {errors.size && <span className="ts-err">{errors.size}</span>}
           <label>
             <span>Autenticación CHAP</span>

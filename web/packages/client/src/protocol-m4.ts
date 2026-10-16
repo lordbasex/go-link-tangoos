@@ -61,10 +61,16 @@ export interface NfsClient {
 export interface IscsiTarget {
   name: string;
   iqn: string;
+  /** Volume.id (archivo), "zfs:<pool>" (zvol) o Pool.id (LV). */
   volume: string;
   sizeBytes: number;
   chap: boolean;
   sessions: number;
+  /** LUN sobre un volumen de bloque ZFS. */
+  zvol?: string;
+  /** LUN sobre un volumen lógico de un grupo (/dev/<grupo>/il_<nombre>). */
+  lv?: string;
+  thin?: boolean;
 }
 
 export interface NotifyChannels {
@@ -113,7 +119,11 @@ declare module "./protocol" {
     "nfs.exports.get": { params: { share: string }; result: { clients: NfsClient[] } };
     "nfs.exports.set": { params: { share: string; clients: NfsClient[] }; result: Record<string, never> };
     "iscsi.targets.list": { params: void; result: IscsiTarget[] };
-    "iscsi.targets.create": { params: { name: string; volume: string; sizeBytes: number; chap?: { user: string; secret: string } }; result: { job: string } };
+    /** Un LUN va en un archivo de `volume`, en el zvol `zvol` o en un LV nuevo del grupo `pool` (`thin` opcional). */
+    "iscsi.targets.create": {
+      params: { name: string; volume?: string; sizeBytes: number; chap?: { user: string; secret: string }; zvol?: string; pool?: string; thin?: boolean };
+      result: { job: string };
+    };
     "iscsi.targets.delete": { params: { name: string; typed: string }; result: { job: string } };
     "notify.channels.get": { params: void; result: NotifyChannels };
     "notify.channels.set": { params: NotifyChannels; result: Record<string, never> };

@@ -383,7 +383,7 @@ cert.caDownload  null → {"filename":"tangoos-ca.crt","pem":"…"}
 services.list    null → [{"id":"smb|nfs|sftp|webdav|iscsi","enabled","running","port","detail"}]
 services.set     {"id","enabled", "options":{…}} → {"job"}
 nfs.exports.set  {"share","clients":[{"host":"192.168.1.0/24","access":"rw|ro"}]} → {}
-iscsi.targets.list / iscsi.targets.create {"name","volume","sizeBytes","chap":{"user","secret"}?} / iscsi.targets.delete {"name","typed"}
+iscsi.targets.list / iscsi.targets.create {"name","volume"|"pool"+"thin"?|"zvol","sizeBytes","chap":{"user","secret"}?} / iscsi.targets.delete {"name","typed"}
 // Notifications
 notify.channels.get null → {"email":{…},"ntfy":{…},"telegram":{…},"levels":["crit","warn"]}
 notify.channels.set {…} → {}
@@ -448,8 +448,13 @@ logs.query   {"unit"?: "tangod|tango-agent|smbd|docker|kernel", "q"?, "since"?, 
   deleting sends to the trash. Limitation: `x/net/webdav` answers 404 (not 403) to a denied write.
 - **NFS:** `/etc/exports.d/tango.exports` (`root_squash`, `sync`, `sec=sys`); `nfs-kernel-server` is
   installed when it is enabled. Permissions depend on matching UID/GID on the client (AUTH_SYS).
-- **iSCSI:** LIO through configfs (Go), LUN in `/<vol>/@iscsi/<name>.img` without CoW and thin-provisioned,
-  `generate_node_acls` + optional CHAP per TPG. The configuration is reapplied when `tangod` starts.
+- **iSCSI:** LIO through configfs (Go), `generate_node_acls` + optional CHAP per TPG. The LUN is one of:
+  a file `/<vol>/@iscsi/<name>.img` without CoW and thin-provisioned (`volume`); a **logical volume** `il_<name>` in a
+  storage pool (`pool` = Pool.id, thick or `thin` in the pool's `il_thin` thin pool, grown by size + 25 %), created with
+  the target and removed with it (agent ops `pool.lun.create|delete`, listed as `Pool.luns`; a pool with LUNs cannot be
+  deleted, `POOL_NOT_EMPTY`); or a ZFS block volume (`zvol`, §18). Block devices use an `iblock` backstore
+  (`udev_path`). `iscsi.targets.list` returns `lv` + `thin` or `zvol` for those. The name `thin` is reserved. The
+  configuration is reapplied when `tangod` starts.
 - **App proxy:** `apps.ticket` → `https://<host>:<port>/.tango/ticket?t=…` (single use, 60 s) → HMAC
   `tango_app` cookie (12 h, key in `app-gate.key`); without the cookie, 401. The TangoOS cookie never reaches the app.
 - **First boot:** `setup.state` is `pending` until `setup-done` exists or a user has already logged

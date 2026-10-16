@@ -209,7 +209,9 @@ Quotas on Btrfs volumes, native Btrfs RAID1 (ADR 0004), scheduled scrub of md/Bt
 - **Packages:** `lvm2`, `cryptsetup-bin`, `thin-provisioning-tools` (`cache_check`) are dependencies, `xfsprogs` recommended;
   `/usr/lib/modules-load.d/tangoos.conf` loads `dm_crypt`, `dm_cache`, `dm_cache_smq` at boot (the agent runs with
   `ProtectKernelModules=yes`, so LVM cannot `modprobe` them; found in the lab).
-- **Limits today:** an LV-backed iSCSI LUN is not offered (LUNs are still files on Btrfs); hybrid growth requires the new
+- **iSCSI on an LV:** a target can live in a logical volume `il_<name>` of a storage pool (thick, or thin in the pool's
+  `il_thin` thin pool), exported with an `iblock` backstore; the LV is created with the target and removed with it.
+- **Limits today:** hybrid growth requires the new
   disk to be at least as large as the largest one; one SSD cache per volume; the key file stays on the device when the key
   slot is removed (it no longer opens anything).
 

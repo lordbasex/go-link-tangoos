@@ -22,6 +22,8 @@ const (
 	OpLUKSLock       = "luks.lock"
 	OpLUKSPassphrase = "luks.passphrase"
 	OpLUKSKeyDevice  = "luks.keydevice"
+	OpPoolLUNCreate  = "pool.lun.create" // LV il_<destino> para un LUN de iSCSI
+	OpPoolLUNDelete  = "pool.lun.delete"
 	OpKeyDevList     = "keydev.list"
 
 	OpCacheCreate = "cache.create"
@@ -53,6 +55,15 @@ type PoolInfo struct {
 	PVs     []PoolPV   `json:"pvs"`
 	Tiers   []PoolTier `json:"tiers"`
 	LVs     []PoolLV   `json:"lvs"`
+	LUNs    []PoolLUN  `json:"luns,omitempty"` // LV de LUN de iSCSI (il_<destino>)
+}
+
+// PoolLUN es el LV de un LUN de iSCSI en el grupo.
+type PoolLUN struct {
+	Name string `json:"name"` // destino iSCSI
+	Dev  string `json:"dev"`  // /dev/<grupo>/il_<destino>
+	Size uint64 `json:"size"`
+	Thin bool   `json:"thin"`
 }
 
 // PoolPV es un volumen físico del grupo.
@@ -258,4 +269,12 @@ type CacheCreateArgs struct {
 type CacheRemoveArgs struct {
 	OpID string `json:"op_id"`
 	Name string `json:"name"`
+}
+
+// PoolLUNArgs crea (Size > 0) o borra el LV de un LUN de iSCSI en un grupo.
+type PoolLUNArgs struct {
+	Pool string `json:"pool"`
+	Name string `json:"name"` // destino iSCSI
+	Size uint64 `json:"size,omitempty"`
+	Thin bool   `json:"thin,omitempty"`
 }

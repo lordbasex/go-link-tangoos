@@ -86,9 +86,17 @@ type iscsiConfig struct {
 	Name       string `json:"name"`
 	Volume     string `json:"volume"` // Volume.ID (UUID del Btrfs); "zfs:<pool>" si es un zvol
 	Zvol       string `json:"zvol,omitempty"`
+	LV         string `json:"lv,omitempty"`     // /dev/<grupo>/il_<nombre>: LUN en un LV (Volume = Pool.ID)
+	LVPool     string `json:"lvPool,omitempty"` // nombre del grupo (para borrar el LV)
+	Thin       bool   `json:"thin,omitempty"`
 	SizeBytes  int64  `json:"sizeBytes"`
 	CHAPUser   string `json:"chapUser,omitempty"`
 	CHAPSecret string `json:"chapSecret,omitempty"`
+}
+
+// iscsiLUNAgent crea y borra el LV de un LUN en un grupo de almacenamiento.
+type iscsiLUNAgent interface {
+	PoolLUN(ctx context.Context, create bool, a agentproto.PoolLUNArgs) error
 }
 
 type m4API struct {
@@ -603,6 +611,8 @@ type IscsiTarget struct {
 	CHAP      bool   `json:"chap"`
 	Sessions  int    `json:"sessions"`
 	Zvol      string `json:"zvol,omitempty"` // LUN sobre un volumen de bloque ZFS
+	LV        string `json:"lv,omitempty"`   // LUN sobre un LV de un grupo de almacenamiento
+	Thin      bool   `json:"thin,omitempty"`
 }
 
 func intp(n int) *int { return &n }
@@ -793,7 +803,7 @@ func (m *m4API) registerServices(r *rtcrpc.Router) {
 			if ist != nil {
 				n = ist.Sessions[services.IQN(t.Name)]
 			}
-			out = append(out, IscsiTarget{Name: t.Name, IQN: services.IQN(t.Name), Volume: t.Volume, SizeBytes: t.SizeBytes, CHAP: t.CHAPUser != "", Sessions: n, Zvol: t.Zvol})
+			out = append(out, IscsiTarget{Name: t.Name, IQN: services.IQN(t.Name), Volume: t.Volume, SizeBytes: t.SizeBytes, CHAP: t.CHAPUser != "", Sessions: n, Zvol: t.Zvol, LV: t.LV, Thin: t.Thin})
 		}
 		return out, nil
 	})
@@ -807,6 +817,8 @@ func (m *m4API) registerServices(r *rtcrpc.Router) {
 		SizeBytes int64  `json:"sizeBytes"`
 		CHAP      *chapP `json:"chap,omitempty"`
 		Zvol      string `json:"zvol,omitempty"` // /dev/zvol/<pool>/zvol/<nombre>: en vez de archivo
+		Pool      string `json:"pool,omitempty"` // Pool.ID de un grupo de almacenamiento: LUN en un LV nuevo
+		Thin      bool   `json:"thin,omitempty"` // LV thin (ocupa lo que se escribe)
 	}
 	r.Handle("iscsi.targets.create", rtcrpc.Typed(func(ctx context.Context, s *rtcrpc.Session, p createP) (map[string]string, error) {
 		if err := admin(s); err != nil {
@@ -822,7 +834,30 @@ func (m *m4API) registerServices(r *rtcrpc.Router) {
 			}
 			c.CHAPUser, c.CHAPSecret = p.CHAP.User, p.CHAP.Secret
 		}
-		if p.Zvol != "" { // LUN sobre un volumen de bloque ZFS (ADR 0013)
+		var lunAg iscsiLUNAgent
+		var lunPool string
+		if p.Pool != "" { // LUN sobre un LV nuevo en un grupo de almacenamiento
+			ag, ok := m.d.Agent.(iscsiLUNAgent)
+			if !ok || m.a.pools == nil {
+				return nil, rtcrpc.Errorf(codeNotSupported, "este NAS no tiene grupos de almacenamiento")
+			}
+			pl, ok := m.a.pools.poolByID(ctx, p.Pool)
+			if !ok {
+				return nil, rtcrpc.Errorf(codePoolNotFound, "no existe el grupo")
+			}
+			need := uint64(p.SizeBytes)
+			if p.Thin {
+				need += need / 4
+			}
+			if need > pl.Free {
+				return nil, rtcrpc.Errorf("NO_SPACE", "no entra en el grupo %s: quedan %s libres", pl.Name, humanBytes(pl.Free))
+			}
+			lunAg, lunPool = ag, pl.Name
+			c.Volume, c.LV, c.LVPool, c.Thin = pl.ID, "/dev/"+pl.Name+"/il_"+c.Name, pl.Name, p.Thin
+			if err := services.ValidateTarget(agentproto.ISCSITarget{Name: c.Name, IQN: services.IQN(c.Name), LV: c.LV, SizeBytes: c.SizeBytes, CHAPUser: c.CHAPUser, CHAPSecret: c.CHAPSecret}); err != nil {
+				return nil, rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "%v", err)
+			}
+		} else if p.Zvol != "" { // LUN sobre un volumen de bloque ZFS (ADR 0013)
 			zv, ok := m.a.zvolByDevice(ctx, p.Zvol)
 			if !ok {
 				return nil, rtcrpc.Errorf("VOLUME_NOT_FOUND", "no existe el volumen de bloque %s", p.Zvol)
@@ -867,7 +902,23 @@ func (m *m4API) registerServices(r *rtcrpc.Router) {
 		m.mu.Unlock()
 		j := a.d.Jobs.Start("iscsi.create", "Creando el destino iSCSI "+c.Name, "", func(ctx context.Context, h *jobs.Handle) error {
 			defer a.d.Hub.Publish("services.changed", map[string]string{"id": "iscsi"})
+			if lunAg != nil {
+				h.Update(0.1, "Creando el volumen lógico en el grupo "+lunPool)
+				if err := lunAg.PoolLUN(ctx, true, agentproto.PoolLUNArgs{Pool: lunPool, Name: c.Name, Size: uint64(c.SizeBytes), Thin: c.Thin}); err != nil {
+					m.mu.Lock()
+					m.cfg.ISCSI.Targets = slices.DeleteFunc(m.cfg.ISCSI.Targets, func(t iscsiConfig) bool { return t.Name == c.Name })
+					_ = m.save()
+					m.mu.Unlock()
+					return errors.New(agentMessage(err))
+				}
+				if m.a.pools != nil {
+					m.a.pools.changed("pools")
+				}
+			}
 			if _, err := m.applyISCSI(ctx, h, ""); err != nil {
+				if lunAg != nil {
+					_ = lunAg.PoolLUN(context.WithoutCancel(ctx), false, agentproto.PoolLUNArgs{Pool: lunPool, Name: c.Name})
+				}
 				m.mu.Lock() // no dejar en la config un destino que no se pudo crear
 				m.cfg.ISCSI.Targets = slices.DeleteFunc(m.cfg.ISCSI.Targets, func(t iscsiConfig) bool { return t.Name == c.Name })
 				_ = m.save()
@@ -913,12 +964,25 @@ func (m *m4API) registerServices(r *rtcrpc.Router) {
 		j := a.d.Jobs.Start("iscsi.delete", "Eliminando el destino iSCSI "+p.Name, "", func(ctx context.Context, h *jobs.Handle) error {
 			defer a.d.Hub.Publish("services.changed", map[string]string{"id": "iscsi"})
 			del := []string{}
-			if mount != "" && gone.Zvol == "" { // un zvol no se borra con el destino
-
+			if mount != "" && gone.Zvol == "" && gone.LV == "" { // un zvol no se borra con el destino; el LV, después
 				del = append(del, services.LUNFile(mount, gone.Name))
 			}
-			_, err := m.applyISCSIWith(ctx, h, del)
-			return err
+			if _, err := m.applyISCSIWith(ctx, h, del); err != nil {
+				return err
+			}
+			if gone.LV != "" { // el LV se creó con el destino y se va con él
+				ag, ok := m.d.Agent.(iscsiLUNAgent)
+				if !ok {
+					return errors.New("el agente no maneja LUN en volúmenes lógicos")
+				}
+				if err := ag.PoolLUN(ctx, false, agentproto.PoolLUNArgs{Pool: gone.LVPool, Name: gone.Name}); err != nil {
+					return errors.New(agentMessage(err))
+				}
+				if m.a.pools != nil {
+					m.a.pools.changed("pools")
+				}
+			}
+			return nil
 		}, nil)
 		return map[string]string{"job": j.ID}, nil
 	}))
@@ -984,8 +1048,8 @@ func (m *m4API) applyISCSINow(ctx context.Context, h *jobs.Handle, del []string)
 	vols := m.volumes(ctx)
 	targets := []agentproto.ISCSITarget{}
 	for _, t := range cfg {
-		if t.Zvol != "" {
-			targets = append(targets, agentproto.ISCSITarget{Name: t.Name, IQN: services.IQN(t.Name), Zvol: t.Zvol, SizeBytes: t.SizeBytes, CHAPUser: t.CHAPUser, CHAPSecret: t.CHAPSecret})
+		if t.Zvol != "" || t.LV != "" {
+			targets = append(targets, agentproto.ISCSITarget{Name: t.Name, IQN: services.IQN(t.Name), Zvol: t.Zvol, LV: t.LV, SizeBytes: t.SizeBytes, CHAPUser: t.CHAPUser, CHAPSecret: t.CHAPSecret})
 			continue
 		}
 		for _, v := range vols {

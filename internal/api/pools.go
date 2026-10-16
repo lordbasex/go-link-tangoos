@@ -782,6 +782,9 @@ func (p *poolsAPI) deletePlan(ctx context.Context, poolID string) (DeletePlan, e
 	if len(pl.Volumes) > 0 {
 		return DeletePlan{}, rtcrpc.Errorf(agentproto.CodePoolNotEmpty, "el grupo %s tiene %d volumen(es): eliminalos primero", pl.Name, len(pl.Volumes))
 	}
+	if len(pl.LUNs) > 0 {
+		return DeletePlan{}, rtcrpc.Errorf(agentproto.CodePoolNotEmpty, "el grupo %s tiene %d disco(s) iSCSI (%s): eliminalos primero en iSCSI", pl.Name, len(pl.LUNs), pl.LUNs[0].Name)
+	}
 	disks, err := p.s.inv.Disks(ctx)
 	if err != nil {
 		return DeletePlan{}, rtcrpc.Errorf(rtcrpc.CodeInternal, "%v", err)

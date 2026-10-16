@@ -361,9 +361,27 @@ func (n *replNet) httpClient(pin string, timeout time.Duration) (*http.Client, e
 			}
 			return nil
 		}}
-	tr := &http.Transport{TLSClientConfig: cfg, ResponseHeaderTimeout: 0, IdleConnTimeout: 30 * time.Second,
-		DialContext: (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext}
+	tr := &http.Transport{TLSClientConfig: cfg, ResponseHeaderTimeout: 0, IdleConnTimeout: 30 * time.Second, DialContext: replDial}
 	return &http.Client{Transport: tr, Timeout: timeout}, nil
+}
+
+// replDial reintenta la conexión TCP (3 veces, 4 s cada una): una red que pierde un SYN
+// no tiene que cortar un envío. Sin conexión todavía no se leyó nada del stream, así que
+// reintentar es seguro.
+func replDial(ctx context.Context, network, addr string) (net.Conn, error) {
+	d := net.Dialer{Timeout: 4 * time.Second, KeepAlive: 30 * time.Second}
+	var err error
+	for i := 0; i < 3; i++ {
+		var c net.Conn
+		if c, err = d.DialContext(ctx, network, addr); err == nil {
+			return c, nil
+		}
+		if ctx.Err() != nil {
+			break
+		}
+		time.Sleep(time.Duration(i+1) * 300 * time.Millisecond)
+	}
+	return nil, err
 }
 
 // normAddr agrega el puerto por defecto.
@@ -512,6 +530,7 @@ func (s remoteSink) do(ctx context.Context, method, path string, body io.Reader,
 		return errPinMismatch
 	}
 	if err != nil {
+		s.n.r.log.Warn("replicación: pedido al destino", "target", s.t.Name, "path", path, "err", err)
 		return fmt.Errorf("no se pudo conectar a %s (%s)", s.t.Name, shortNetErr(err))
 	}
 	defer resp.Body.Close()

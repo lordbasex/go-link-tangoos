@@ -20,6 +20,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -149,24 +150,32 @@ func validReplTarget(pool, origin, vol, rel string) *agentproto.Error {
 
 func replSend(ctx context.Context, a *agentproto.ZfsReplSendArgs) (agentproto.ZfsStreamResult, *os.File, *agentproto.Error) {
 	var res agentproto.ZfsStreamResult
-	if a.Token == "" {
-		if e := validReplVol(a.Pool, a.Vol); e != nil {
-			return res, nil, e
-		}
-		if err := zfs.ValidRel(a.Rel); err != nil {
-			return res, nil, agentproto.Errf(agentproto.CodeInvalidArgs, "%v", err)
-		}
+	// También con token: el token lo da el destino y se verifica contra este dataset.
+	if e := validReplVol(a.Pool, a.Vol); e != nil {
+		return res, nil, e
+	}
+	if err := zfs.ValidRel(a.Rel); err != nil {
+		return res, nil, agentproto.Errf(agentproto.CodeInvalidArgs, "%v", err)
 	}
 	ds := zfs.Join(zfs.VolumeDataset(a.Pool, a.Vol), a.Rel)
 	dry, err := zfs.ArgsSend(ds, a.Snap, a.From, a.Token, true)
 	if err != nil {
 		return res, nil, agentproto.Errf(agentproto.CodeInvalidArgs, "%v", err)
 	}
-	if out, err := zrun(ctx, zfs.ZfsBin, nil, dry...); err != nil {
+	out, err := zrun(ctx, zfs.ZfsBin, nil, dry...)
+	if err != nil {
 		return res, nil, zerr(err)
-	} else {
-		res.Size = zfs.ParseSendSize(string(out))
 	}
+	if a.Token != "" {
+		enc, err := zfsGetProp(ctx, ds, "encryption")
+		if err != nil {
+			return res, nil, zerr(err)
+		}
+		if err := zfs.CheckToken(string(out), ds, enc != "" && enc != "off"); err != nil {
+			return res, nil, agentproto.Errf(agentproto.CodeInvalidArgs, "%v", err)
+		}
+	}
+	res.Size = zfs.ParseSendSize(string(out))
 	argv, _ := zfs.ArgsSend(ds, a.Snap, a.From, a.Token, false)
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -454,7 +463,9 @@ func replPromote(ctx context.Context, a *agentproto.ZfsReplPromoteArgs) (any, *a
 	if zfsExists(ctx, dst) {
 		return nil, agentproto.Errf(agentproto.CodeExists, "ya existe el volumen %s", a.Name)
 	}
-	if fi, err := os.Stat("/" + a.Name); err == nil && (!fi.IsDir() || !dirEmpty("/"+a.Name)) {
+	// Un pool destruido deja los puntos de montaje vacíos (/vol/@shares/<Carpeta>): eso no
+	// cuenta como ocupado; un archivo, sí.
+	if fi, err := os.Stat("/" + a.Name); err == nil && (!fi.IsDir() || !onlyEmptyDirs("/"+a.Name)) {
 		return nil, agentproto.Errf(agentproto.CodeExists, "/%s ya existe y no está vacío", a.Name)
 	}
 	root := st.Datasets[0]
@@ -473,12 +484,28 @@ func replPromote(ctx context.Context, a *agentproto.ZfsReplPromoteArgs) (any, *a
 		_, err := zrun(ctx, zfs.ZfsBin, nil, append(append([]string{"set"}, props...), ds)...)
 		return err
 	}
-	if err := set(dst, "mountpoint=/"+a.Name, "canmount=on"); err != nil {
-		return nil, zerr(err)
-	}
-	for _, kind := range []string{"shares", "apps"} {
-		if zfsExists(ctx, dst+"/"+kind) {
-			if err := set(dst+"/"+kind, "canmount=off", "mountpoint=/"+a.Name+"/@"+kind); err != nil {
+	// Cada dataset llegó con canmount=off mountpoint=none readonly=on propios (ArgsRecv):
+	// se pone el esquema de TangoOS y se vuelve a escribir.
+	for _, d := range st.Datasets {
+		ds := zfs.Join(dst, d.Rel)
+		var props []string
+		switch {
+		case d.Rel == "":
+			props = []string{"mountpoint=/" + a.Name, "canmount=on"}
+		case d.Rel == "shares" || d.Rel == "apps":
+			props = []string{"canmount=off", "mountpoint=/" + a.Name + "/@" + d.Rel}
+		default:
+			props = []string{"canmount=on"}
+		}
+		if err := set(ds, props...); err != nil {
+			return nil, zerr(err)
+		}
+		inherit := []string{"readonly"}
+		if strings.Contains(d.Rel, "/") {
+			inherit = append(inherit, "mountpoint")
+		}
+		for _, p := range inherit {
+			if _, err := zrun(ctx, zfs.ZfsBin, nil, "inherit", p, ds); err != nil {
 				return nil, zerr(err)
 			}
 		}
@@ -519,4 +546,21 @@ func replPromote(ctx context.Context, a *agentproto.ZfsReplPromoteArgs) (any, *a
 	}
 	zfsInvalidate()
 	return map[string]bool{"locked": encrypted && locked}, nil
+}
+
+// onlyEmptyDirs dice si p tiene solo directorios vacíos (restos de puntos de montaje) y no
+// es un punto de montaje.
+func onlyEmptyDirs(p string) bool {
+	if isMountedAt(p) {
+		return false
+	}
+	ok := true
+	_ = filepath.WalkDir(p, func(path string, d os.DirEntry, err error) error {
+		if err != nil || !d.IsDir() || (path != p && isMountedAt(path)) {
+			ok = false
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return ok
 }

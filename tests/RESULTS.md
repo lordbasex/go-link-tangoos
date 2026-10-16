@@ -284,6 +284,39 @@ Product bugs found and fixed by this battery:
   mountpoint, which then made a new volume with that name "in use" (found by the reboot run).
 - OpenZFS ≥ 2.2 reports `xattr=sa` as `on` (alias).
 
+## ZFS USB key and replication, iSCSI on an LV (2026-10-16)
+
+Lab VMs 112–114 (Debian 13, OpenZFS 2.3.9 from contrib + DKMS). Disks added: TANGO-Z<n> (8 GB, ZFS pool) and
+TANGO-KEY<n> (1 GB: the "USB stick", FAT, on the source; a second pool on the target).
+
+`make e2e-repl REPL=172.17.0.48,172.17.0.49`: **9/9 subtests pass (92 s)**. `make e2e-iscsi-lv ISCSI_LV=172.17.0.50`:
+**pass (12 s)**.
+
+| Step | Result |
+|---|---|
+| USB key for an encrypted ZFS volume (row 30) | 32-byte key file on the stick, `tangoos:keyseal` = `v1.…` without the passphrase in clear; lock → unlock with the key; after changing the passphrase the key still opens and the old passphrase does not; restarting `tangod` with the stick in → unlocked by itself; removing the key clears the seal |
+| Link two NAS (row 31) | the fingerprint the source sees is the one the target shows; wrong code → `PAIR_FAILED`; the code works once |
+| First run | 64 MB + an encrypted volume; the encrypted replica arrives with `keystatus=unavailable` (the target never had the key); nothing mounted under `tgrepl` |
+| Second run | only the changes (4 MB) plus the folder's new snapshot; one `tgrepl-*` snapshot left on each side |
+| Cut transfer | 900 MB file, target `tangod` restarted mid-send: the replica is marked partial; the next run resumes with the token and sends **345 MiB**, not 900 |
+| Promote | wrong passphrase refused; `grande.bin` identical (sha256); every folder of the encrypted replica inherits the volume's key again; both show up as normal volumes |
+| Local replica | to another pool of the same NAS (same pool refused); delete task and replica |
+| iSCSI on an LV (row 32) | thick and thin LUN in `gpool` (`il_thin` thin pool), `iblock` backstore on `/dev/gpool/il_*`, pool delete refused while LUNs exist, login with open-iscsi: 1 GiB disk, 8 MB written; deleting the targets removes the LVs and the thin pool |
+
+Product bugs found and fixed:
+
+- **GlusterFS firewall reset ~40 % of outgoing TCP connections** of any node with GlusterFS installed: the rejected
+  brick range 49152–60999 overlaps the ephemeral ports, so the SYN-ACK of the node's own connections was reset (apt,
+  HTTPS, replication). The ruleset now accepts `ct state established,related` first.
+- **Power loss during "Enable ZFS"** (the Proxmox host hung mid-DKMS) left `zfs-dkms` half configured and apt refused
+  everything afterwards, also TangoOS updates. "Enable ZFS" and applying updates now run `dpkg --configure -a` first.
+- **iSCSI: a second block-backed target failed** (`vpd_unit_serial: invalid argument`) because re-applying the first
+  one tried to change the serial of an enabled backstore (wrong path for the "already enabled" check).
+- Security (from the commit review): the resume token comes from the target, so a malicious linked target could have
+  asked for another dataset or a non-raw (decrypted) stream. The agent now checks with `zfs send -nvPt` that the token
+  is for the task's dataset, a TangoOS snapshot and raw when encrypted. Receives force `canmount=off mountpoint=none
+  readonly=on` and drop `sharenfs/sharesmb`, whatever the source's stream says.
+
 ## Cluster: CA rotation, quotas with simple-quota (2026-10-16)
 
 Same lab, rebuilt (VMs 112–114). `make e2e-cluster2`: **15/15 subtests pass (281 s)**, with the branch build

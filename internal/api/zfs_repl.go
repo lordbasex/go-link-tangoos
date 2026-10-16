@@ -369,7 +369,7 @@ func (r *zfsRepl) run(ctx context.Context, progress func(float64, string), t Rep
 			progress(frac, fmt.Sprintf("%s: %s (%s enviados)", label, modeLabel(step.Mode), humanBytes(sent.Load())))
 			switch step.Mode {
 			case "resume":
-				err = r.transfer(ctx, sink, t, d.Rel, agentproto.ZfsReplSendArgs{Token: step.Token}, "", sent)
+				err = r.transfer(ctx, sink, t, d.Rel, agentproto.ZfsReplSendArgs{Pool: t.Pool, Vol: t.Vol, Rel: d.Rel, Token: step.Token}, "", sent)
 			case "full":
 				first := step.Snap
 				if step.First != "" {
