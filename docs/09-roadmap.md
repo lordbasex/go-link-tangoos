@@ -109,6 +109,7 @@ Priorities from the comparison with commercial NAS systems, minus what was alrea
   - [x] 2FA in WebDAV and SFTP too: with 2FA on they accept only app passwords (and SMB uses an app password).
 - **P1, differentiation:**
   - [ ] Guided 3-2-1 backup (restic/Kopia to USB, S3, B2 or another TangoOS) and `btrfs send` replication.
+        _ZFS replication to another pool or another TangoOS done ([ADR 0016](adr/0016-zfs-usb-key-and-replication.md))._
   - [ ] Remote access: Tailscale/WireGuard in one click, and TangoConnect P2P with TURN.
         _TangoConnect done ([16](16-tangoconnect.md)). Missing: Tailscale/WireGuard._
   - [ ] Migration from another NAS: mount hybrid RAID/RAID read-only and browse it.
@@ -122,9 +123,10 @@ Priorities from the comparison with commercial NAS systems, minus what was alrea
   - [ ] SHR-style mixed disks.
   - [ ] Hot spare and level migration. _Growing a RAID 5 (reshape) is done._
   - [ ] LDAP/AD and passkeys.
-  - [ ] ARM64, English UI and a second theme.
+  - [ ] ARM64, English UI and a second theme. _English UI done ([ADR 0017](adr/0017-interface-languages.md)); the
+        installer also speaks Portuguese and asks for the time zone._
 - **P3, optional:**
-  - [ ] ZFS, SSD cache.
+  - [x] ZFS, SSD cache. _ZFS with USB key unlock and replication; iSCSI LUNs on a ZFS block volume or a pool LV._
   - [ ] PC backup with an agent.
   - [ ] AI assistant / MCP with confirmation and step-up auth.
 
@@ -132,7 +134,7 @@ Priorities from the comparison with commercial NAS systems, minus what was alrea
 
 - [ ] Media app (Jellyfin + Intel QSV). _Jellyfin installs from the catalog, without QSV._
 - [x] **TangoConnect** (remote access through signalhub + coturn), with share links.
-- [ ] Snapshot replication.
+- [ ] Snapshot replication. _ZFS volumes done (`zfs send`, resumable, encrypted volumes stay encrypted); Btrfs pending._
 - [ ] Backup (restic).
 - [ ] WebAuthn.
 - [ ] ARM64 reference build.

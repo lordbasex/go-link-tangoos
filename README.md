@@ -11,7 +11,7 @@ Part of the [go-link](https://go-link.org) ecosystem. Try the demo at **[tangoos
 > verification (TOTP) and app passwords, UPS over NUT, an app center (Docker), transfers over WebRTC and
 > remote access with TangoConnect. On the [roadmap](docs/09-roadmap.md), M0–M3.5 are done, M4 (v1.0) is mostly done,
 > and TangoConnect from M5 is done. What is missing is in [docs/09 → Next](docs/09-roadmap.md#next-post-v10).
-> The interface is in Spanish for now; English is on the roadmap.
+> The interface is in Spanish and English (Settings → Appearance, or the login screen).
 
 ## Install
 
