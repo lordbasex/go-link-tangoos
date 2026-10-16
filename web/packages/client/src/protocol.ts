@@ -306,7 +306,7 @@ export type Result<M extends Method> = Methods[M]["result"];
 export interface Topics {
   metrics: MetricsFrame;
   "jobs.changed": Job;
-  "storage.changed": { what: "disks" | "volumes" | "pools" | "zfs" | "shares" };
+  "storage.changed": { what: "disks" | "volumes" | "pools" | "zfs" | "shares" | "repl" };
   "shares.changed": { id?: string };
   "snapshots.changed": { share: string };
   "files.changed": { dir: string };
@@ -339,3 +339,4 @@ export * from "./protocol-connect";
 export * from "./protocol-pools";
 export * from "./protocol-cluster";
 export * from "./protocol-zfs";
+export * from "./protocol-zfsrepl";

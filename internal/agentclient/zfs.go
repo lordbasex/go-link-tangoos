@@ -74,6 +74,11 @@ func (c *Client) ZfsUnlock(ctx context.Context, a agentproto.ZfsUnlockArgs) erro
 	return c.CallOnce(ctx, agentproto.OpZfsUnlock, a, nil)
 }
 
+// ZfsKeyDevice guarda o quita la llave USB de un volumen ZFS (ADR 0016).
+func (c *Client) ZfsKeyDevice(ctx context.Context, a agentproto.ZfsKeyDeviceArgs) error {
+	return c.CallOnce(ctx, agentproto.OpZfsKeyDevice, a, nil)
+}
+
 func (c *Client) ZfsLock(ctx context.Context, a agentproto.ZfsVolArgs) error {
 	return c.CallOnce(ctx, agentproto.OpZfsLock, a, nil)
 }

@@ -205,6 +205,7 @@ func zfsHelper(ctx context.Context, task string, args any) error {
 }
 
 func registerZFS(r *agentproto.Registry, paths smart.Paths, env diskops.Env, jobs *asyncJobs, log *slog.Logger) {
+	registerZfsRepl(r) // replicación (zfs_repl_linux.go, ADR 0016)
 	need := func() *agentproto.Error {
 		if !zfsAvailable() {
 			return agentproto.Errf(agentproto.CodeZfsUnavailable, "ZFS no está habilitado en este equipo")
@@ -404,13 +405,27 @@ func registerZFS(r *agentproto.Registry, paths smart.Paths, env diskops.Env, job
 	})
 
 	agentproto.Register(r, agentproto.OpZfsUnlock, func(a *agentproto.ZfsUnlockArgs) *agentproto.Error {
+		if a.UseKeyDevice == (a.Passphrase != "") {
+			return agentproto.Errf(agentproto.CodeInvalidArgs, "frase o llave USB, una de las dos")
+		}
 		return validZfsVol(a.Pool, a.Name)
 	}, func(ctx context.Context, a *agentproto.ZfsUnlockArgs) (any, *agentproto.Error) {
 		ds := zfs.VolumeDataset(a.Pool, a.Name)
-		if _, err := zrun(ctx, zfs.ZfsBin, []byte(a.Passphrase+"\n"), "load-key", ds); err != nil {
+		pass := a.Passphrase
+		if a.UseKeyDevice {
+			p, e := zfsKeyPassphrase(ctx, ds)
+			if e != nil {
+				return nil, e
+			}
+			pass = p
+		}
+		if _, err := zrun(ctx, zfs.ZfsBin, []byte(pass+"\n"), "load-key", ds); err != nil {
 			if strings.Contains(err.Error(), "already loaded") {
 				// sigue: puede faltar montar
 			} else if strings.Contains(err.Error(), "Incorrect key") || strings.Contains(err.Error(), "incorrect") {
+				if a.UseKeyDevice { // sello viejo (la frase cambió fuera de TangoOS)
+					return nil, agentproto.Errf(agentproto.CodeKeyDeviceMissing, "la llave USB guarda una frase vieja: desbloqueá con la frase y volvé a guardar la llave")
+				}
 				return nil, agentproto.Errf(agentproto.CodeWrongPassphrase, "la frase no es correcta")
 			} else {
 				log.Warn("zfs load-key", "volume", a.Name, "err", firstLineOf(err.Error()))
@@ -455,8 +470,26 @@ func registerZFS(r *agentproto.Registry, paths smart.Paths, env diskops.Env, job
 			log.Warn("zfs change-key", "volume", a.Name, "err", firstLineOf(err.Error()))
 			return nil, agentproto.Errf(agentproto.CodeFailed, "no se pudo cambiar la frase")
 		}
+		if err := zfsReseal(ctx, ds, a.New); err != nil {
+			log.Warn("no se pudo volver a sellar la llave USB: se quitó", "volume", a.Name, "err", firstLineOf(err.Error()))
+		}
 		return struct{}{}, nil
 	})
+
+	agentproto.Register(r, agentproto.OpZfsKeyDevice, func(a *agentproto.ZfsKeyDeviceArgs) *agentproto.Error {
+		if e := validZfsVol(a.Pool, a.Name); e != nil {
+			return e
+		}
+		if a.Passphrase == "" {
+			return agentproto.Errf(agentproto.CodeInvalidArgs, "falta la frase")
+		}
+		if a.Device != "" {
+			if err := diskops.ValidKeyDeviceUUID(a.Device); err != nil {
+				return agentproto.Errf(agentproto.CodeInvalidArgs, "%v", err)
+			}
+		}
+		return nil
+	}, zfsKeyDevice)
 
 	agentproto.Register(r, agentproto.OpZfsZvolCreate, func(a *agentproto.ZfsZvolArgs) *agentproto.Error {
 		if _, err := zfs.ArgsZvolCreate(a.Pool, a.Name, a.Size, a.Sparse); err != nil {

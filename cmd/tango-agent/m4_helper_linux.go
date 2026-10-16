@@ -135,6 +135,12 @@ func helperUpdatesApply(ctx context.Context, scope, snap string) error {
 		}
 		writeLabel(snap, "Antes de actualizar ("+map[string]string{"all": "todo", "security": "solo seguridad"}[scope]+")")
 	}
+	// Una actualización cortada (apagón) deja paquetes sin configurar y apt-get no hace
+	// nada hasta terminarlos.
+	stage(0.1, "Terminando una actualización anterior, si quedó a medias")
+	if err := runCmd(ctx, "/usr/bin/dpkg", "--configure", "-a", "--force-confold", "--force-confdef"); err != nil {
+		fmt.Println("aviso: dpkg --configure -a:", err)
+	}
 	stage(0.12, "Actualizando la lista de paquetes")
 	if err := runCmd(ctx, "/usr/bin/apt-get", "-q", "update"); err != nil {
 		return fmt.Errorf("apt-get update: %w", err)

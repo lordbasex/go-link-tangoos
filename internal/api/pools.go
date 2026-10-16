@@ -1049,10 +1049,7 @@ func (p *poolsAPI) failed(name string) {
 
 func (p *poolsAPI) unlock(ctx context.Context, volID, pass string, useKey bool) error {
 	if z := p.s.a.zfs; z != nil && strings.HasPrefix(volID, "zfs-") { // cifrado nativo de ZFS (§18)
-		if useKey {
-			return rtcrpc.Errorf(codeNotSupported, "los volúmenes ZFS se desbloquean con la frase")
-		}
-		return z.unlock(ctx, volID, pass)
+		return z.unlock(ctx, volID, pass, useKey)
 	}
 	v, err := p.encrypted(ctx, volID)
 	if err != nil {
@@ -1125,6 +1122,14 @@ func (p *poolsAPI) passphrase(ctx context.Context, volID, old, newPass string) e
 }
 
 func (p *poolsAPI) keyDevice(ctx context.Context, volID, pass, device string) error {
+	if device != "" {
+		if err := diskops.ValidKeyDeviceUUID(device); err != nil {
+			return rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "%v", err)
+		}
+	}
+	if z := p.s.a.zfs; z != nil && strings.HasPrefix(volID, "zfs-") { // llave USB de ZFS (ADR 0016)
+		return z.keyDevice(ctx, volID, pass, device)
+	}
 	v, err := p.encrypted(ctx, volID)
 	if err != nil {
 		return err
@@ -1196,7 +1201,13 @@ func (p *poolsAPI) autoUnlock(ctx context.Context) {
 		p.mu.Lock()
 		p.tried[v.ID+"|"+v.KeyDevice] = true
 		p.mu.Unlock()
-		if err := p.agent.LUKSUnlock(ctx, agentproto.LUKSUnlockArgs{Name: v.Name, UseKeyDevice: true}); err != nil {
+		var err error
+		if z := p.s.a.zfs; z != nil && v.Kind == "zfs" {
+			err = z.unlockKey(ctx, v)
+		} else {
+			err = p.agent.LUKSUnlock(ctx, agentproto.LUKSUnlockArgs{Name: v.Name, UseKeyDevice: true})
+		}
+		if err != nil {
 			p.s.a.Notify(Notice{ID: "unlock_" + v.ID + "_" + fmt.Sprint(time.Now().Unix()), Level: "warn", App: "tango.storage",
 				Title: v.Name + " sigue bloqueado", Body: "El dispositivo de clave está conectado pero no abrió el volumen: " + agentMessage(err)})
 			continue

@@ -215,8 +215,11 @@ export function KeyDeviceSheet({ vol, onClose }: { vol: Volume | null; onClose: 
     >
       <h2 className="tg-h2">Llave USB de {vol.name}</h2>
       <p className="tg-muted ts-wiz-lead">
-        TangoOS guarda en el pendrive un archivo de clave aleatorio (una ranura más de LUKS). Si el pendrive está conectado al arrancar, el volumen se desbloquea solo. Guardalo como guardarías la frase.
+        {vol.kind === "zfs"
+          ? "TangoOS guarda en el pendrive una clave aleatoria y en el volumen la frase cifrada para esa clave: la frase sigue abriendo el volumen en cualquier equipo con ZFS. Si el pendrive está conectado al arrancar, el volumen se desbloquea solo. Guardalo como guardarías la frase."
+          : "TangoOS guarda en el pendrive un archivo de clave aleatorio (una ranura más de LUKS). Si el pendrive está conectado al arrancar, el volumen se desbloquea solo. Guardalo como guardarías la frase."}
       </p>
+      {vol.kind === "zfs" && vol.keyDevice && <p className="ts-note">Si perdiste el pendrive: quitá la llave y después cambiá la frase. Así ninguna copia vieja de la llave abre el volumen.</p>}
       <div className="ts-form">
         <div className="ts-key-list">
           {keys.length === 0 && <small className="tg-muted">Conectá un pendrive con FAT, exFAT o ext4.</small>}

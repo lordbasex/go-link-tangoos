@@ -18,25 +18,45 @@ import (
 // conexión propia al agente: la respuesta llega con el descriptor por SCM_RIGHTS.
 func (c *Client) SpawnFileWorker(ctx context.Context, user string) (*net.UnixConn, agentproto.FileWorkerResult, error) {
 	var res agentproto.FileWorkerResult
+	f, err := c.CallFD(ctx, agentproto.OpFileWorker, agentproto.FileWorkerArgs{User: user}, &res)
+	if err != nil {
+		return nil, res, err
+	}
+	wc, err := net.FileConn(f)
+	f.Close()
+	if err != nil {
+		return nil, res, err
+	}
+	wuc, ok := wc.(*net.UnixConn)
+	if !ok {
+		wc.Close()
+		return nil, res, agentproto.Errf(agentproto.CodeInternal, "socket del file-worker inválido")
+	}
+	return wuc, res, nil
+}
+
+// CallFD llama a una op que responde con un descriptor por SCM_RIGHTS (files.worker,
+// zfs.repl.send/recv) en una conexión propia al agente.
+func (c *Client) CallFD(ctx context.Context, op string, a, res any) (*os.File, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "unix", c.socket)
 	if err != nil {
-		return nil, res, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	defer conn.Close()
 	uc, ok := conn.(*net.UnixConn)
 	if !ok {
-		return nil, res, ErrUnavailable
+		return nil, ErrUnavailable
 	}
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		deadline = time.Now().Add(15 * time.Second)
+		deadline = time.Now().Add(60 * time.Second)
 	}
 	_ = uc.SetDeadline(deadline)
-	args, _ := json.Marshal(agentproto.FileWorkerArgs{User: user})
-	req, _ := json.Marshal(agentproto.Request{V: agentproto.Version, ID: 1, Op: agentproto.OpFileWorker, Args: args})
+	args, _ := json.Marshal(a)
+	req, _ := json.Marshal(agentproto.Request{V: agentproto.Version, ID: 1, Op: op, Args: args})
 	if _, err := uc.Write(append(req, '\n')); err != nil {
-		return nil, res, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	buf := make([]byte, agentproto.MaxLine)
 	oob := make([]byte, unix.CmsgSpace(4))
@@ -67,7 +87,7 @@ func (c *Client) SpawnFileWorker(ctx context.Context, user string) (*net.UnixCon
 			if fd >= 0 {
 				unix.Close(fd)
 			}
-			return nil, res, fmt.Errorf("%w: respuesta incompleta (%v)", ErrUnavailable, err)
+			return nil, fmt.Errorf("%w: respuesta incompleta (%v)", ErrUnavailable, err)
 		}
 	}
 	var resp agentproto.Response
@@ -75,32 +95,23 @@ func (c *Client) SpawnFileWorker(ctx context.Context, user string) (*net.UnixCon
 		if fd >= 0 {
 			unix.Close(fd)
 		}
-		return nil, res, err
+		return nil, err
 	}
 	if !resp.OK {
 		if fd >= 0 {
 			unix.Close(fd)
 		}
 		if resp.Error == nil {
-			return nil, res, agentproto.Errf(agentproto.CodeInternal, "respuesta sin error ni resultado")
+			return nil, agentproto.Errf(agentproto.CodeInternal, "respuesta sin error ni resultado")
 		}
-		return nil, res, resp.Error
+		return nil, resp.Error
 	}
 	if fd < 0 {
-		return nil, res, agentproto.Errf(agentproto.CodeInternal, "el agente no entregó el socket del file-worker")
+		return nil, agentproto.Errf(agentproto.CodeInternal, "el agente no entregó el descriptor")
 	}
-	_ = json.Unmarshal(resp.Result, &res)
+	if res != nil {
+		_ = json.Unmarshal(resp.Result, res)
+	}
 	unix.CloseOnExec(fd)
-	f := os.NewFile(uintptr(fd), "fileworker")
-	wc, err := net.FileConn(f)
-	f.Close()
-	if err != nil {
-		return nil, res, err
-	}
-	wuc, ok := wc.(*net.UnixConn)
-	if !ok {
-		wc.Close()
-		return nil, res, agentproto.Errf(agentproto.CodeInternal, "socket del file-worker inválido")
-	}
-	return wuc, res, nil
+	return os.NewFile(uintptr(fd), op), nil
 }

@@ -8,6 +8,7 @@ import { clusterHandlers } from "./cluster";
 import { m22Handlers } from "./m22";
 import { poolsHandlers } from "./pools";
 import { zfsHandlers } from "./zfs";
+import { replHandlers } from "./zfsrepl";
 import { m4Handlers } from "./m4";
 import { usersHandlers } from "./users";
 import { connectHandlers } from "./connect";
@@ -130,6 +131,7 @@ export class MockTransport implements Transport {
     ...appsHandlers({ scenario: () => this.scenario, emit: (t, d) => this.emit(t, d), startJob: (...a) => this.startJob(...a), notify: (...a) => this.notify(...a), volumes: () => this.vols }),
     ...clusterHandlers({ scenario: () => this.scenario, emit: (t, d) => this.emit(t, d), startJob: (...a) => this.startJob(...a), notify: (...a) => this.notify(...a), volumes: () => this.vols }),
     ...zfsHandlers({ scenario: () => this.scenario, disks: () => this.disks, vols: () => this.vols, setVols: (v) => (this.vols = v), emit: (t, d) => this.emit(t, d), startJob: (...a) => this.startJob(...a), notify: (...a) => this.notify(...a) }),
+    ...replHandlers({ scenario: () => this.scenario, vols: () => this.vols, setVols: (v) => (this.vols = v), emit: (t, d) => this.emit(t, d), startJob: (...a) => this.startJob(...a), notify: (...a) => this.notify(...a) }),
     "auth.users": () => data.users().filter((u) => u.name !== "tv-living").map(({ name, full, color }) => ({ name, full, color })),
     "auth.resume": () => {
       throw new RpcError("UNAUTHENTICATED", "El mock no guarda sesiones");

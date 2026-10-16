@@ -241,7 +241,7 @@ export function Volumes({ disks, vols, pools = [], onCreate, onReplace, onExpand
 
 // ---- Volumen ZFS (§18) ---------------------------------------------------------------------
 
-function ZfsVolumeDetail({ v, disks, onSheet }: { v: Volume; disks: Disk[]; onSheet: (k: "unlock" | "pass") => void }) {
+function ZfsVolumeDetail({ v, disks, onSheet }: { v: Volume; disks: Disk[]; onSheet: (k: "unlock" | "pass" | "key") => void }) {
   const t = useTransport();
   const lock = () =>
     t.call("storage.volumes.lock", { volume: v.id }).then(
@@ -271,6 +271,11 @@ function ZfsVolumeDetail({ v, disks, onSheet }: { v: Volume; disks: Disk[]; onSh
           {v.encrypted && (
             <Button onClick={() => onSheet("pass")}>
               <KeyRound size={14} /> Cambiar frase…
+            </Button>
+          )}
+          {v.encrypted && (
+            <Button onClick={() => onSheet("key")}>
+              <Usb size={14} /> {v.keyDevice ? "Llave USB…" : "Agregar llave USB…"}
             </Button>
           )}
           <Button onClick={() => openApp("tango.storage", { section: "zfs" })}>Ver el pool…</Button>

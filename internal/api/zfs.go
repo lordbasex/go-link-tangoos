@@ -39,6 +39,7 @@ type ZfsAgent interface {
 	ZfsUnlock(ctx context.Context, a agentproto.ZfsUnlockArgs) error
 	ZfsLock(ctx context.Context, a agentproto.ZfsVolArgs) error
 	ZfsPassphrase(ctx context.Context, a agentproto.ZfsPassphraseArgs) error
+	ZfsKeyDevice(ctx context.Context, a agentproto.ZfsKeyDeviceArgs) error
 	ZfsZvolCreate(ctx context.Context, a agentproto.ZfsZvolArgs) error
 	ZfsZvolDelete(ctx context.Context, a agentproto.ZfsZvolArgs) error
 }
@@ -102,6 +103,7 @@ type zfsAPI struct {
 	sched    map[string]ZfsScrubSchedule // pool → programa
 	health   map[string]string           // pool → último estado avisado
 	failures map[string][]time.Time
+	repl     *zfsRepl // replicación (zfs_repl.go); nil si el agente no la soporta
 }
 
 func (a *API) registerZFS(r *rtcrpc.Router, d Deps) {
@@ -324,6 +326,11 @@ func (a *API) registerZFS(r *rtcrpc.Router, d Deps) {
 		}
 		return struct{}{}, z.zvolDelete(ctx, x.Pool, x.Name)
 	}))
+	if ra, ok := d.Agent.(ZfsReplAgent); ok {
+		z.repl = newZfsRepl(z, ra)
+		z.repl.routes(r, admin)
+		go z.repl.net.sync()
+	}
 	go z.loop(context.Background())
 }
 
@@ -815,6 +822,9 @@ func (z *zfsAPI) loop(ctx context.Context) {
 }
 
 func (z *zfsAPI) tick(ctx context.Context, now time.Time) {
+	if z.repl != nil {
+		z.repl.tick(now)
+	}
 	pools := z.s.inv.ZfsPools(ctx)
 	for _, p := range pools {
 		var cksum uint64
@@ -1145,7 +1155,7 @@ func (z *zfsAPI) volumeDelete(ctx context.Context, planID, token, typed string) 
 }
 
 // unlock / lock / passphrase: storage.volumes.* los delega acá para volúmenes ZFS.
-func (z *zfsAPI) unlock(ctx context.Context, id, pass string) error {
+func (z *zfsAPI) unlock(ctx context.Context, id, pass string, useKey bool) error {
 	v, pool, err := z.volume(ctx, id)
 	if err != nil {
 		return err
@@ -1153,20 +1163,19 @@ func (z *zfsAPI) unlock(ctx context.Context, id, pass string) error {
 	if !v.Locked {
 		return nil
 	}
-	z.mu.Lock()
-	recent := z.failures[id][:0]
-	for _, t := range z.failures[id] {
-		if time.Since(t) < 10*time.Minute {
-			recent = append(recent, t)
-		}
-	}
-	z.failures[id] = recent
-	blocked := len(recent) >= 5
-	z.mu.Unlock()
-	if blocked {
+	if z.limited(id) {
 		return rtcrpc.Errorf("RATE_LIMITED", "demasiados intentos: esperá unos minutos")
 	}
-	if err := z.agent.ZfsUnlock(ctx, agentproto.ZfsUnlockArgs{Pool: pool, Name: v.Name, Passphrase: pass}); err != nil {
+	a := agentproto.ZfsUnlockArgs{Pool: pool, Name: v.Name, Passphrase: pass}
+	if useKey {
+		if v.KeyDevice == "" {
+			return rtcrpc.Errorf(agentproto.CodeKeyDeviceMissing, "%s no tiene una llave USB", v.Name)
+		}
+		a = agentproto.ZfsUnlockArgs{Pool: pool, Name: v.Name, UseKeyDevice: true}
+	} else if pass == "" {
+		return rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "falta la frase")
+	}
+	if err := z.agent.ZfsUnlock(ctx, a); err != nil {
 		var ae *agentproto.Error
 		if errors.As(err, &ae) && ae.Code == agentproto.CodeWrongPassphrase {
 			z.mu.Lock()
@@ -1215,6 +1224,57 @@ func (z *zfsAPI) passphrase(ctx context.Context, id, old, nw string) error {
 		return agentErr(err)
 	}
 	return nil
+}
+
+// unlockKey desbloquea al arrancar con la llave USB conectada (autoUnlock de pools.go).
+func (z *zfsAPI) unlockKey(ctx context.Context, v storage.Volume) error {
+	if err := z.agent.ZfsUnlock(ctx, agentproto.ZfsUnlockArgs{Pool: strings.TrimPrefix(v.Pool, "zfs:"), Name: v.Name, UseKeyDevice: true}); err != nil {
+		return err
+	}
+	z.changed("volumes", "shares")
+	return nil
+}
+
+// keyDevice guarda la llave USB de un volumen ZFS (device vacío la quita).
+func (z *zfsAPI) keyDevice(ctx context.Context, id, pass, device string) error {
+	v, pool, err := z.volume(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !v.Encrypted {
+		return rtcrpc.Errorf(codeNotSupported, "el volumen no está cifrado")
+	}
+	if pass == "" {
+		return rtcrpc.Errorf(rtcrpc.CodeInvalidParams, "falta la frase")
+	}
+	if z.limited(id) {
+		return rtcrpc.Errorf("RATE_LIMITED", "demasiados intentos: esperá unos minutos")
+	}
+	if err := z.agent.ZfsKeyDevice(ctx, agentproto.ZfsKeyDeviceArgs{Pool: pool, Name: v.Name, Passphrase: pass, Device: device}); err != nil {
+		var ae *agentproto.Error
+		if errors.As(err, &ae) && ae.Code == agentproto.CodeWrongPassphrase {
+			z.mu.Lock()
+			z.failures[id] = append(z.failures[id], time.Now())
+			z.mu.Unlock()
+		}
+		return agentErr(err)
+	}
+	z.changed("volumes")
+	return nil
+}
+
+// limited: 5 intentos fallidos en 10 minutos bloquean el volumen un rato.
+func (z *zfsAPI) limited(id string) bool {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	recent := z.failures[id][:0]
+	for _, t := range z.failures[id] {
+		if time.Since(t) < 10*time.Minute {
+			recent = append(recent, t)
+		}
+	}
+	z.failures[id] = recent
+	return len(recent) >= 5
 }
 
 // ---- Volúmenes de bloque (zvol) para iSCSI -------------------------------------------------

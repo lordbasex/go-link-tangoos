@@ -580,3 +580,23 @@
 .ts-field-inline { flex-direction: row; align-items: center; gap: 10px; }
 @media (max-width: 760px) { .ts-vdev { grid-template-columns: 1fr; } .ts-zfs-diag-row { grid-template-columns: 110px 1fr 56px; } }
 @media (prefers-reduced-motion: reduce) { .ts-vdev-disk { transition: none; } }
+
+/* ---- Replicación ZFS ---- */
+.ts-repl-head { display: flex; align-items: center; gap: 8px; }
+.ts-repl-head .ts-card-title { margin: 0; }
+.ts-repl-empty { margin: 10px 0 0; font-size: 12.5px; line-height: 1.5; }
+.ts-repl-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 0.5px solid var(--tg-separator); flex-wrap: wrap; }
+.ts-repl-row:first-of-type { margin-top: 8px; }
+.ts-repl-row > svg { color: var(--tg-text-2); flex: none; }
+.ts-repl-row > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ts-repl-row small { font-size: 12px; }
+.ts-repl-task { padding: 12px 0; border-top: 0.5px solid var(--tg-separator); }
+.ts-repl-task:first-of-type { margin-top: 8px; }
+.ts-repl-route { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.ts-repl-route > svg { color: var(--tg-text-2); }
+.ts-repl-recv { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 12px 0; }
+.ts-repl-fp { font-size: 13px; letter-spacing: 0.04em; margin: 4px 0; font-weight: 600; }
+.ts-repl-code { font-size: 15px; letter-spacing: 0.08em; }
+.ts-repl-confirm { margin-top: 0; padding-bottom: 8px; }
+.ts-repl-confirm .tg-input { max-width: 180px; }
+.ts-card-subtitle { margin-top: 16px; font-size: 12px; font-weight: 600; color: var(--tg-text-2); }

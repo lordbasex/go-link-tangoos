@@ -139,6 +139,13 @@ func runZfsHelper(ctx context.Context, task string, args []string) error {
 // del kernel corriendo y de su sabor (para que DKMS recompile con cada kernel nuevo),
 // zfs-dkms + zfsutils-linux, y el módulo cargado al arrancar.
 func helperZfsEnable(ctx context.Context) error {
+	// Un intento anterior cortado (apagón a mitad de DKMS) deja zfs-dkms sin configurar
+	// y apt-get no instala nada hasta terminarlo: se termina primero (no hace nada si no
+	// hay nada pendiente). Encontrado en el laboratorio.
+	stage(0.02, "Terminando una instalación anterior, si quedó a medias")
+	if err := runCmd(ctx, "/usr/bin/dpkg", "--configure", "-a"); err != nil {
+		fmt.Println("aviso: dpkg --configure -a:", err)
+	}
 	stage(0.03, "Habilitando el componente contrib de Debian")
 	src, err := contribSources()
 	if err != nil {

@@ -3,7 +3,7 @@ import type { Method } from "@tango/client";
 import type { Disk, DiskHealth, Pool, Volume, VolumeProfile } from "@tango/client";
 import type { Tone } from "@tango/ui";
 
-export type Section = "overview" | "pools" | "zfs" | "volumes" | "disks" | "snapshots" | "iscsi";
+export type Section = "overview" | "pools" | "zfs" | "repl" | "volumes" | "disks" | "snapshots" | "iscsi";
 
 export type Led = "ok" | "warn" | "crit" | "off" | "busy" | "rebuild";
 
