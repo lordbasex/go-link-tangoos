@@ -14,6 +14,7 @@ package e2e
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,9 @@ type clStatus2 struct {
 		Fingerprint   string `json:"fingerprint"`
 		Files         bool   `json:"files"`
 		Secure        bool   `json:"secure"`
+		Revoke        []struct {
+			Name string `json:"name"`
+		} `json:"revoke"`
 	} `json:"tls"`
 	Invites []struct {
 		Host        string `json:"host"`
@@ -308,48 +312,89 @@ func TestCluster2(t *testing.T) {
 		t.Logf("sin certificado: %s", strings.TrimSpace(out))
 	})
 
-	t.Run("cuotas por directorio", func(t *testing.T) {
-		var q struct {
-			Quotas []struct {
-				Path  string `json:"path"`
-				Limit uint64 `json:"limit"`
-				Used  uint64 `json:"used"`
-			} `json:"quotas"`
+	// Como un usuario del grupo de la carpeta (GlusterFS no limita a root).
+	as := "setpriv --reuid=$(id -u admin) --regid=$(getent group tg-clustertls-rw | cut -d: -f3) --clear-groups "
+	type quotaRes struct {
+		Quotas []struct {
+			Path     string `json:"path"`
+			Limit    uint64 `json:"limit"`
+			Used     uint64 `json:"used"`
+			HardOver bool   `json:"hardOver"`
+		} `json:"quotas"`
+		Job string `json:"job"`
+	}
+	quotaOf := func(q quotaRes, path string) (uint64, uint64, bool) {
+		for _, x := range q.Quotas {
+			if x.Path == path {
+				return x.Limit, x.Used, x.HardOver
+			}
 		}
+		return 0, 0, false
+	}
+	// fill escribe de a 5 MB en dir hasta que la cuota frena (o max bloques); antes de cada
+	// bloque corre between. Devuelve en qué bloque frenó (0: no frenó).
+	fill := func(t *testing.T, dir string, max int, between func()) int {
+		t.Helper()
+		for i := 1; i <= max; i++ {
+			if between != nil {
+				between()
+			}
+			out, _ := sshTo(n1.ip, as+"dd if=/dev/zero of="+dir+"/q"+strconv.Itoa(i)+" bs=1M count=5 2>&1")
+			if strings.Contains(out, "quota exceeded") {
+				return i
+			}
+		}
+		return 0
+	}
+
+	t.Run("cuotas por carpeta", func(t *testing.T) {
+		var q quotaRes
+		// /datos ya tiene archivos, y una subcarpeta abierta antes del límite: lo que hay se
+		// cuenta y lo que se escriba ahí cuenta para /datos (los bricks reinician).
+		mustSSH(t, n1.ip, as+"mkdir -p /cluster/"+vol+"/datos/sub && "+as+"dd if=/dev/zero of=/cluster/"+vol+"/datos/sub/antes bs=1M count=3 2>/dev/null; ls /cluster/"+vol+"/datos/sub >/dev/null")
 		n1.c.call("cluster.volume.quota", map[string]any{"name": vol, "op": "enable"}, &q)
-		// Siempre se apaga: con la cuota prendida, glusterd no desmonta su montaje auxiliar y
-		// los remove-brick posteriores fallan (docs/17 §6).
-		defer func() { _, _ = n1.c.Call(ctxT(t, time.Minute), "cluster.volume.quota", map[string]any{"name": vol, "op": "disable"}) }()
 		n1.c.call("cluster.volume.quota", map[string]any{"name": vol, "op": "limit", "path": "/datos", "limit": 20 << 20}, &q)
-		if len(q.Quotas) != 1 || q.Quotas[0].Path != "/datos" || q.Quotas[0].Limit != 20<<20 {
+		if l, _, _ := quotaOf(q, "/datos"); l != 20<<20 {
 			t.Fatalf("cuotas: %+v", q)
 		}
-		// Los montajes que ya existían no ven la cuota: se vuelve a montar (docs/17 §5).
-		var mr jobRef
-		n1.c.call("cluster.volume.mount", map[string]any{"name": vol, "enabled": false}, &mr)
-		n1.c.waitJob(mr.Job, 2*time.Minute)
-		n1.c.call("cluster.volume.mount", map[string]any{"name": vol, "enabled": true, "share": "ClusterTLS", "comment": "e2e", "rw": []string{"admin"}}, &mr)
-		n1.c.waitJob(mr.Job, 2*time.Minute)
-		time.Sleep(6 * time.Second)
-		// GlusterFS aplica la cuota con unos segundos de retraso (features.hard-timeout): se
-		// escribe de a 5 MB hasta que frena; tiene que frenar antes de los 75 MB.
-		// Como un usuario del grupo de la carpeta (GlusterFS no limita a root).
-		as := "setpriv --reuid=$(id -u admin) --regid=$(getent group tg-clustertls-rw | cut -d: -f3) --clear-groups "
-		out, _ := sshTo(n1.ip, "for i in $(seq 1 15); do r=$("+as+"dd if=/dev/zero of=/cluster/"+vol+"/datos/q$i bs=1M count=5 2>&1 | tail -1); echo \"$r\" | grep -q 'quota exceeded' && { echo FRENADO-$i; break; }; echo \"$r\"; sleep 2; done; rm -f /cluster/"+vol+"/datos/q*")
-		// Limitación conocida (docs/17 §6): en volúmenes con TLS y bricks XFS, GlusterFS 11 no
-		// contabiliza el uso y no frena; en un brick de carpeta sin TLS sí (probado a mano). Se
-		// registra el resultado sin cortar la prueba.
-		if i := strings.Index(out, "FRENADO-"); i >= 0 {
-			t.Logf("la cuota frenó en el bloque %s", strings.TrimSpace(strings.TrimPrefix(out[i:], "FRENADO-")))
-		} else {
-			diag, _ := sshTo(n1.ip, "gluster volume quota "+vol+" list /datos | tail -1")
-			t.Logf("LIMITACIÓN: la cuota no frenó en este volumen (TLS + XFS): %s", strings.TrimSpace(diag))
+		if q.Job == "" {
+			t.Fatal("/datos tiene contenido: el límite tendría que contarlo con un job")
 		}
+		n1.c.waitJob(q.Job, 10*time.Minute)
+		n1.c.call("cluster.volume.quota", map[string]any{"name": vol, "op": "list"}, &q)
+		if _, used, _ := quotaOf(q, "/datos"); used < 3<<20 {
+			t.Fatalf("no contó lo que ya había en /datos: %+v", q)
+		}
+		// 3 MB que ya había + bloques de 5 MB: frena en el cuarto (20 MB) o en el quinto.
+		at := fill(t, "/cluster/"+vol+"/datos/sub", 8, nil)
+		if at == 0 || at > 5 {
+			t.Fatalf("la cuota de 20 MB no frenó a tiempo (bloque %d)", at)
+		}
+		t.Logf("la cuota frenó en el bloque %d", at)
+		n1.c.call("cluster.volume.quota", map[string]any{"name": vol, "op": "list"}, &q)
+		if _, _, over := quotaOf(q, "/datos"); !over {
+			t.Fatalf("tendría que estar pasada: %+v", q)
+		}
+		// Sin el límite se vuelve a escribir.
 		n1.c.call("cluster.volume.quota", map[string]any{"name": vol, "op": "remove", "path": "/datos"}, &q)
-		if len(q.Quotas) != 0 {
+		if l, _, _ := quotaOf(q, "/datos"); l != 0 {
 			t.Fatalf("quedó la cuota: %+v", q)
 		}
-		n1.c.call("cluster.volume.quota", map[string]any{"name": vol, "op": "disable"}, nil)
+		if out, _ := sshTo(n1.ip, as+"dd if=/dev/zero of=/cluster/"+vol+"/datos/sub/libre bs=1M count=5 2>&1"); strings.Contains(out, "quota exceeded") {
+			t.Fatalf("sin límite sigue frenando: %s", out)
+		}
+		mustSSH(t, n1.ip, "rm -rf /cluster/"+vol+"/datos/sub")
+		// Una carpeta vacía: el límite es inmediato. Queda puesto para el volumen distribuido.
+		mustSSH(t, n1.ip, "mkdir -p /cluster/"+vol+"/cuota")
+		q = quotaRes{}
+		n1.c.call("cluster.volume.quota", map[string]any{"name": vol, "op": "limit", "path": "/cuota", "limit": 30 << 20}, &q)
+		if q.Job != "" {
+			t.Fatalf("una carpeta vacía no necesita contar: job %s", q.Job)
+		}
+		// Solo carpetas de primer nivel.
+		if _, err := n1.c.Call(ctxT(t, time.Minute), "cluster.volume.quota", map[string]any{"name": vol, "op": "limit", "path": "/datos/x", "limit": 20 << 20}); err == nil {
+			t.Fatal("aceptó una subcarpeta")
+		}
 	})
 
 	t.Run("agregar bricks, rebalancear y quitarlos", func(t *testing.T) {
@@ -379,6 +424,22 @@ func TestCluster2(t *testing.T) {
 			}
 			return task.Task.Status, task.Task.Done
 		})
+		// GlusterFS deja la raíz en 000 al agregar bricks: TangoOS vuelve a poner los permisos
+		// de la carpeta SMB y un usuario sigue escribiendo (en los dos conjuntos).
+		for i := 0; i < 6; i++ {
+			if out, err := sshTo(n1.ip, as+"sh -c 'echo x > /cluster/"+vol+"/datos/perm"+strconv.Itoa(i)+".txt' 2>&1"); err != nil {
+				t.Fatalf("después de agregar bricks un usuario no puede escribir: %v %s", err, out)
+			}
+		}
+		mustSSH(t, n1.ip, "rm -f /cluster/"+vol+"/datos/perm*.txt")
+		// Volumen distribuido: cada conjunto cuenta lo suyo y el listado (lo corre un nodo cada
+		// minuto) les reparte el total. Con 30 MB frena antes de los 45.
+		if at := fill(t, "/cluster/"+vol+"/cuota", 12, func() {
+			n1.c.call("cluster.volume.quota", map[string]any{"name": vol, "op": "list"}, nil)
+		}); at == 0 || at > 8 {
+			t.Fatalf("la cuota del volumen distribuido no frenó a tiempo (bloque %d)", at)
+		}
+		mustSSH(t, n1.ip, "rm -rf /cluster/"+vol+"/cuota")
 		dirSet := []map[string]string{}
 		for _, n := range nodes {
 			dirSet = append(dirSet, map[string]string{"host": n.ip, "path": "/volume1/@gluster/" + vol})
@@ -393,6 +454,9 @@ func TestCluster2(t *testing.T) {
 		})
 		n1.c.call("cluster.volume.bricks.remove", map[string]any{"name": vol, "bricks": dirSet, "phase": "commit"}, &task)
 		n1.c.waitCluster2("1 × 3", time.Minute, func(s clStatus2) bool { return len(s.Volumes[0].Bricks) == 3 && s.Volumes[0].Type == "Replicate" })
+		// remove-brick commit pasó con las cuotas prendidas (simple-quota no usa el montaje
+		// auxiliar de la cuota clásica). Se apagan para lo que sigue.
+		n1.c.call("cluster.volume.quota", map[string]any{"name": vol, "op": "disable"}, nil)
 		if after := strings.TrimSpace(mustSSH(t, n1.ip, "find /cluster/"+vol+" -type f | wc -l")); after != before {
 			t.Fatalf("archivos antes %s, después de agregar/quitar %s", before, after)
 		}
@@ -537,6 +601,85 @@ func TestCluster2(t *testing.T) {
 				return true
 			})
 		}
+	})
+
+	t.Run("rotar la CA: el material del nodo que salió deja de servir", func(t *testing.T) {
+		if os.Getenv("TANGO_E2E_CLUSTER_KEEP") == "1" {
+			t.Skip("TANGO_E2E_CLUSTER_KEEP=1: el clúster queda armado (capturas de la UI)")
+		}
+		before := n1.c.cluster2()
+		if len(before.TLS.Revoke) != 1 {
+			t.Fatalf("n1 tendría que marcar a n3 como pendiente: %+v", before.TLS.Revoke)
+		}
+		fp1, fp2 := before.TLS.Fingerprint, n2.c.cluster2().TLS.Fingerprint
+		// El certificado de n3 (y el de n1 de antes de rotar) en n2, que sí pasa el firewall:
+		// así se prueba la CA, no el firewall ni la lista de nodos.
+		mustSSH(t, n2.ip, "mkdir -p /tmp/rot && chmod 700 /tmp/rot")
+		for _, f := range []struct {
+			from *clusterNode
+			name string
+		}{{n3, "n3"}, {n1, "n1"}} {
+			for _, ext := range []string{"pem", "key"} {
+				b := mustSSH(t, f.from.ip, "cat /var/lib/tango/cluster/node."+ext)
+				mustSSH(t, n2.ip, "cat > /tmp/rot/"+f.name+"."+ext+" <<'EOF'\n"+strings.TrimSpace(b)+"\nEOF")
+			}
+		}
+		ctl := func(name string) string {
+			return strings.TrimSpace(mustSSH(t, n2.ip, "curl -sk -o /dev/null -w '%{http_code}' --max-time 10 --cert /tmp/rot/"+name+".pem --key /tmp/rot/"+name+".key https://"+n1.ip+":24010/v1/info || true"))
+		}
+		// Antes de rotar, el certificado de n3 abre el canal de n1 desde una IP del clúster.
+		if code := ctl("n3"); code != "200" {
+			t.Fatalf("antes de rotar, el certificado de n3 desde n2 dio %s (se esperaba 200)", code)
+		}
+		var r jobRef
+		n1.c.call("cluster.volume.mount", map[string]any{"name": rev, "enabled": true}, &r)
+		n1.c.waitJob(r.Job, 2*time.Minute)
+		mustSSH(t, n1.ip, "echo antes-de-rotar > /cluster/"+rev+"/rotacion.txt && sync")
+
+		n1.c.call("cluster.ca.rotate", map[string]any{}, &r)
+		n1.c.waitJob(r.Job, 8*time.Minute)
+
+		s1 := n1.c.waitCluster2("gv_rev en línea con la CA nueva", 3*time.Minute, func(s clStatus2) bool {
+			for _, v := range s.Volumes {
+				if v.Name == rev {
+					return v.TLS && v.Online == 2 && s.TLS.CAFingerprint != before.TLS.CAFingerprint
+				}
+			}
+			return false
+		})
+		s2 := n2.c.cluster2()
+		if s2.TLS.CAFingerprint != s1.TLS.CAFingerprint {
+			t.Fatalf("n1 y n2 muestran CA distintas: %q / %q", s1.TLS.CAFingerprint, s2.TLS.CAFingerprint)
+		}
+		if s1.TLS.Fingerprint != fp1 || s2.TLS.Fingerprint != fp2 {
+			t.Fatal("las huellas de los nodos cambiaron al rotar")
+		}
+		if len(s1.TLS.Revoke) != 0 {
+			t.Fatalf("la lista de pendientes no se limpió: %+v", s1.TLS.Revoke)
+		}
+		for _, n := range []*clusterNode{n1, n2} {
+			if out := mustSSH(t, n.ip, "grep -c 'BEGIN CERTIFICATE' /etc/ssl/glusterfs.ca /var/lib/tango/cluster/ca.pem; ls /var/lib/tango/cluster"); strings.Contains(out, ":2") || strings.Contains(out, "next") || strings.Contains(out, "prev") {
+				t.Fatalf("%s quedó a medio rotar:\n%s", n.ip, out)
+			}
+		}
+		if out := mustSSH(t, n1.ip, "cat /cluster/"+rev+"/rotacion.txt"); strings.TrimSpace(out) != "antes-de-rotar" {
+			t.Fatalf("después de rotar, gv_rev no está montado o perdió el archivo: %q", out)
+		}
+		// El canal y los bricks rechazan lo firmado con la CA anterior.
+		if code := ctl("n3"); code == "200" {
+			t.Fatal("después de rotar, el certificado de n3 sigue abriendo el canal de control")
+		}
+		if code := ctl("n1"); code == "200" {
+			t.Fatal("después de rotar, el certificado anterior de n1 sigue abriendo el canal de control")
+		}
+		port := strings.TrimSpace(mustSSH(t, n1.ip, "gluster volume status "+rev+" | awk '/volume2/ && /"+n1.ip+"/ {print $3}' | head -1"))
+		out, _ := sshTo(n2.ip, "echo hola | timeout 10 openssl s_client -connect "+n1.ip+":"+port+" -cert /tmp/rot/n1.pem -key /tmp/rot/n1.key -quiet 2>&1 | head -5")
+		if l := strings.ToLower(out); !strings.Contains(l, "alert") && !strings.Contains(l, "error") {
+			t.Fatalf("el brick %s:%s aceptó el certificado anterior de n1:\n%s", n1.ip, port, out)
+		}
+		mustSSH(t, n2.ip, "rm -rf /tmp/rot")
+		n1.c.call("cluster.volume.mount", map[string]any{"name": rev, "enabled": false}, &r)
+		n1.c.waitJob(r.Job, 2*time.Minute)
 	})
 
 	t.Run("apagar TLS y desarmar", func(t *testing.T) {

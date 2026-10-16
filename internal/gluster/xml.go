@@ -205,7 +205,7 @@ type Volume struct {
 	Online      int    `json:"online"` // bricks en línea
 	// TLS: client.ssl y server.ssl on (E/S cifrada y solo nodos con certificado del clúster).
 	TLS bool `json:"tls"`
-	// Quota: cuotas por directorio activadas (features.quota).
+	// Quota: cuotas por carpeta aplicadas (simple-quota, QuotaOn).
 	Quota bool `json:"quota"`
 }
 
@@ -271,7 +271,7 @@ func ParseVolumes(info, status []byte) ([]Volume, error) {
 			vol.Bricks = append(vol.Bricks, bs)
 		}
 		vol.TLS = vol.Options["client.ssl"] == "on" && vol.Options["server.ssl"] == "on"
-		vol.Quota = vol.Options["features.quota"] == "on"
+		vol.Quota = QuotaOn(vol.Options)
 		if vol.Sets > 1 { // distribuido: cada conjunto suma su capacidad
 			vol.SizeTotal *= uint64(vol.Sets)
 			vol.SizeFree *= uint64(vol.Sets)

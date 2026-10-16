@@ -158,6 +158,25 @@ func SetSambaPassword(ctx context.Context, name, password string) error {
 // por defecto, así lo nuevo hereda los permisos aunque lo cree un usuario con otro
 // grupo primario. Sin setgid: la unidad del agente tiene RestrictSUIDSGID=yes (a
 // propósito) y la ACL nombrada lo hace innecesario.
+// ApplyShareRootACL vuelve a poner grupo, modo y ACL solo en la raíz (GlusterFS los pierde
+// al agregar bricks o restaurar una instantánea; lo de adentro conserva los suyos).
+func ApplyShareRootACL(root string, rwGID, roGID uint32) error {
+	dirACL := PosixACL(7, []ACLEntry{{GID: rwGID, Perm: 7}, {GID: roGID, Perm: 5}})
+	if err := os.Lchown(root, -1, int(rwGID)); err != nil {
+		return err
+	}
+	if err := os.Chmod(root, 0o770); err != nil {
+		return err
+	}
+	if err := unix.Setxattr(root, "system.posix_acl_access", dirACL, 0); err != nil {
+		return fmt.Errorf("ACL de %s: %w", root, err)
+	}
+	if err := unix.Setxattr(root, "system.posix_acl_default", dirACL, 0); err != nil {
+		return fmt.Errorf("ACL por defecto de %s: %w", root, err)
+	}
+	return nil
+}
+
 func ApplyShareACL(root string, rwGID, roGID uint32) error {
 	dirACL := PosixACL(7, []ACLEntry{{GID: rwGID, Perm: 7}, {GID: roGID, Perm: 5}})
 	fileACL := PosixACL(6, []ACLEntry{{GID: rwGID, Perm: 6}, {GID: roGID, Perm: 4}})

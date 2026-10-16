@@ -140,9 +140,9 @@ func validateGlusterMount(a *agentproto.GlusterMountArgs) *agentproto.Error {
 	}
 	switch a.Action {
 	case "":
-	case "stop", "start":
+	case "stop", "start", "acl":
 		if a.Share != "" || len(a.Backups)+len(a.RW)+len(a.RO) > 0 {
-			return agentproto.Errf(agentproto.CodeInvalidArgs, "stop/start no cambian la configuración")
+			return agentproto.Errf(agentproto.CodeInvalidArgs, "stop/start/acl no cambian la configuración")
 		}
 		return nil
 	default:

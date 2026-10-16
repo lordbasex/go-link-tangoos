@@ -737,6 +737,7 @@ Every method is admin-only. Long operations return `{job}` and report through `j
 | `cluster.invite.cancel` | `{host}` | `{}` |
 | `cluster.peer.prepare` | `{host, code}` | `{id, host, cn, fingerprint}`: join step 1 over the control channel (code MAC bound to the TLS certificate seen). `PEER_UNREACHABLE` without an invitation, `JOIN_CODE` wrong code (5 → the invitation closes), `JOIN_TAMPERED` channel mismatch |
 | `cluster.peer.confirm` | `{id, certify?}` | `{}`: step 2 after the user compared the fingerprint: signs `host`'s certificate with the cluster CA (created the first time), delivers it with the CA and runs `peer probe` (not with `certify`: the node is already a member). Adds its CN to `auth.ssl-allow` of TLS volumes. `JOIN_EXPIRED` after 10 min |
+| `cluster.ca.rotate` | `{}` | `{job}`: new cluster CA and certificates on every node (stage → switch → finalize, both CAs trusted in between), then the TLS controlled stop if GlusterFS uses TLS. Every node must be connected (ADR 0014). `cluster.status.tls` adds `caSince` and `revoke` (nodes removed since the last rotation) |
 | `cluster.tls.set` | `{enabled}` | `{job}`: controlled stop on every node (unmount, stop, `secure-access` + glusterd restart, `client.ssl`/`server.ssl`/`auth.ssl-allow`, start, remount). Every node must have its certificate |
 | `cluster.peer.remove` | `{host}` | `{}`: `peer detach` (fails while the node has bricks); its CN leaves every `auth.ssl-allow` |
 | `cluster.volume.create` | `{name, replica, arbiter?, preset?, options?, bricks: BrickSpec[], start}` | `{job}`: dedicated bricks are created on their nodes first (removed again if anything fails); with TLS on, the volume gets TLS before it starts. `PEER_JOINING` while a node is not "Peer in Cluster" |
@@ -748,7 +749,7 @@ Every method is admin-only. Long operations return `{job}` and report through `j
 | `cluster.volume.bricks.remove` | `{name, replica?, bricks: [{host, path}], phase: start\|status\|commit}` | `{task: Task\|null}`: data migrates on `start`; `status` reports progress; `commit` takes them out |
 | `cluster.volume.bricks.replace` | `{name, from: {host, path}, to: BrickSpec}` | `{job}`: `replace-brick … commit force`; the new copy fills by healing |
 | `cluster.volume.rebalance` | `{name, action: start\|status\|stop}` | `{task: Task\|null}` |
-| `cluster.volume.quota` | `{name, op: enable\|disable\|limit\|remove\|list, path?, limit?}` | `{quotas: Quota[]}` (the list after the change) |
+| `cluster.volume.quota` | `{name, op: enable\|disable\|limit\|remove\|list, path?, limit?}` (`path`: a top-level folder) | `{quotas: Quota[], job?}` (the list after the change; `job` counts what the folder already has, ADR 0015) |
 | `cluster.volume.snapshot` | `{name, op: create\|delete\|restore\|info, snap?, desc?}` | `{snapshots: Snapshot[]}`; `SNAPSHOT_UNSUPPORTED` unless every brick is a thin LV; `VOLUME_STARTED` on restore of a started volume |
 | `cluster.volume.nfs` | `{name, clients: [{host, access: rw\|ro}]}` | `{job}`: exports `/cluster/<name>` (mounted on this node) with `fsid` = volume UUID; `[]` removes it. `NOT_MOUNTED` |
 | `cluster.volume.info` | `{name}` | `{text}`: same text as `gluster volume info <name>` |
@@ -787,7 +788,7 @@ interface ClusterVolume {
             healPending /* -1 = brick did not answer */; splitBrain; healStatus?;
             kind? /* dir | lv | snap (restored from a snapshot) */ }[];
   sizeTotal; sizeFree; healPending; splitBrain; online;
-  tls /* client.ssl and server.ssl on */; quota /* features.quota on */;
+  tls /* client.ssl and server.ssl on */; quota /* simple-quota on: tag-namespaces on, pass-through off */;
 }
 ```
 
@@ -800,13 +801,17 @@ create. The agent has no network: tangod resolves names before `gluster.firewall
 Second-stage agent ops (pkg/agentproto/gluster2.go): `gluster.tls` (node certificate files, `secure-access`,
 glusterd restart; the key is redacted in the journal), `gluster.volume.tls` (only `client.ssl`, `server.ssl`,
 `auth.ssl-allow`, outside the user allow-list), `gluster.brick.lv` (create/delete a dedicated LV brick),
-`gluster.quota`, `gluster.rebalance`, `gluster.snapshot`; `gluster.mount` also takes `action: stop|start`
+`gluster.quota` (also `count` and `reset`, which the cluster sends: count usage in this node's bricks,
+restarting them first if asked, and reload it), `gluster.rebalance`, `gluster.snapshot`; `gluster.mount` also takes `action: stop|start`
 (controlled stop, keeps the SMB share).
 
 **Control channel** (TCP 24010, HTTPS between tangod instances, behind the GlusterFS firewall):
 `POST /join/hello` and `POST /join/finish` (join, authenticated by the code MAC), and, with a client
 certificate from the cluster CA and a source address in the pool, `GET /v1/info`, `POST /v1/brick`,
-`POST /v1/tls`, `POST /v1/mounts`. Details in docs/17 §3.2.
+`POST /v1/tls`, `POST /v1/mounts`, and the CA rotation steps `POST /v1/pki/csr`, `POST /v1/pki/stage`
+(`{cert, ca, caKey}`), `POST /v1/pki/step` (`{step: switch|finalize|abort, secure}`), and
+`POST /v1/quota/count` (`{name, op: "count", path, restart}`: count a quota folder in this node's bricks, ADR 0015).
+Details in docs/17 §3.2–3.3 and §5.
 ## 18. ZFS (ADR 0013)
 
 Optional: OpenZFS is installed on demand (contrib + DKMS). Every method except `storage.zfs.status` and

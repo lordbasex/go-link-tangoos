@@ -84,6 +84,8 @@ type clusterAPI struct {
 	pki   *clusterPKI             // CA y certificado de este nodo (cluster_ctl.go)
 	joins map[string]*clusterJoin // uniones preparadas esperando la confirmación de la huella
 	infos map[string]*CtlInfo     // lo que cuenta cada nodo por el canal de control
+
+	rotating atomic.Bool // rotación de la CA en curso (cluster_rotate.go): no se suman nodos
 }
 
 const (
@@ -247,6 +249,14 @@ func (m *m4API) registerCluster(r *rtcrpc.Router) {
 		}
 		if err := c.ag.GlusterPeer(ctx, agentproto.GlusterPeerArgs{Action: "detach", Host: q.Host}); err != nil {
 			return nil, agentErr(err)
+		}
+		// Se lleva la clave de la CA: hasta rotarla, la app lo muestra como pendiente.
+		if c.pki != nil && c.pki.hasCA() {
+			name := drop
+			if name == "" {
+				name = q.Host
+			}
+			c.pki.addRevoked(name)
 		}
 		c.mu.Lock()
 		delete(c.invites, q.Host)
@@ -724,14 +734,16 @@ func (c *clusterAPI) publish(ctx context.Context) {
 func (c *clusterAPI) loop() {
 	t := time.NewTicker(20 * time.Second)
 	defer t.Stop()
-	for range t.C {
+	for n := 1; ; n++ {
+		<-t.C
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		c.tick(ctx)
+		c.tick(ctx, n%3 == 0)
 		cancel()
 	}
 }
 
-func (c *clusterAPI) tick(ctx context.Context) {
+// tick: con quotas (cada minuto) además guarda el uso de las cuotas (syncQuotas).
+func (c *clusterAPI) tick(ctx context.Context, quotas bool) {
 	st, err := c.agentStatus(ctx, true)
 	if err != nil || !st.Installed {
 		return
@@ -774,6 +786,9 @@ func (c *clusterAPI) tick(ctx context.Context) {
 	}
 	c.mu.Unlock()
 	c.refreshNodeInfo(ctx, st)
+	if quotas {
+		c.syncQuotas(ctx, st)
+	}
 	withHeal := *st
 	withHeal.Volumes = c.withHeal(st.Volumes)
 	c.alerts(&withHeal)

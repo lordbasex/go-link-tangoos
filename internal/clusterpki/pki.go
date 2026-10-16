@@ -203,14 +203,63 @@ func SelfSigned(keyPEMb []byte, cn string) ([]byte, error) {
 	return certPEM(der), nil
 }
 
-// Verify comprueba que un certificado lo firmó la CA del clúster.
+// ParseCerts lee todos los certificados de un PEM. Mientras se rota la CA del clúster, los
+// nodos confían en dos (la nueva y la anterior) en el mismo archivo.
+func ParseCerts(b []byte) ([]*x509.Certificate, error) {
+	var out []*x509.Certificate
+	for {
+		var blk *pem.Block
+		blk, b = pem.Decode(b)
+		if blk == nil {
+			break
+		}
+		if blk.Type != "CERTIFICATE" {
+			continue
+		}
+		c, err := x509.ParseCertificate(blk.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("certificado PEM inválido")
+	}
+	return out, nil
+}
+
+// Bundle junta certificados PEM en un archivo de confianza, sin repetir ninguno (el primero
+// es el que se muestra como CA del clúster).
+func Bundle(pems ...[]byte) []byte {
+	var out []byte
+	seen := map[string]bool{}
+	for _, p := range pems {
+		cs, err := ParseCerts(p)
+		if err != nil {
+			continue
+		}
+		for _, c := range cs {
+			if seen[string(c.Raw)] {
+				continue
+			}
+			seen[string(c.Raw)] = true
+			out = append(out, certPEM(c.Raw)...)
+		}
+	}
+	return out
+}
+
+// Verify comprueba que un certificado lo firmó la CA del clúster (cualquiera de las del
+// archivo, durante una rotación).
 func Verify(caCertPEM []byte, c *x509.Certificate) error {
-	ca, err := ParseCert(caCertPEM)
+	cas, err := ParseCerts(caCertPEM)
 	if err != nil {
 		return err
 	}
 	pool := x509.NewCertPool()
-	pool.AddCert(ca)
+	for _, ca := range cas {
+		pool.AddCert(ca)
+	}
 	_, err = c.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}})
 	return err
 }

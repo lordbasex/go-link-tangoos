@@ -34,8 +34,8 @@ func (*fakeCluster2) GlusterVolumeTLS(context.Context, agentproto.GlusterVolumeT
 func (*fakeCluster2) GlusterBrickLV(context.Context, agentproto.GlusterBrickLVArgs) (*agentproto.GlusterBrickLVResult, error) {
 	return &agentproto.GlusterBrickLVResult{Path: "/srv/gluster/gv0/brick"}, nil
 }
-func (*fakeCluster2) GlusterQuota(context.Context, agentproto.GlusterQuotaArgs) ([]gluster.Quota, error) {
-	return nil, nil
+func (*fakeCluster2) GlusterQuota(context.Context, agentproto.GlusterQuotaArgs) (*gluster.QuotaResult, error) {
+	return &gluster.QuotaResult{}, nil
 }
 func (*fakeCluster2) GlusterRebalance(context.Context, agentproto.GlusterRebalanceArgs) (*gluster.Task, error) {
 	return nil, nil
