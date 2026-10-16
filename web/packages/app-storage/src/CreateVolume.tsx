@@ -1,42 +1,42 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, CheckCircle2, Clock, HardDrive, Lock, RotateCcw, XOctagon } from "lucide-react";
-import { PROFILES, RpcError, fmtBytes, profileInfo, useJobs, useTransport } from "@tango/client";
+import { PROFILES, RpcError, fmtBytes, profileInfo, t, tn, tr, useJobs, useTransport } from "@tango/client";
 import type { Disk, Volume, VolumePlan, VolumeProfile } from "@tango/client";
 import { Button, Progress, Sheet, TextInput, Toggle } from "@tango/ui";
 import { toast } from "@tango/shell";
 import { capacity, ineligibleReason, profileName } from "./util";
 
-const STEPS = ["Discos", "Perfil", "Opciones", "Revisión"];
+const STEPS = [t("Discos"), t("Perfil"), t("Opciones"), t("Revisión")];
 
 /** Mensajes claros por código de error estable (protocol/README.md §7). */
 const errorText: Record<string, string> = {
-  PLAN_EXPIRED: "El plan venció. Lo volvemos a armar con el estado actual de los discos.",
-  CONFIRMATION_MISMATCH: "La confirmación no coincide con el plan. Volvé a escribir el nombre del volumen.",
-  DEVICE_CHANGED: "Un disco cambió desde que armaste el plan. Volvé a revisarlo.",
-  DEVICE_NOT_ELIGIBLE: "Uno de los discos ya no se puede usar (está montado, en uso o falló). Volvé a elegir los discos.",
-  VOLUME_EXISTS: "Ya existe un volumen con ese nombre. Elegí otro.",
+  PLAN_EXPIRED: t("El plan venció. Lo volvemos a armar con el estado actual de los discos."),
+  CONFIRMATION_MISMATCH: t("La confirmación no coincide con el plan. Volvé a escribir el nombre del volumen."),
+  DEVICE_CHANGED: t("Un disco cambió desde que armaste el plan. Volvé a revisarlo."),
+  DEVICE_NOT_ELIGIBLE: t("Uno de los discos ya no se puede usar (está montado, en uso o falló). Volvé a elegir los discos."),
+  VOLUME_EXISTS: t("Ya existe un volumen con ese nombre. Elegí otro."),
 };
 /** Hacia dónde lleva el botón de recuperación de cada error. */
 const errorAction: Record<string, { label: string; step: number | "replan" }> = {
-  PLAN_EXPIRED: { label: "Volver a armar el plan", step: "replan" },
-  DEVICE_CHANGED: { label: "Volver a revisar", step: "replan" },
-  DEVICE_NOT_ELIGIBLE: { label: "Elegir discos", step: 0 },
-  VOLUME_EXISTS: { label: "Cambiar nombre", step: 2 },
+  PLAN_EXPIRED: { label: t("Volver a armar el plan"), step: "replan" },
+  DEVICE_CHANGED: { label: t("Volver a revisar"), step: "replan" },
+  DEVICE_NOT_ELIGIBLE: { label: t("Elegir discos"), step: 0 },
+  VOLUME_EXISTS: { label: t("Cambiar nombre"), step: 2 },
 };
 
 export function useCountdown(expires: string | undefined) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!expires) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
   }, [expires]);
   if (!expires) return null;
   return Math.max(0, Math.round((new Date(expires).getTime() - now) / 1000));
 }
 
 export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; onClose: () => void; disks: Disk[]; vols: Volume[] }) {
-  const t = useTransport();
+  const rpc = useTransport();
   const jobs = useJobs();
   const [step, setStep] = useState(0);
   const [sel, setSel] = useState<string[]>([]);
@@ -97,14 +97,14 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
     setError(null);
     setConfirm("");
     try {
-      setPlan(await t.call("storage.volumes.plan", { name, profile, disks: sel }));
+      setPlan(await rpc.call("storage.volumes.plan", { name, profile, disks: sel }));
     } catch (e) {
       setError(toError(e));
     } finally {
       setPlanning(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, name, profile, sel]);
+  }, [rpc, name, profile, sel]);
 
   useEffect(() => {
     if (step === 3) void makePlan();
@@ -137,7 +137,7 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
     setBusy(true);
     setError(null);
     try {
-      const r = await t.call("storage.volumes.create", { plan_id: plan.plan_id, confirm_token: plan.confirm_token, typed_name: confirm });
+      const r = await rpc.call("storage.volumes.create", { plan_id: plan.plan_id, confirm_token: plan.confirm_token, typed_name: confirm });
       setJobId(r.job);
     } catch (e) {
       const err = toError(e);
@@ -156,31 +156,31 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
   };
 
   const close = () => {
-    if (jobId && !done) toast({ level: "info", title: `${name} se sigue creando`, body: "Podés ver el progreso en Actividad, en la barra de menús." });
+    if (jobId && !done) toast({ level: "info", title: t("{name} se sigue creando", { name }), body: t("Podés ver el progreso en Actividad, en la barra de menús.") });
     onClose();
   };
 
   // ---- Progreso / éxito ----------------------------------------------------------
   if (jobId) {
     return (
-      <Sheet open={open} onClose={close} width={520} footer={<Button variant="primary" onClick={close}>{done || failed ? "Cerrar" : "Seguir en segundo plano"}</Button>}>
+      <Sheet open={open} onClose={close} width={520} footer={<Button variant="primary" onClick={close}>{done || failed ? t("Cerrar") : t("Seguir en segundo plano")}</Button>}>
         <div className="ts-wiz-done">
           {done ? <CheckCircle2 size={44} className="ts-ok-icon" /> : failed ? <XOctagon size={44} className="ts-crit-icon" /> : <HardDrive size={40} className="ts-muted-icon" />}
-          <h2 className="tg-h2">{done ? `${name} está listo` : failed ? `No se pudo crear ${name}` : `Creando ${name}…`}</h2>
+          <h2 className="tg-h2">{done ? t("{name} está listo", { name }) : failed ? t("No se pudo crear {name}", { name }) : t("Creando {name}…", { name })}</h2>
           <p className="tg-muted">
             {done
-              ? `${fmtBytes(plan?.summary.usable ?? cap.usable)} disponibles con ${profileName[profile]}. Ya podés crear carpetas compartidas.`
+              ? t("{size} disponibles con {profile}. Ya podés crear carpetas compartidas.", { size: fmtBytes(plan?.summary.usable ?? cap.usable), profile: profileName[profile] })
               : failed
-                ? `${job?.state === "interrupted" ? "La tarea se interrumpió (el servidor se reinició)." : "La tarea falló."} ${job?.detail ?? ""} Los discos no se marcaron como parte de ningún volumen.`
+                ? `${job?.state === "interrupted" ? t("La tarea se interrumpió (el servidor se reinició).") : t("La tarea falló.")} ${tr(job?.detail)} ${t("Los discos no se marcaron como parte de ningún volumen.")}`
                 : job?.state === "queued" || job?.state === "validating"
-                  ? "Verificando de nuevo la identidad de cada disco antes de empezar…"
+                  ? t("Verificando de nuevo la identidad de cada disco antes de empezar…")
                   : profile === "basic"
-                    ? "Se crea Btrfs en el disco y se monta. Podés cerrar esta hoja: la tarea sigue."
-                    : `Se arma el array ${profileName[profile]} con mdadm, se crea Btrfs encima y se monta. La sincronización inicial sigue en segundo plano. Podés cerrar esta hoja: la tarea sigue.`}
+                    ? t("Se crea Btrfs en el disco y se monta. Podés cerrar esta hoja: la tarea sigue.")
+                    : t("Se arma el array {profile} con mdadm, se crea Btrfs encima y se monta. La sincronización inicial sigue en segundo plano. Podés cerrar esta hoja: la tarea sigue.", { profile: profileName[profile] })}
           </p>
           {failed && (
-            <Button disabled title="El Registro llega en M1">
-              Ver registro
+            <Button disabled title={t("El Registro llega en M1")}>
+              {t("Ver registro")}
             </Button>
           )}
           {!done && !failed && (
@@ -211,22 +211,22 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
               )}
             </span>
           )}
-          <Button onClick={step === 0 ? close : () => setStep(step - 1)}>{step === 0 ? "Cancelar" : "Atrás"}</Button>
+          <Button onClick={step === 0 ? close : () => setStep(step - 1)}>{step === 0 ? t("Cancelar") : t("Atrás")}</Button>
           {step < 3 ? (
             <Button variant="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
-              Continuar
+              {t("Continuar")}
             </Button>
           ) : (
             <Button variant="danger" disabled={!canNext || busy || planning} onClick={create}>
-              Borrar discos y crear volumen
+              {t("Borrar discos y crear volumen")}
             </Button>
           )}
         </>
       }
     >
       <div className="ts-wiz-head">
-        <h2 className="tg-h2">Crear volumen</h2>
-        <ol className="ts-steps" aria-label="Pasos">
+        <h2 className="tg-h2">{t("Crear volumen")}</h2>
+        <ol className="ts-steps" aria-label={t("Pasos")}>
           {STEPS.map((s, i) => (
             <li key={s} data-state={i < step ? "done" : i === step ? "current" : "todo"} aria-current={i === step ? "step" : undefined}>
               <span>{i < step ? <Check size={11} strokeWidth={3} /> : i + 1}</span>
@@ -238,23 +238,23 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
 
       {step === 0 && (
         <>
-          <p className="tg-muted ts-wiz-lead">Elegí los discos del volumen. Solo se muestran como disponibles los que no tienen datos en uso.</p>
+          <p className="tg-muted ts-wiz-lead">{t("Elegí los discos del volumen. Solo se muestran como disponibles los que no tienen datos en uso.")}</p>
           <div className="ts-pick-bar">
             <span className="tg-num">
               {sel.length ? (
                 <>
-                  Seleccionados: <b>{sel.length}</b> · capacidad útil estimada <b>{fmtBytes(preview?.usable ?? 0)}</b> con {preview?.label}
+                  {t("Seleccionados:")} <b>{sel.length}</b> · {t("capacidad útil estimada")} <b>{fmtBytes(preview?.usable ?? 0)}</b> {t("con {profile}", { profile: preview?.label ?? "" })}
                 </>
               ) : (
-                `${eligible.length} ${eligible.length === 1 ? "disco libre" : "discos libres"}`
+                tn(eligible.length, "{n} disco libre", "{n} discos libres")
               )}
             </span>
             <span className="ts-pick-actions">
               <Button variant="plain" disabled={!eligible.length || sel.length === eligible.length} onClick={() => setSel(eligible.map((d) => d.id))}>
-                Todos los libres
+                {t("Todos los libres")}
               </Button>
               <Button variant="plain" disabled={!sel.length} onClick={() => setSel([])}>
-                Ninguno
+                {t("Ninguno")}
               </Button>
             </span>
           </div>
@@ -274,9 +274,9 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
                   <span className="ts-pick-check">{on && <Check size={12} strokeWidth={3} />}</span>
                   <HardDrive size={22} strokeWidth={1.5} />
                   <span className="ts-pick-text">
-                    <strong>{d.bay ? `Bahía ${d.bay}` : "Disco interno"} · {d.model}</strong>
+                    <strong>{d.bay ? t("Bahía {n}", { n: d.bay }) : t("Disco interno")} · {d.model}</strong>
                     <small>
-                      {fmtBytes(d.size)} · serie {d.serial}
+                      {fmtBytes(d.size)} · {t("serie {serial}", { serial: d.serial })}
                     </small>
                     {reason && <em>{reason}</em>}
                   </span>
@@ -289,8 +289,8 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
 
       {step === 1 && (
         <>
-          <p className="tg-muted ts-wiz-lead">Elegí cómo se protegen los datos. Podés cambiar a un perfil con más discos más adelante.</p>
-          <div className="ts-profiles" role="radiogroup" aria-label="Perfil">
+          <p className="tg-muted ts-wiz-lead">{t("Elegí cómo se protegen los datos. Podés cambiar a un perfil con más discos más adelante.")}</p>
+          <div className="ts-profiles" role="radiogroup" aria-label={t("Perfil")}>
             {PROFILES.filter((x) => !x.poolOnly).map((info) => {
               const p = info.id;
               const why = info.check(sel.length);
@@ -315,22 +315,22 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
               </div>
               <div className="ts-cap-legend">
                 <span>
-                  <i className="ts-cap-usable" /> Útil <b>{fmtBytes(cap.usable)}</b>
+                  <i className="ts-cap-usable" /> {t("Útil")} <b>{fmtBytes(cap.usable)}</b>
                 </span>
                 {cap.protection > 0 && (
                   <span>
-                    <i className="ts-cap-prot" /> Protección <b>{fmtBytes(cap.protection)}</b>
+                    <i className="ts-cap-prot" /> {t("Protección")} <b>{fmtBytes(cap.protection)}</b>
                   </span>
                 )}
                 {cap.unused > 0 && (
                   <span>
-                    <i className="ts-cap-unused" /> Sin usar <b>{fmtBytes(cap.unused)}</b>
+                    <i className="ts-cap-unused" /> {t("Sin usar")} <b>{fmtBytes(cap.unused)}</b>
                   </span>
                 )}
               </div>
               {cap.unused > 0 && (
                 <p className="ts-note">
-                  Los discos tienen tamaños distintos: {profileName[profile]} usa de cada uno la capacidad del más chico y sobran {fmtBytes(cap.unused)}. El volumen híbrido que aprovecha todo llega en M6.
+                  {t("Los discos tienen tamaños distintos: {profile} usa de cada uno la capacidad del más chico y sobran {size}. El volumen híbrido que aprovecha todo llega en M6.", { profile: profileName[profile], size: fmtBytes(cap.unused) })}
                 </p>
               )}
             </div>
@@ -341,21 +341,21 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
       {step === 2 && (
         <div className="ts-form">
           <label className="ts-field">
-            <span>Nombre del volumen</span>
-            <TextInput value={name} onChange={(e) => setName(e.target.value.toLowerCase())} aria-label="Nombre del volumen" />
-            <small>Se monta en /{name || "…"}. Minúsculas, números, guiones.</small>
+            <span>{t("Nombre del volumen")}</span>
+            <TextInput value={name} onChange={(e) => setName(e.target.value.toLowerCase())} aria-label={t("Nombre del volumen")} />
+            <small>{t("Se monta en /{name}. Minúsculas, números, guiones.", { name: name || "…" })}</small>
           </label>
           <div className="ts-field ts-field-row">
             <span>
-              Cifrar con LUKS2 <span className="ts-soon">pronto</span>
-              <small>Desbloqueo con contraseña o llave en USB. Llega en M4.</small>
+              {t("Cifrar con LUKS2")} <span className="ts-soon">{t("pronto")}</span>
+              <small>{t("Desbloqueo con contraseña o llave en USB. Llega en M4.")}</small>
             </span>
-            <Toggle checked={false} onChange={() => undefined} label="Cifrar" disabled />
+            <Toggle checked={false} onChange={() => undefined} label={t("Cifrar")} disabled />
           </div>
           <div className="ts-field ts-field-row">
             <span>
-              Sistema de archivos
-              <small>Btrfs sobre mdadm: instantáneas, checksums y compresión.</small>
+              {t("Sistema de archivos")}
+              <small>{t("Btrfs sobre mdadm: instantáneas, checksums y compresión.")}</small>
             </span>
             <span className="tg-muted">Btrfs</span>
           </div>
@@ -367,11 +367,11 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
           <div className="ts-danger">
             <AlertTriangle size={18} />
             <div>
-              <strong>Se van a borrar estos discos</strong>
-              <p>Todo lo que contienen se pierde. TangoOS vuelve a verificar la identidad de cada disco justo antes de empezar.</p>
+              <strong>{t("Se van a borrar estos discos")}</strong>
+              <p>{t("Todo lo que contienen se pierde. TangoOS vuelve a verificar la identidad de cada disco justo antes de empezar.")}</p>
             </div>
           </div>
-          {planning && !plan && <p className="tg-muted ts-wiz-lead">Armando el plan con el estado actual de los discos…</p>}
+          {planning && !plan && <p className="tg-muted ts-wiz-lead">{t("Armando el plan con el estado actual de los discos…")}</p>}
           {plan && (
             <>
               <div className="ts-erase">
@@ -382,12 +382,12 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
                       <HardDrive size={18} strokeWidth={1.6} />
                       <div>
                         <strong>
-                          {local?.bay ? `Bahía ${local.bay}` : "Disco"} · {d.model}
+                          {local?.bay ? t("Bahía {n}", { n: local.bay }) : t("Disco")} · {d.model}
                         </strong>
                         <small>
-                          Serie {d.serial} · {fmtBytes(d.size)} · {d.id}
+                          {t("Serie {serial} · {size}", { serial: d.serial, size: fmtBytes(d.size) })} · {d.id}
                         </small>
-                        <small className="ts-erase-content">Contenido: {d.content}</small>
+                        <small className="ts-erase-content">{t("Contenido: {content}", { content: tr(d.content) })}</small>
                       </div>
                     </div>
                   );
@@ -395,24 +395,24 @@ export function CreateVolume({ open, onClose, disks, vols }: { open: boolean; on
               </div>
               {plan.summary.notes?.map((n) => (
                 <p key={n} className="ts-note">
-                  {n}
+                  {tr(n)}
                 </p>
               ))}
               <div className="ts-summary">
                 <span>
-                  <Lock size={13} /> {profileName[plan.summary.profile]} · Btrfs · {fmtBytes(plan.summary.usable)} útiles
+                  <Lock size={13} /> {profileName[plan.summary.profile]} · Btrfs · {t("{size} útiles", { size: fmtBytes(plan.summary.usable) })}
                 </span>
                 {left !== null && (
                   <span className="ts-plan-exp" data-soon={left < 60 || undefined}>
-                    <Clock size={12} /> Este plan vence en {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
+                    <Clock size={12} /> {t("Este plan vence en {time}", { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` })}
                   </span>
                 )}
               </div>
               <label className="ts-field">
                 <span>
-                  Para confirmar, escribí <code>{plan.summary.name}</code>
+                  {t("Para confirmar, escribí")} <code>{plan.summary.name}</code>
                 </span>
-                <TextInput value={confirm} onChange={(e) => setConfirm(e.target.value)} aria-label={`Escribí ${plan.summary.name} para confirmar`} autoComplete="off" />
+                <TextInput value={confirm} onChange={(e) => setConfirm(e.target.value)} aria-label={t("Escribí {name} para confirmar", { name: plan.summary.name })} autoComplete="off" />
               </label>
             </>
           )}

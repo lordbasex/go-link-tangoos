@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, MoreHorizontal, Package, Play, ScrollText, Square } from "lucide-react";
-import { fmtBytes, fmtPct, useTransport } from "@tango/client";
+import { fmtBytes, fmtPct, t, tr, useTransport } from "@tango/client";
 import type { AppState, InstalledApp } from "@tango/client";
 import { Button, EmptyState, IconButton, Sheet, TextInput } from "@tango/ui";
 import { showContextMenu } from "@tango/shell";
@@ -20,7 +20,7 @@ export function StatePill({ state }: { state: AppState }) {
   return (
     <span className="tapp-pill" data-state={state}>
       <i aria-hidden="true" />
-      {stateLabel[state]}
+      {t(stateLabel[state])}
     </span>
   );
 }
@@ -31,7 +31,7 @@ function SheetHost({ children }: { children: React.ReactNode }) {
 }
 
 export function UninstallSheet({ open, app, ctx, onClose, onDone }: { open: boolean; app: InstalledApp; ctx: AppsCtx; onClose: () => void; onDone?: () => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const [keep, setKeep] = useState(true);
   const [typed, setTyped] = useState("");
   useEffect(() => {
@@ -43,7 +43,7 @@ export function UninstallSheet({ open, app, ctx, onClose, onDone }: { open: bool
   const ok = typed.trim() === app.name;
   const go = () => {
     if (!ok) return;
-    ctx.run(app.id, t.call("apps.uninstall", { id: app.id, keepData: keep }), `No se pudo desinstalar ${app.name}`);
+    ctx.run(app.id, tp.call("apps.uninstall", { id: app.id, keepData: keep }), t("No se pudo desinstalar {name}", { name: app.name }));
     onClose();
     onDone?.();
   };
@@ -55,9 +55,9 @@ export function UninstallSheet({ open, app, ctx, onClose, onDone }: { open: bool
         width={480}
         footer={
           <>
-            <Button onClick={onClose}>Cancelar</Button>
+            <Button onClick={onClose}>{t("Cancelar")}</Button>
             <Button variant="danger" disabled={!ok} onClick={go}>
-              {keep ? "Desinstalar" : "Desinstalar y borrar datos"}
+              {keep ? t("Desinstalar") : t("Desinstalar y borrar datos")}
             </Button>
           </>
         }
@@ -65,20 +65,20 @@ export function UninstallSheet({ open, app, ctx, onClose, onDone }: { open: bool
         <div className="tapp-sheet-head">
           <img src={app.icon} alt="" width={44} height={44} />
           <div>
-            <h2 className="tg-h2">Desinstalar {app.name}</h2>
-            <p className="tg-muted">Se detiene y se borra el contenedor.</p>
+            <h2 className="tg-h2">{t("Desinstalar {name}", { name: app.name })}</h2>
+            <p className="tg-muted">{t("Se detiene y se borra el contenedor.")}</p>
           </div>
         </div>
         <label className="tapp-check">
           <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
           <span>
-            Conservar los datos
-            <small>{keep ? `Quedan en ${app.dataPath} para reinstalar después.` : `Se borra ${app.dataPath} y todo lo que contiene.`}</small>
+            {t("Conservar los datos")}
+            <small>{keep ? t("Quedan en {path} para reinstalar después.", { path: app.dataPath }) : t("Se borra {path} y todo lo que contiene.", { path: app.dataPath })}</small>
           </span>
         </label>
         <label className="tapp-typed">
-          Para confirmar, escribí <code>{app.name}</code>
-          <TextInput value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} aria-label="Nombre de la app" />
+          {t("Para confirmar, escribí")} <code>{app.name}</code>
+          <TextInput value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} aria-label={t("Nombre de la app")} />
         </label>
       </Sheet>
     </SheetHost>
@@ -86,7 +86,7 @@ export function UninstallSheet({ open, app, ctx, onClose, onDone }: { open: bool
 }
 
 function LogsSheet({ app, onClose }: { app: InstalledApp | null; onClose: () => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const [lines, setLines] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLPreElement>(null);
@@ -94,7 +94,7 @@ function LogsSheet({ app, onClose }: { app: InstalledApp | null; onClose: () => 
     if (!app) return;
     let alive = true;
     const load = () =>
-      t.call("apps.logs", { id: app.id, tail: 200 }).then(
+      tp.call("apps.logs", { id: app.id, tail: 200 }).then(
         (r) => alive && (setLines(r.lines), setErr(null)),
         (e: Error) => alive && setErr(e.message),
       );
@@ -104,25 +104,25 @@ function LogsSheet({ app, onClose }: { app: InstalledApp | null; onClose: () => 
       alive = false;
       clearInterval(i);
     };
-  }, [app, t]);
+  }, [app, tp]);
   useEffect(() => {
     const el = box.current;
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 60) el.scrollTop = el.scrollHeight;
   }, [lines]);
   return (
     <SheetHost>
-      <Sheet open={!!app} onClose={onClose} width={720} footer={<Button onClick={onClose}>Cerrar</Button>}>
+      <Sheet open={!!app} onClose={onClose} width={720} footer={<Button onClick={onClose}>{t("Cerrar")}</Button>}>
         {app && (
           <>
             <div className="tapp-sheet-head">
               <img src={app.icon} alt="" width={32} height={32} />
               <div>
-                <h2 className="tg-h2">Registro de {app.name}</h2>
-                <p className="tg-muted">Últimas 200 líneas · se actualiza cada 2 s</p>
+                <h2 className="tg-h2">{t("Registro de {name}", { name: app.name })}</h2>
+                <p className="tg-muted">{t("Últimas 200 líneas · se actualiza cada 2 s")}</p>
               </div>
             </div>
             <pre className="tapp-term tapp-logs" ref={box}>
-              {err ? <span className="tapp-err">{err}</span> : lines.length ? lines.join("\n") : "Sin líneas todavía."}
+              {err ? <span className="tapp-err">{err}</span> : lines.length ? lines.join("\n") : t("Sin líneas todavía.")}
             </pre>
           </>
         )}
@@ -132,39 +132,39 @@ function LogsSheet({ app, onClose }: { app: InstalledApp | null; onClose: () => 
 }
 
 export function Installed({ ctx, onBrowse }: { ctx: AppsCtx; onBrowse: () => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const [logs, setLogs] = useState<InstalledApp | null>(null);
   const [removing, setRemoving] = useState<InstalledApp | null>(null);
 
   if (!ctx.installed.length)
     return (
-      <EmptyState icon={Package} title="Todavía no instalaste apps" action={<Button onClick={onBrowse}>Ver el catálogo</Button>}>
-        Jellyfin, Immich, Home Assistant y más: cada una corre aislada y guarda sus datos en tu volumen.
+      <EmptyState icon={Package} title={t("Todavía no instalaste apps")} action={<Button onClick={onBrowse}>{t("Ver el catálogo")}</Button>}>
+        {t("Jellyfin, Immich, Home Assistant y más: cada una corre aislada y guarda sus datos en tu volumen.")}
       </EmptyState>
     );
 
-  const act = (a: InstalledApp, verb: "start" | "stop" | "restart" | "update", fail: string) => ctx.run(a.id, t.call(`apps.${verb}`, { id: a.id }), fail);
+  const act = (a: InstalledApp, verb: "start" | "stop" | "restart" | "update", fail: string) => ctx.run(a.id, tp.call(`apps.${verb}`, { id: a.id }), fail);
 
   const more = (a: InstalledApp) => (e: React.MouseEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     showContextMenu(r.left, r.bottom + 4, [
       {
-        label: "Abrir en pestaña nueva",
+        label: t("Abrir en pestaña nueva"),
         disabled: !a.url || a.url.startsWith("data:"),
         action: () => {
           // La pestaña se abre ya (gesto del usuario) y después recibe la URL con ticket.
           const w = window.open("about:blank", "_blank");
           if (w) w.opener = null;
-          void appUrl(t, a).then((url) => (url && w ? (w.location.href = url) : w?.close()));
+          void appUrl(tp, a).then((url) => (url && w ? (w.location.href = url) : w?.close()));
         },
       },
       { separator: true },
-      { label: "Reiniciar", disabled: a.state !== "running", action: () => act(a, "restart", `No se pudo reiniciar ${a.name}`) },
-      { label: "Actualizar", disabled: a.state === "installing" || a.state === "updating", action: () => act(a, "update", `No se pudo actualizar ${a.name}`) },
-      { label: "Ver registro…", action: () => setLogs(a) },
-      { label: "Detalles", action: () => ctx.openDetail(a.id) },
+      { label: t("Reiniciar"), disabled: a.state !== "running", action: () => act(a, "restart", t("No se pudo reiniciar {name}", { name: a.name })) },
+      { label: t("Actualizar"), disabled: a.state === "installing" || a.state === "updating", action: () => act(a, "update", t("No se pudo actualizar {name}", { name: a.name })) },
+      { label: t("Ver registro…"), action: () => setLogs(a) },
+      { label: t("Detalles"), action: () => ctx.openDetail(a.id) },
       { separator: true },
-      { label: "Desinstalar…", action: () => setRemoving(a) },
+      { label: t("Desinstalar…"), action: () => setRemoving(a) },
     ]);
   };
 
@@ -181,7 +181,7 @@ export function Installed({ ctx, onBrowse }: { ctx: AppsCtx; onBrowse: () => voi
                 <span className="tg-muted">
                   {a.version} · {a.dataPath}
                 </span>
-                {a.error && <span className="tapp-err">{a.error}</span>}
+                {a.error && <span className="tapp-err">{tr(a.error)}</span>}
               </div>
               <StatePill state={a.state} />
               <div className="tapp-row-usage tg-num">
@@ -190,14 +190,14 @@ export function Installed({ ctx, onBrowse }: { ctx: AppsCtx; onBrowse: () => voi
               </div>
               <div className="tapp-row-actions">
                 {a.state === "running" ? (
-                  <IconButton icon={Square} label={`Detener ${a.name}`} disabled={busy} onClick={() => act(a, "stop", `No se pudo detener ${a.name}`)} />
+                  <IconButton icon={Square} label={t("Detener {name}", { name: a.name })} disabled={busy} onClick={() => act(a, "stop", t("No se pudo detener {name}", { name: a.name }))} />
                 ) : (
-                  <IconButton icon={Play} label={`Iniciar ${a.name}`} disabled={busy || a.state === "installing"} onClick={() => act(a, "start", `No se pudo iniciar ${a.name}`)} />
+                  <IconButton icon={Play} label={t("Iniciar {name}", { name: a.name })} disabled={busy || a.state === "installing"} onClick={() => act(a, "start", t("No se pudo iniciar {name}", { name: a.name }))} />
                 )}
-                <IconButton icon={ScrollText} label="Ver registro" onClick={() => setLogs(a)} />
-                <IconButton icon={MoreHorizontal} label="Más acciones" onClick={more(a)} />
+                <IconButton icon={ScrollText} label={t("Ver registro")} onClick={() => setLogs(a)} />
+                <IconButton icon={MoreHorizontal} label={t("Más acciones")} onClick={more(a)} />
                 <Button variant="primary" disabled={a.state !== "running" || !a.url} onClick={() => ctx.launch(a)}>
-                  <ExternalLink size={13} /> Abrir
+                  <ExternalLink size={13} /> {t("Abrir")}
                 </Button>
               </div>
             </div>

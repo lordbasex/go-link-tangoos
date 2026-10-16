@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { resume, useTransport } from "@tango/client";
+import { resume, t, useTransport } from "@tango/client";
 import { SetupAssistant } from "./Setup";
 import { PowerHost } from "./Power";
 import { MissionControl } from "./MissionControl";
@@ -81,11 +81,11 @@ export function Desktop({ logo, launcherIcon, wallpaper, dockExtras, widgets }: 
   useThemeMode();
   useShortcuts();
   useOverlayDismiss();
-  const t = useTransport();
+  const tp = useTransport();
   const { session, overlay, snapPreview } = ui.use();
   const { windows, focused } = wm.use();
   const { wallpaper: wp, widgets: showWidgets } = prefs.use();
-  const search = useCallback((q: string) => t.call("files.search", { q }), [t]);
+  const search = useCallback((q: string) => tp.call("files.search", { q }), [tp]);
   // Al terminar el arranque: si hay una sesión guardada válida, directo al escritorio.
   const [suggestedHostname, setSuggestedHostname] = useState("tango");
   const bootDone = useCallback(() => {
@@ -94,7 +94,7 @@ export function Desktop({ logo, launcherIcon, wallpaper, dockExtras, widgets }: 
     void (async () => {
       // Primer arranque: si el NAS todavía no está configurado, el asistente va antes que el login.
       try {
-        const st = await t.call("setup.state", undefined);
+        const st = await tp.call("setup.state", undefined);
         if (st.state === "pending") {
           setSuggestedHostname(st.suggestedHostname || st.hostname || "tango");
           ui.set((s) => ({ ...s, session: "setup" }));
@@ -103,22 +103,22 @@ export function Desktop({ logo, launcherIcon, wallpaper, dockExtras, widgets }: 
       } catch {
         /* backend sin asistente: seguimos con el login normal */
       }
-      const u = await resume(t);
+      const u = await resume(tp);
       ui.set((s) => (u ? { ...s, session: "desktop", user: u } : { ...s, session: "login" }));
     })();
-  }, [t]);
+  }, [tp]);
   // El NAS rechazó la sesión (token vencido o revocado): volver al login.
-  useEffect(() => t.onAuthLost(() => ui.set((s) => (s.session === "desktop" || s.session === "locked" ? { ...s, session: "login", overlay: null } : s))), [t]);
+  useEffect(() => tp.onAuthLost(() => ui.set((s) => (s.session === "desktop" || s.session === "locked" ? { ...s, session: "login", overlay: null } : s))), [tp]);
 
   const onDesktopContext = (e: React.MouseEvent) => {
     if (e.target !== e.currentTarget && !(e.target as HTMLElement).classList.contains("tg-widgets")) return;
     e.preventDefault();
     showContextMenu(e.clientX, e.clientY, [
-      { label: "Cambiar fondo de pantalla…", action: () => openApp("tango.settings", { section: "appearance" }) },
-      { label: showWidgets ? "Ocultar widgets" : "Mostrar widgets", action: () => prefs.set((p) => ({ ...p, widgets: !p.widgets })) },
+      { label: t("Cambiar fondo de pantalla…"), action: () => openApp("tango.settings", { section: "appearance" }) },
+      { label: showWidgets ? t("Ocultar widgets") : t("Mostrar widgets"), action: () => prefs.set((p) => ({ ...p, widgets: !p.widgets })) },
       { separator: true },
-      { label: "Ordenar ventanas en cascada", disabled: windows.length < 2, action: cascade },
-      { label: "Mostrar escritorio", disabled: !windows.some((w) => !w.minimized), action: () => windows.forEach((w) => !w.minimized && minimizeWin(w.id)) },
+      { label: t("Ordenar ventanas en cascada"), disabled: windows.length < 2, action: cascade },
+      { label: t("Mostrar escritorio"), disabled: !windows.some((w) => !w.minimized), action: () => windows.forEach((w) => !w.minimized && minimizeWin(w.id)) },
     ]);
   };
 

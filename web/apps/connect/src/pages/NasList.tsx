@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { applyDigits, CODE_LEN, deleteDigit, isCompleteCode, normalizeCode } from "../connect/code";
 import { browserLabel, openRemote, type RemoteSession, type RemoteStage } from "../connect/remote";
-import { TangoMark } from "../components/site";
+import { t, locale } from "@tango/client";
+import { LangSwitch, TangoMark } from "../components/site";
 import { Link, navigate } from "../router";
 import { NasStore, type LinkedNas } from "../store/nasStore";
 
@@ -22,7 +23,7 @@ const PLUS = "M12 5v14M5 12h14";
 const HOME = "M3 11l9-7 9 7 M5 10v10h14V10";
 
 function when(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" }) : "nunca";
+  return iso ? new Date(iso).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" }) : t("nunca");
 }
 
 export function NasList() {
@@ -37,45 +38,45 @@ export function NasList() {
           <TangoMark size={44} />
           <div>
             <h1 className="ios-title">TangoOS Connect</h1>
-            <p className="ios-subtitle">Tu NAS desde cualquier lado</p>
+            <p className="ios-subtitle">{t("Tu NAS desde cualquier lado")}</p>
           </div>
-          <Link className="ios-round" to="/" aria-label="Inicio">
+          <Link className="ios-round" to="/" aria-label={t("Inicio")}>
             <Glyph d={HOME} />
           </Link>
         </header>
 
         <section className="ios-sec" aria-labelledby="ios-nas">
           <div className="ios-sec-head">
-            <h2 id="ios-nas">Mis NAS</h2>
+            <h2 id="ios-nas">{t("Mis NAS")}</h2>
             <Link className="ios-action" to="/nas/vincular">
-              <Glyph d={PLUS} size={16} /> Vincular
+              <Glyph d={PLUS} size={16} /> {t("Vincular")}
             </Link>
           </div>
           {list === null ? null : list.length === 0 ? (
             <div className="ios-card ios-connect">
-              <p className="ios-card-title">Todavía no vinculaste ningún NAS</p>
-              <p className="ios-note">En tu NAS: Ajustes → TangoConnect → «Vincular navegador». Te muestra un código de 9 dígitos que dura 10 minutos.</p>
+              <p className="ios-card-title">{t("Todavía no vinculaste ningún NAS")}</p>
+              <p className="ios-note">{t("En tu NAS: Ajustes → TangoConnect → «Vincular navegador». Te muestra un código de 9 dígitos que dura 10 minutos.")}</p>
               <button type="button" className="ios-primary" onClick={() => navigate("/nas/vincular")}>
-                Vincular un NAS
+                {t("Vincular un NAS")}
               </button>
             </div>
           ) : (
             <ul className="ios-list">
               {list.map((n) => (
                 <li key={n.deviceId} className="ios-row" style={{ flexWrap: "wrap" }}>
-                  <Link to={`/nas/${n.deviceId}`} className="ios-row-link" aria-label={`Entrar a ${n.name}`}>
+                  <Link to={`/nas/${n.deviceId}`} className="ios-row-link" aria-label={t("Entrar a {name}", { name: n.name })}>
                     <span className="ios-row-icon">
                       <Glyph d={NAS_GLYPH} />
                     </span>
                     <span className="ios-row-text">
                       <span className="ios-row-title">{n.name}</span>
-                      <span className="ios-row-detail">Último acceso: {when(n.lastSeen)}</span>
+                      <span className="ios-row-detail">{t("Último acceso: {when}", { when: when(n.lastSeen) })}</span>
                     </span>
                     <span className="ios-row-trailing">
                       <Glyph d={CHEVRON} size={18} />
                     </span>
                   </Link>
-                  <button type="button" className="ios-more" aria-label={`Opciones de ${n.name}`} aria-expanded={menu === n.deviceId} onClick={() => setMenu(menu === n.deviceId ? null : n.deviceId)}>
+                  <button type="button" className="ios-more" aria-label={t("Opciones de {name}", { name: n.name })} aria-expanded={menu === n.deviceId} onClick={() => setMenu(menu === n.deviceId ? null : n.deviceId)}>
                     ···
                   </button>
                   {menu === n.deviceId && (
@@ -88,7 +89,7 @@ export function NasList() {
                           setMenu(null);
                         }}
                       >
-                        Olvidar en este navegador
+                        {t("Olvidar en este navegador")}
                       </button>
                     </div>
                   )}
@@ -99,7 +100,10 @@ export function NasList() {
         </section>
 
         <p className="ios-note">
-          Los vínculos se guardan solo en este navegador. Para cortar el acceso de un navegador perdido, revocalo desde tu NAS en Ajustes → TangoConnect.
+          {t("Los vínculos se guardan solo en este navegador. Para cortar el acceso de un navegador perdido, revocalo desde tu NAS en Ajustes → TangoConnect.")}
+        </p>
+        <p className="ios-note tc-lang-row">
+          <LangSwitch />
         </p>
       </div>
     </div>
@@ -122,7 +126,7 @@ export function CodeDigits({ value, onChange, onSubmit, disabled }: { value: str
     else if (e.key === "Enter" && isCompleteCode(value.replace(/\s/g, ""))) onSubmit();
   };
   return (
-    <div className="tc-digits" role="group" aria-label="Código de 9 dígitos">
+    <div className="tc-digits" role="group" aria-label={t("Código de 9 dígitos")}>
       {cells.map((c, i) => (
         <input
           key={i}
@@ -132,7 +136,7 @@ export function CodeDigits({ value, onChange, onSubmit, disabled }: { value: str
           className="tc-digit"
           inputMode="numeric"
           autoComplete="one-time-code"
-          aria-label={`Dígito ${i + 1}`}
+          aria-label={t("Dígito {n}", { n: i + 1 })}
           maxLength={CODE_LEN}
           disabled={disabled}
           value={c.trim()}
@@ -151,12 +155,12 @@ export function CodeDigits({ value, onChange, onSubmit, disabled }: { value: str
 }
 
 const STAGE_TEXT: Partial<Record<RemoteStage, string>> = {
-  signal: "Conectando con el servidor de señalización…",
-  "waiting-nas": "Buscando tu NAS…",
-  paired: "Armando la conexión directa…",
-  linking: "Guardando el vínculo…",
-  connected: "Listo",
-  retrying: "Reintentando…",
+  signal: t("Conectando con el servidor de señalización…"),
+  "waiting-nas": t("Buscando tu NAS…"),
+  paired: t("Armando la conexión directa…"),
+  linking: t("Guardando el vínculo…"),
+  connected: t("Listo"),
+  retrying: t("Reintentando…"),
 };
 
 export function LinkNas() {
@@ -198,10 +202,10 @@ export function LinkNas() {
         <header className="ios-head">
           <TangoMark size={44} />
           <div>
-            <h1 className="ios-title">Vincular un NAS</h1>
-            <p className="ios-subtitle">Una sola vez por navegador</p>
+            <h1 className="ios-title">{t("Vincular un NAS")}</h1>
+            <p className="ios-subtitle">{t("Una sola vez por navegador")}</p>
           </div>
-          <Link className="ios-round" to="/nas" aria-label="Mis NAS">
+          <Link className="ios-round" to="/nas" aria-label={t("Mis NAS")}>
             <Glyph d="M15 6l-6 6 6 6" />
           </Link>
         </header>
@@ -213,7 +217,7 @@ export function LinkNas() {
           }}
           noValidate
         >
-          <label className="ios-card-title">Escribí el código que muestra tu NAS</label>
+          <label className="ios-card-title">{t("Escribí el código que muestra tu NAS")}</label>
           <CodeDigits value={code} onChange={setCode} onSubmit={submit} disabled={!!stage} />
           {error && (
             <p className="ios-error" role="alert">
@@ -222,21 +226,24 @@ export function LinkNas() {
           )}
           {stage && (
             <p className="ios-note" role="status">
-              {STAGE_TEXT[stage] ?? "Conectando…"}
+              {STAGE_TEXT[stage] ?? t("Conectando…")}
             </p>
           )}
           <button type="submit" className="ios-primary" disabled={!ready || !!stage}>
-            {stage ? "Vinculando…" : "Vincular"}
+            {stage ? t("Vinculando…") : t("Vincular")}
           </button>
         </form>
         <section className="ios-sec">
-          <h2 className="ios-card-title">¿Dónde está el código?</h2>
+          <h2 className="ios-card-title">{t("¿Dónde está el código?")}</h2>
           <ol className="ios-note" style={{ paddingLeft: 18, display: "grid", gap: 6 }}>
-            <li>Abrí el escritorio de tu NAS en tu casa (https://tango.local).</li>
-            <li>Ajustes → TangoConnect → activalo si está apagado.</li>
-            <li>«Vincular navegador»: aparece un código de 9 dígitos que dura 10 minutos.</li>
+            <li>{t("Abrí el escritorio de tu NAS en tu casa (https://tango.local).")}</li>
+            <li>{t("Ajustes → TangoConnect → activalo si está apagado.")}</li>
+            <li>{t("«Vincular navegador»: aparece un código de 9 dígitos que dura 10 minutos.")}</li>
           </ol>
         </section>
+        <p className="ios-note tc-lang-row">
+          <LangSwitch />
+        </p>
       </div>
     </div>
   );

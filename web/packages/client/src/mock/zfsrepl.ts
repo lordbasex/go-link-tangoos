@@ -2,6 +2,7 @@
 // manda vol1 cada hora a "nas-oficina", y una réplica recibida de "nas-casa".
 import { RpcError } from "../protocol";
 import type { Job, Method, Notice, Params, Result, Scenario, Topic, Topics, Volume } from "../protocol";
+import { t } from "../i18n";
 import type { ReplReplica, ReplSource, ReplStatus, ReplTarget, ReplTask } from "../protocol-zfsrepl";
 
 export interface MockReplCtx {
@@ -45,29 +46,29 @@ export function replHandlers(ctx: MockReplCtx): { [M in Method]?: (p: Params<M>)
     return st;
   };
   const task = (id: string) => {
-    const t = state().tasks.find((x) => x.id === id);
-    if (!t) throw new RpcError("NOT_FOUND", "No existe la tarea");
-    return t;
+    const found = state().tasks.find((x) => x.id === id);
+    if (!found) throw new RpcError("NOT_FOUND", "No existe la tarea");
+    return found;
   };
-  const run = (t: ReplTask, manual: boolean) => {
-    if (t.job) return t.job;
-    const first = !t.lastOk;
-    const j = ctx.startJob("storage.zfs.repl", `Replicando ${t.vol}`, `A ${t.targetLabel}`, 0, first ? 0.04 : 0.15, undefined, () => {
+  const run = (rt: ReplTask, manual: boolean) => {
+    if (rt.job) return rt.job;
+    const first = !rt.lastOk;
+    const j = ctx.startJob("storage.zfs.repl", t("Replicando {name}", { name: rt.vol }), t("A {target}", { target: rt.targetLabel }), 0, first ? 0.04 : 0.15, undefined, () => {
       const at = new Date();
-      t.job = undefined;
-      t.lastOk = at.toISOString();
-      t.last = { at: t.lastOk, ok: true, bytes: (first ? 640 : 1.3) * 1024 ** 3, seconds: first ? 412 : 38, snap: snapName(t.id, at) };
-      if (t.every > 0) t.next = new Date(at.getTime() + t.every * H).toISOString();
-      if (t.target.startsWith("local:")) {
-        const pool = t.target.slice(6);
-        const r = state().replicas.find((x) => x.origin === "local" && x.vol === t.vol && x.pool === pool);
-        if (r) Object.assign(r, { lastSnap: t.last.snap, lastAt: t.lastOk, snapshots: r.snapshots + 1 });
-        else state().replicas.push({ pool, origin: "local", from: "Este NAS", vol: t.vol, used: 640 * 1024 ** 3, encrypted: false, partial: false, lastSnap: t.last.snap, lastAt: t.lastOk, snapshots: 12 });
+      rt.job = undefined;
+      rt.lastOk = at.toISOString();
+      rt.last = { at: rt.lastOk, ok: true, bytes: (first ? 640 : 1.3) * 1024 ** 3, seconds: first ? 412 : 38, snap: snapName(rt.id, at) };
+      if (rt.every > 0) rt.next = new Date(at.getTime() + rt.every * H).toISOString();
+      if (rt.target.startsWith("local:")) {
+        const pool = rt.target.slice(6);
+        const r = state().replicas.find((x) => x.origin === "local" && x.vol === rt.vol && x.pool === pool);
+        if (r) Object.assign(r, { lastSnap: rt.last.snap, lastAt: rt.lastOk, snapshots: r.snapshots + 1 });
+        else state().replicas.push({ pool, origin: "local", from: t("Este NAS"), vol: rt.vol, used: 640 * 1024 ** 3, encrypted: false, partial: false, lastSnap: rt.last.snap, lastAt: rt.lastOk, snapshots: 12 });
       }
-      if (manual) ctx.notify("ok", "tango.storage", `Se replicó ${t.vol}`, `Llegó a ${t.targetLabel}.`);
+      if (manual) ctx.notify("ok", "tango.storage", t("Se replicó {name}", { name: rt.vol }), t("Llegó a {target}.", { target: rt.targetLabel }));
       changed();
     });
-    t.job = j.id;
+    rt.job = j.id;
     changed();
     return j.id;
   };
@@ -91,7 +92,7 @@ export function replHandlers(ctx: MockReplCtx): { [M in Method]?: (p: Params<M>)
     },
     "storage.zfs.repl.targets.probe": ({ address }) => {
       if (!address.trim() || address.includes("/")) throw new RpcError("INVALID_PARAMS", "Dirección inválida");
-      if (address.startsWith("10.9.")) throw new RpcError("UNREACHABLE", `No se pudo conectar a ${address}:24020: ¿tiene "Recibir réplicas" prendido?`);
+      if (address.startsWith("10.9.")) throw new RpcError("UNREACHABLE", t("No se pudo conectar a {address}:24020: ¿tiene \"Recibir réplicas\" prendido?", { address }));
       const probe = Math.random().toString(36).slice(2, 12);
       const hex = () => Math.floor(Math.random() * 65536).toString(16).toUpperCase().padStart(4, "0");
       const p = { name: "nas-" + address.split(".").pop(), address: address.includes(":") ? address : `${address}:24020`, fingerprint: Array.from({ length: 8 }, hex).join(" ") };
@@ -104,10 +105,10 @@ export function replHandlers(ctx: MockReplCtx): { [M in Method]?: (p: Params<M>)
       if (code.replace(/[-\s]/g, "").length !== 10) throw new RpcError("INVALID_PARAMS", "El código tiene 10 caracteres");
       if (code.toUpperCase().startsWith("AAAAA")) throw new RpcError("PAIR_FAILED", "código incorrecto");
       probes.delete(probe);
-      const t: ReplTarget = { id: p.fingerprint.replace(/ /g, "").slice(0, 12).toLowerCase(), name: p.name, addr: p.address, fingerprint: p.fingerprint, addedAt: new Date().toISOString() };
-      state().targets = [...state().targets.filter((x) => x.id !== t.id), t];
+      const nt: ReplTarget = { id: p.fingerprint.replace(/ /g, "").slice(0, 12).toLowerCase(), name: p.name, addr: p.address, fingerprint: p.fingerprint, addedAt: new Date().toISOString() };
+      state().targets = [...state().targets.filter((x) => x.id !== nt.id), nt];
       changed();
-      return t;
+      return nt;
     },
     "storage.zfs.repl.targets.remove": ({ id }) => {
       if (state().tasks.some((t) => t.target === id)) throw new RpcError("BUSY", "Hay tareas que mandan a ese destino: borralas primero");
@@ -127,11 +128,11 @@ export function replHandlers(ctx: MockReplCtx): { [M in Method]?: (p: Params<M>)
       if (target === `local:${pool}`) throw new RpcError("INVALID_PARAMS", "Elegí otro pool: una réplica en el mismo pool no protege de que falle");
       const tg = state().targets.find((x) => x.id === target);
       if (!target.startsWith("local:") && !tg) throw new RpcError("NOT_FOUND", "No existe ese destino");
-      if (state().tasks.some((t) => t.vol === v.name && t.target === target)) throw new RpcError("ALREADY_EXISTS", `Ya hay una tarea que replica ${v.name} a ese destino`);
-      const t: ReplTask = { id: Math.random().toString(36).slice(2, 10), pool, vol: v.name, target, every, enabled: true, volumeId: v.id, targetLabel: tg ? tg.name : `Pool ${target.slice(6)} (este NAS)` };
-      state().tasks.push(t);
-      const out: { id: string; job?: string } = { id: t.id };
-      if (runNow) out.job = run(t, true);
+      if (state().tasks.some((t) => t.vol === v.name && t.target === target)) throw new RpcError("ALREADY_EXISTS", t("Ya hay una tarea que replica {name} a ese destino", { name: v.name }));
+      const nt: ReplTask = { id: Math.random().toString(36).slice(2, 10), pool, vol: v.name, target, every, enabled: true, volumeId: v.id, targetLabel: tg ? tg.name : t("Pool {name} (este NAS)", { name: target.slice(6) }) };
+      state().tasks.push(nt);
+      const out: { id: string; job?: string } = { id: nt.id };
+      if (runNow) out.job = run(nt, true);
       changed();
       return out;
     },
@@ -151,7 +152,7 @@ export function replHandlers(ctx: MockReplCtx): { [M in Method]?: (p: Params<M>)
       const r = state().replicas.find((x) => x.pool === pool && x.origin === origin && x.vol === vol);
       if (!r) throw new RpcError("NOT_FOUND", "No existe la réplica");
       if (!/^[a-z][a-z0-9]{0,31}$/.test(name)) throw new RpcError("INVALID_PARAMS", "El nombre debe empezar con una letra y tener solo minúsculas y números");
-      if (ctx.vols().some((v) => v.name === name)) throw new RpcError("ALREADY_EXISTS", `Ya hay un volumen ${name}`);
+      if (ctx.vols().some((v) => v.name === name)) throw new RpcError("ALREADY_EXISTS", t("Ya hay un volumen {name}", { name }));
       if (r.encrypted && passphrase === "error") throw new RpcError("WRONG_PASSPHRASE", "La frase no abre esta réplica");
       const locked = r.encrypted && !passphrase;
       state().replicas = state().replicas.filter((x) => x !== r);

@@ -3,9 +3,9 @@
 // enlace con guest.open {link, secret} y baja el archivo o la carpeta directo del NAS por WebRTC.
 // El secreto va en el fragmento: nunca llega al servidor del portal.
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { fmtBytes } from "@tango/client";
+import { fmtBytes, locale, t, tn, tr } from "@tango/client";
 import { openRemote, type RemoteSession, type RemoteStage } from "../connect/remote";
-import { TangoMark } from "../components/site";
+import { LangSwitch, TangoMark } from "../components/site";
 import { Link } from "../router";
 
 interface GuestInfo {
@@ -35,13 +35,14 @@ function caller(s: RemoteSession): Call {
 function errorText(e: unknown): string {
   const code = (e as { code?: string })?.code ?? "";
   const map: Record<string, string> = {
-    SHARE_LINK_EXPIRED: "Este enlace venció o ya alcanzó su límite de descargas.",
-    SHARE_LINK_NOT_FOUND: "Este enlace no existe o quien lo compartió lo revocó.",
-    SHARE_LINK_LOCKED: "Este enlace pide contraseña.",
-    INVALID_CREDENTIALS: "La contraseña no es correcta.",
-    RATE_LIMITED: "Demasiados intentos. Esperá un rato y volvé a abrir el enlace.",
+    SHARE_LINK_EXPIRED: t("Este enlace venció o ya alcanzó su límite de descargas."),
+    SHARE_LINK_NOT_FOUND: t("Este enlace no existe o quien lo compartió lo revocó."),
+    SHARE_LINK_LOCKED: t("Este enlace pide contraseña."),
+    INVALID_CREDENTIALS: t("La contraseña no es correcta."),
+    RATE_LIMITED: t("Demasiados intentos. Esperá un rato y volvé a abrir el enlace."),
   };
-  return map[code] ?? (e as Error)?.message ?? "No se pudo completar.";
+  const message = (e as Error)?.message;
+  return map[code] ?? (message != null ? tr(message) : t("No se pudo completar."));
 }
 
 async function saveBlob(name: string, data: Uint8Array) {
@@ -79,10 +80,10 @@ export function Share({ invite }: { invite: string }) {
     const [deviceId, link] = invite.split(".");
     const secret = location.hash.replace(/^#/, "");
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(secret)) {
-      setFatal("El enlace está incompleto: falta la parte que va después de “#”. Copialo entero.");
+      setFatal(t("El enlace está incompleto: falta la parte que va después de “#”. Copialo entero."));
       return;
     }
-    const sess = openRemote({ target: { mode: "guest", deviceId, link, secret }, label: "Invitado", onStage: setStage, onFatal: setFatal });
+    const sess = openRemote({ target: { mode: "guest", deviceId, link, secret }, label: t("Invitado"), onStage: setStage, onFatal: setFatal });
     s.current = sess;
     const off = sess.transport.onState((st) => {
       if (st === "connected") void refresh(sess).catch((e) => setMsg(errorText(e)));
@@ -130,35 +131,35 @@ export function Share({ invite }: { invite: string }) {
         <header className="ios-head">
           <TangoMark size={44} />
           <div>
-            <h1 className="ios-title">{info ? info.name : "Archivo compartido"}</h1>
-            <p className="ios-subtitle">{info ? `Compartido desde ${info.nas} con TangoOS` : "TangoOS Connect"}</p>
+            <h1 className="ios-title">{info ? info.name : t("Archivo compartido")}</h1>
+            <p className="ios-subtitle">{info ? t("Compartido desde {nas} con TangoOS", { nas: info.nas }) : "TangoOS Connect"}</p>
           </div>
         </header>
 
         {fatal ? (
           <div className="ios-card ios-connect">
-            <p className="ios-card-title">Este enlace no está disponible</p>
+            <p className="ios-card-title">{t("Este enlace no está disponible")}</p>
             <p className="ios-note">{fatal}</p>
-            <p className="ios-note">Puede que haya vencido, que lo hayan revocado o que el NAS esté apagado. Pedile a quien te lo mandó uno nuevo.</p>
+            <p className="ios-note">{t("Puede que haya vencido, que lo hayan revocado o que el NAS esté apagado. Pedile a quien te lo mandó uno nuevo.")}</p>
           </div>
         ) : !info ? (
           <div className="ios-card ios-connect">
-            <p className="ios-card-title">Conectando con el NAS…</p>
-            <p className="ios-note">{stage === "retrying" ? "Reintentando…" : "Buscando el archivo compartido. Va directo del NAS a tu navegador, cifrado."}</p>
+            <p className="ios-card-title">{t("Conectando con el NAS…")}</p>
+            <p className="ios-note">{stage === "retrying" ? t("Reintentando…") : t("Buscando el archivo compartido. Va directo del NAS a tu navegador, cifrado.")}</p>
           </div>
         ) : locked ? (
           <form className="ios-card ios-connect" onSubmit={unlock}>
             <label className="ios-card-title" htmlFor="tc-share-pw">
-              Este enlace tiene contraseña
+              {t("Este enlace tiene contraseña")}
             </label>
-            <input id="tc-share-pw" className="ios-field" type="password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Contraseña" />
+            <input id="tc-share-pw" className="ios-field" type="password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("Contraseña")} />
             {msg && (
               <p className="ios-error" role="alert">
                 {msg}
               </p>
             )}
             <button type="submit" className="ios-primary" disabled={!password}>
-              Abrir
+              {t("Abrir")}
             </button>
           </form>
         ) : (
@@ -168,11 +169,11 @@ export function Share({ invite }: { invite: string }) {
                 <p className="ios-card-title">{info.name}</p>
                 <p className="ios-note">
                   {fmtBytes(info.size)}
-                  {info.expiresAt ? ` · vence el ${new Date(info.expiresAt).toLocaleDateString("es-AR")}` : ""}
-                  {typeof info.downloadsLeft === "number" ? ` · quedan ${info.downloadsLeft} descargas` : ""}
+                  {info.expiresAt ? ` · ${t("vence el {date}", { date: new Date(info.expiresAt).toLocaleDateString(locale()) })}` : ""}
+                  {typeof info.downloadsLeft === "number" ? ` · ${tn(info.downloadsLeft, "queda {n} descarga", "quedan {n} descargas")}` : ""}
                 </p>
                 <button type="button" className="ios-primary" disabled={!!progress} onClick={() => void download("", info.name)}>
-                  {progress ? "Descargando…" : "Descargar"}
+                  {progress ? t("Descargando…") : t("Descargar")}
                 </button>
               </div>
             ) : (
@@ -182,23 +183,23 @@ export function Share({ invite }: { invite: string }) {
                     <span className="ios-row-link">
                       <span className="ios-row-text">
                         <span className="ios-row-title">{e.name}</span>
-                        <span className="ios-row-detail">{e.kind === "dir" ? "Carpeta" : fmtBytes(e.size)}</span>
+                        <span className="ios-row-detail">{e.kind === "dir" ? t("Carpeta") : fmtBytes(e.size)}</span>
                       </span>
                       {e.kind !== "dir" && (
                         <button type="button" className="ios-chip-button" disabled={!!progress} onClick={() => void download(e.path, e.name)}>
-                          Descargar
+                          {t("Descargar")}
                         </button>
                       )}
                     </span>
                   </li>
                 ))}
-                {entries?.length === 0 && <li className="ios-empty">La carpeta está vacía.</li>}
+                {entries?.length === 0 && <li className="ios-empty">{t("La carpeta está vacía.")}</li>}
               </ul>
             )}
             {progress && (
               <div className="ios-card ios-connect">
                 <p className="ios-note">
-                  {progress.name}: {fmtBytes(progress.got)} de {fmtBytes(progress.size)}
+                  {t("{name}: {got} de {size}", { name: progress.name, got: fmtBytes(progress.got), size: fmtBytes(progress.size) })}
                 </p>
                 <progress className="tc-progress" max={progress.size || 1} value={progress.got} />
               </div>
@@ -211,7 +212,10 @@ export function Share({ invite }: { invite: string }) {
           </section>
         )}
         <p className="ios-note">
-          Los archivos viajan cifrados directo desde el NAS de quien te los compartió. <Link to="/">¿Qué es TangoOS?</Link>
+          {t("Los archivos viajan cifrados directo desde el NAS de quien te los compartió.")} <Link to="/">{t("¿Qué es TangoOS?")}</Link>
+        </p>
+        <p className="ios-note tc-lang-row">
+          <LangSwitch />
         </p>
       </div>
     </div>

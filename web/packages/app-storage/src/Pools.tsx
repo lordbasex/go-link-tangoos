@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Database, HardDrive, KeyRound, Layers, Lock, Maximize2, Plus, RefreshCw, Trash2, Zap } from "lucide-react";
-import { RpcError, fmtBytes, poolProfileLabel, useTransport } from "@tango/client";
+import { RpcError, fmtBytes, poolProfileLabel, t, tr, useTransport } from "@tango/client";
 import type { DeletePlan, Disk, Pool, PoolPlan, Volume } from "@tango/client";
 import { Badge, Button, EmptyState, Progress, Sheet, Status, TextInput } from "@tango/ui";
 import { toast } from "@tango/shell";
@@ -8,22 +8,22 @@ import { TierDiagram } from "./Tiers";
 import { fsName, ineligibleReason, volumeColor } from "./util";
 
 export function poolState(p: Pool): { tone: "ok" | "warn" | "crit" | "info"; text: string } {
-  if (p.task === "rebuild") return { tone: "warn", text: "Reconstruyendo: todavía sin redundancia" };
-  if (p.task === "reshape") return { tone: "info", text: "Ampliando" };
-  if (p.task === "resync" || p.state === "building") return { tone: "info", text: "Sincronizando" };
+  if (p.task === "rebuild") return { tone: "warn", text: t("Reconstruyendo: todavía sin redundancia") };
+  if (p.task === "reshape") return { tone: "info", text: t("Ampliando") };
+  if (p.task === "resync" || p.state === "building") return { tone: "info", text: t("Sincronizando") };
   switch (p.state) {
     case "degraded":
-      return { tone: "crit", text: "Sin redundancia" };
+      return { tone: "crit", text: t("Sin redundancia") };
     case "readonly":
-      return { tone: "warn", text: "Solo lectura" };
+      return { tone: "warn", text: t("Solo lectura") };
     case "scrubbing":
-      return { tone: "info", text: "Verificando" };
+      return { tone: "info", text: t("Verificando", undefined, "scrub") };
     default:
-      return { tone: "ok", text: "En orden" };
+      return { tone: "ok", text: t("En orden") };
   }
 }
 
-const diskName = (d: Disk | undefined) => (d ? `${d.bay ? `Bahía ${d.bay}` : "Interno"} · ${d.model}` : "Disco");
+const diskName = (d: Disk | undefined) => (d ? `${d.bay ? t("Bahía {n}", { n: d.bay }) : t("Interno")} · ${d.model}` : t("Disco"));
 
 function PoolCard({ p, disks, vols, onCreateVolume, onExpand, onReplace, onDelete }: { p: Pool; disks: Disk[]; vols: Volume[]; onCreateVolume: () => void; onExpand: () => void; onReplace: () => void; onDelete: () => void }) {
   const s = poolState(p);
@@ -40,7 +40,7 @@ function PoolCard({ p, disks, vols, onCreateVolume, onExpand, onReplace, onDelet
         <Badge>{poolProfileLabel(p.profile)}</Badge>
         <Status tone={s.tone}>{s.text}</Status>
         <span className="ts-push tg-num tg-muted">
-          {fmtBytes(p.allocated)} asignados de {fmtBytes(p.size)}
+          {t("{used} asignados de {size}", { used: fmtBytes(p.allocated), size: fmtBytes(p.size) })}
         </span>
       </div>
       {p.task && (
@@ -49,7 +49,7 @@ function PoolCard({ p, disks, vols, onCreateVolume, onExpand, onReplace, onDelet
           <span className="tg-num tg-muted">{Math.round((p.progress ?? 0) * 100)} %</span>
         </div>
       )}
-      <div className="ts-alloc" aria-label={`Asignado ${fmtBytes(p.allocated)}, libre ${fmtBytes(p.free)}`}>
+      <div className="ts-alloc" aria-label={t("Asignado {used}, libre {free}", { used: fmtBytes(p.allocated), free: fmtBytes(p.free) })}>
         {pvols.map((v) => (
           <div key={v.id} style={{ flex: v.size, background: volumeColor(v.id, vols) }} title={`${v.name} · ${fmtBytes(v.size)}`} />
         ))}
@@ -62,12 +62,12 @@ function PoolCard({ p, disks, vols, onCreateVolume, onExpand, onReplace, onDelet
           </span>
         ))}
         <span>
-          <i style={{ background: "var(--tg-track)" }} /> Libre <b>{fmtBytes(p.free)}</b>
+          <i style={{ background: "var(--tg-track)" }} /> {t("Libre")} <b>{fmtBytes(p.free)}</b>
         </span>
       </div>
 
       <div className="ts-card-title" style={{ marginTop: 16 }}>
-        Cómo se reparten los discos
+        {t("Cómo se reparten los discos")}
       </div>
       <TierDiagram tiers={p.tiers} disks={members.map((d) => ({ id: d.id, label: diskName(d), size: d.size }))} height={110} />
 
@@ -79,12 +79,12 @@ function PoolCard({ p, disks, vols, onCreateVolume, onExpand, onReplace, onDelet
               <strong>{v.name}</strong>
               <span className="tg-muted">
                 {fsName[v.fs] ?? v.fs} · {fmtBytes(v.size)}
-                {v.locked ? " · bloqueado" : v.encrypted ? " · cifrado" : ""}
+                {v.locked ? ` · ${t("bloqueado")}` : v.encrypted ? ` · ${t("cifrado")}` : ""}
               </span>
               <span className="ts-push">
                 {v.cache && (
                   <span className="ts-cache-chip">
-                    <Zap size={11} /> Caché {v.cache.mode === "read" ? "de lectura" : "lectura/escritura"}
+                    <Zap size={11} /> {v.cache.mode === "read" ? t("Caché de lectura") : t("Caché lectura/escritura")}
                     {v.cache.hitRatio != null && ` · ${Math.round(v.cache.hitRatio * 100)} %`}
                   </span>
                 )}
@@ -95,23 +95,23 @@ function PoolCard({ p, disks, vols, onCreateVolume, onExpand, onReplace, onDelet
       )}
       {cache.length > 0 && (
         <p className="ts-note">
-          <Zap size={12} /> SSD de caché: {cache.map((d) => `${d.model} (${fmtBytes(d.size)})`).join(", ")}.
+          <Zap size={12} /> {t("SSD de caché: {list}.", { list: cache.map((d) => `${d.model} (${fmtBytes(d.size)})`).join(", ") })}
         </p>
       )}
       <div className="ts-row-actions">
-        <Button variant="primary" disabled={p.free < 256 * 1024 ** 2} title={p.free < 256 * 1024 ** 2 ? "El grupo no tiene espacio libre" : undefined} onClick={onCreateVolume}>
-          <Plus size={14} /> Crear volumen…
+        <Button variant="primary" disabled={p.free < 256 * 1024 ** 2} title={p.free < 256 * 1024 ** 2 ? t("El grupo no tiene espacio libre") : undefined} onClick={onCreateVolume}>
+          <Plus size={14} /> {t("Crear volumen…")}
         </Button>
         {failed && p.profile !== "basic" && (
           <Button variant="primary" onClick={onReplace}>
-            <RefreshCw size={14} /> Reemplazar disco…
+            <RefreshCw size={14} /> {t("Reemplazar disco…")}
           </Button>
         )}
-        <Button disabled={!expandable || p.state !== "healthy" || !!p.task} title={!expandable ? `Un grupo ${poolProfileLabel(p.profile)} no gana espacio sumando discos` : p.state !== "healthy" || p.task ? "Esperá a que el grupo esté en orden" : "Sumar discos libres"} onClick={onExpand}>
-          <Maximize2 size={14} /> Ampliar grupo…
+        <Button disabled={!expandable || p.state !== "healthy" || !!p.task} title={!expandable ? t("Un grupo {profile} no gana espacio sumando discos", { profile: poolProfileLabel(p.profile) }) : p.state !== "healthy" || p.task ? t("Esperá a que el grupo esté en orden") : t("Sumar discos libres")} onClick={onExpand}>
+          <Maximize2 size={14} /> {t("Ampliar grupo…")}
         </Button>
-        <Button variant="danger" disabled={pvols.length > 0 || !!p.task} title={pvols.length ? "Eliminá primero sus volúmenes" : undefined} onClick={onDelete}>
-          <Trash2 size={14} /> Eliminar grupo…
+        <Button variant="danger" disabled={pvols.length > 0 || !!p.task} title={pvols.length ? t("Eliminá primero sus volúmenes") : undefined} onClick={onDelete}>
+          <Trash2 size={14} /> {t("Eliminar grupo…")}
         </Button>
       </div>
     </section>
@@ -124,8 +124,8 @@ export function Pools({ pools, disks, vols, onCreatePool, onCreateVolume }: { po
   const [maint, setMaint] = useState<Maint>(null);
   if (!pools.length)
     return (
-      <EmptyState icon={Layers} title="Todavía no hay grupos de almacenamiento" action={<Button variant="primary" onClick={onCreatePool}>Crear grupo…</Button>}>
-        Un grupo junta discos (aunque sean de distinto tamaño) con su protección. Adentro creás uno o más volúmenes, cifrados si querés, y le podés sumar una caché SSD.
+      <EmptyState icon={Layers} title={t("Todavía no hay grupos de almacenamiento")} action={<Button variant="primary" onClick={onCreatePool}>{t("Crear grupo…")}</Button>}>
+        {t("Un grupo junta discos (aunque sean de distinto tamaño) con su protección. Adentro creás uno o más volúmenes, cifrados si querés, y le podés sumar una caché SSD.")}
       </EmptyState>
     );
   return (
@@ -147,11 +147,12 @@ export function Pools({ pools, disks, vols, onCreatePool, onCreateVolume }: { po
   );
 }
 
-const titles = { expand: "Ampliar el grupo", replace: "Reemplazar un disco del grupo", delete: "Eliminar el grupo" } as const;
+const title = (kind: "expand" | "replace" | "delete", name: string) =>
+  kind === "expand" ? t("Ampliar el grupo {name}", { name }) : kind === "replace" ? t("Reemplazar un disco del grupo {name}", { name }) : t("Eliminar el grupo {name}", { name });
 
 /** Ampliar, reemplazar un disco o eliminar un grupo: elegir discos → plan → nombre escrito. */
 function PoolMaintenance({ m, disks, vols, pools, onClose }: { m: Maint; disks: Disk[]; vols: Volume[]; pools: Pool[]; onClose: () => void }) {
-  const t = useTransport();
+  const rpc = useTransport();
   const [sel, setSel] = useState<string[]>([]);
   const [plan, setPlan] = useState<PoolPlan | DeletePlan | null>(null);
   const [confirm, setConfirm] = useState("");
@@ -163,9 +164,9 @@ function PoolMaintenance({ m, disks, vols, pools, onClose }: { m: Maint; disks: 
     setConfirm("");
     setError(null);
     if (m?.kind === "delete") {
-      t.call("storage.pools.deletePlan", { pool: m.pool.id }).then(setPlan, (e: Error) => setError(e.message));
+      rpc.call("storage.pools.deletePlan", { pool: m.pool.id }).then(setPlan, (e: Error) => setError(e.message));
     }
-  }, [m, t]);
+  }, [m, rpc]);
   if (!m) return null;
   const p = m.pool;
   const free = disks.filter((d) => d.use !== "system" && !ineligibleReason(d, vols, pools));
@@ -176,8 +177,8 @@ function PoolMaintenance({ m, disks, vols, pools, onClose }: { m: Maint; disks: 
     try {
       setPlan(
         m.kind === "expand"
-          ? await t.call("storage.pools.expandPlan", { pool: p.id, add: sel })
-          : await t.call("storage.pools.replacePlan", { pool: p.id, failed: failed?.id ?? null, replacement: sel[0] }),
+          ? await rpc.call("storage.pools.expandPlan", { pool: p.id, add: sel })
+          : await rpc.call("storage.pools.replacePlan", { pool: p.id, failed: failed?.id ?? null, replacement: sel[0] }),
       );
     } catch (e) {
       setError(e instanceof RpcError ? e.message : (e as Error).message);
@@ -191,10 +192,10 @@ function PoolMaintenance({ m, disks, vols, pools, onClose }: { m: Maint; disks: 
     setError(null);
     try {
       const params = { plan_id: plan.plan_id, confirm_token: plan.confirm_token, typed_name: confirm };
-      if (m.kind === "expand") await t.call("storage.pools.expand", params);
-      else if (m.kind === "replace") await t.call("storage.pools.replace", params);
-      else await t.call("storage.pools.delete", params);
-      toast({ level: "info", title: `${titles[m.kind]} ${p.name}`, body: "Podés seguir el progreso en Actividad." });
+      if (m.kind === "expand") await rpc.call("storage.pools.expand", params);
+      else if (m.kind === "replace") await rpc.call("storage.pools.replace", params);
+      else await rpc.call("storage.pools.delete", params);
+      toast({ level: "info", title: title(m.kind, p.name), body: t("Podés seguir el progreso en Actividad.") });
       onClose();
     } catch (e) {
       setError(e instanceof RpcError ? e.message : (e as Error).message);
@@ -216,15 +217,15 @@ function PoolMaintenance({ m, disks, vols, pools, onClose }: { m: Maint; disks: 
               <AlertTriangle size={14} /> {error}
             </span>
           )}
-          <Button onClick={plan && m.kind !== "delete" ? () => setPlan(null) : onClose}>{plan && m.kind !== "delete" ? "Atrás" : "Cancelar"}</Button>
+          <Button onClick={plan && m.kind !== "delete" ? () => setPlan(null) : onClose}>{plan && m.kind !== "delete" ? t("Atrás") : t("Cancelar")}</Button>
           {plan ? (
             <Button variant="danger" disabled={busy || confirm !== p.name} onClick={go}>
-              {m.kind === "delete" ? "Eliminar el grupo" : m.kind === "expand" ? "Borrar discos y ampliar" : "Borrar disco y reconstruir"}
+              {m.kind === "delete" ? t("Eliminar el grupo") : m.kind === "expand" ? t("Borrar discos y ampliar") : t("Borrar disco y reconstruir")}
             </Button>
           ) : (
             m.kind !== "delete" && (
               <Button variant="primary" disabled={busy || !sel.length} onClick={review}>
-                Continuar
+                {t("Continuar")}
               </Button>
             )
           )}
@@ -232,21 +233,21 @@ function PoolMaintenance({ m, disks, vols, pools, onClose }: { m: Maint; disks: 
       }
     >
       <h2 className="tg-h2">
-        {titles[m.kind]} {p.name}
+        {title(m.kind, p.name)}
       </h2>
       {!plan && m.kind !== "delete" && (
         <>
           <p className="tg-muted ts-wiz-lead">
             {m.kind === "expand"
               ? p.profile.startsWith("hybrid")
-                ? "Sumá discos iguales o más grandes que el mayor del grupo: cada tramo gana un miembro y el espacio reservado pasa a tener redundancia."
-                : "Los discos nuevos se suman al RAID y se reorganiza (reshape)."
+                ? t("Sumá discos iguales o más grandes que el mayor del grupo: cada tramo gana un miembro y el espacio reservado pasa a tener redundancia.")
+                : t("Los discos nuevos se suman al RAID y se reorganiza (reshape).")
               : failed
-                ? `${diskName(failed)} falló. Elegí el disco nuevo: tiene que ser igual o más grande.`
-                : "Elegí el disco nuevo."}
+                ? t("{disk} falló. Elegí el disco nuevo: tiene que ser igual o más grande.", { disk: diskName(failed) })
+                : t("Elegí el disco nuevo.")}
           </p>
           <div className="ts-pick">
-            {free.length === 0 && <small className="tg-muted">No hay discos libres.</small>}
+            {free.length === 0 && <small className="tg-muted">{t("No hay discos libres.")}</small>}
             {free.map((d) => {
               const on = sel.includes(d.id);
               return (
@@ -262,7 +263,7 @@ function PoolMaintenance({ m, disks, vols, pools, onClose }: { m: Maint; disks: 
                   <span className="ts-pick-text">
                     <strong>{diskName(d)}</strong>
                     <small>
-                      {fmtBytes(d.size)} · serie {d.serial}
+                      {fmtBytes(d.size)} · {t("serie {serial}", { serial: d.serial })}
                     </small>
                   </span>
                 </button>
@@ -277,16 +278,16 @@ function PoolMaintenance({ m, disks, vols, pools, onClose }: { m: Maint; disks: 
             <div className="ts-danger">
               <AlertTriangle size={18} />
               <div>
-                <strong>Se van a borrar estos discos</strong>
-                <p>Todo lo que contienen se pierde. Los volúmenes del grupo siguen disponibles durante la operación.</p>
+                <strong>{t("Se van a borrar estos discos")}</strong>
+                <p>{t("Todo lo que contienen se pierde. Los volúmenes del grupo siguen disponibles durante la operación.")}</p>
               </div>
             </div>
           ) : (
             <div className="ts-danger">
               <AlertTriangle size={18} />
               <div>
-                <strong>El grupo y sus discos se borran</strong>
-                <p>Los discos quedan libres, sin datos.</p>
+                <strong>{t("El grupo y sus discos se borran")}</strong>
+                <p>{t("Los discos quedan libres, sin datos.")}</p>
               </div>
             </div>
           )}
@@ -296,27 +297,27 @@ function PoolMaintenance({ m, disks, vols, pools, onClose }: { m: Maint; disks: 
                 <HardDrive size={18} strokeWidth={1.6} />
                 <div>
                   <strong>{d.model}</strong>
-                  <small>Serie {d.serial}</small>
+                  <small>{t("Serie {serial}", { serial: d.serial })}</small>
                 </div>
               </div>
             ))}
           </div>
           {poolPlan && poolPlan.summary.tiers.length > 0 && m.kind === "expand" && (
-            <TierDiagram tiers={poolPlan.summary.tiers} disks={poolPlan.summary.tiers.flatMap((t) => t.members).filter((x, i, a) => a.indexOf(x) === i).map((id) => {
+            <TierDiagram tiers={poolPlan.summary.tiers} disks={poolPlan.summary.tiers.flatMap((tier) => tier.members).filter((x, i, a) => a.indexOf(x) === i).map((id) => {
               const d = disks.find((x) => x.id === id);
               return { id, label: diskName(d), size: d?.size ?? 0 };
             })} height={96} />
           )}
           {poolPlan?.summary.notes?.map((n) => (
             <p key={n} className="ts-note">
-              {n}
+              {tr(n)}
             </p>
           ))}
           <label className="ts-field">
             <span>
-              Para confirmar, escribí <code>{p.name}</code>
+              {t("Para confirmar, escribí")} <code>{p.name}</code>
             </span>
-            <TextInput value={confirm} onChange={(e) => setConfirm(e.target.value)} aria-label={`Escribí ${p.name} para confirmar`} autoComplete="off" />
+            <TextInput value={confirm} onChange={(e) => setConfirm(e.target.value)} aria-label={t("Escribí {name} para confirmar", { name: p.name })} autoComplete="off" />
           </label>
         </>
       )}

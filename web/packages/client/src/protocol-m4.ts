@@ -1,5 +1,6 @@
 // Fase M4: producto (protocol/README.md §12). Se suma a Methods por module augmentation para no
 // chocar con otros cambios en protocol.ts.
+import { t } from "./i18n";
 
 export interface SetupState {
   state: "pending" | "done";
@@ -153,10 +154,10 @@ export interface PasswordStrength {
 const COMMON = ["123456", "password", "contraseña", "qwerty", "admin", "tango", "111111", "abc123", "iloveyou", "argentina"];
 
 export function passwordStrength(pw: string, context: string[] = []): PasswordStrength {
-  if (!pw) return { score: 0, label: "", hint: "Usá al menos 10 caracteres." };
+  if (!pw) return { score: 0, label: "", hint: t("Usá al menos 10 caracteres.") };
   const lower = pw.toLowerCase();
   if (COMMON.some((c) => lower.includes(c)) || context.some((c) => c && c.length >= 3 && lower.includes(c.toLowerCase())))
-    return { score: 0, label: "Muy débil", hint: "Evitá palabras comunes o tu nombre." };
+    return { score: 0, label: t("Muy débil"), hint: t("Evitá palabras comunes o tu nombre.") };
   let classes = 0;
   if (/[a-z]/.test(pw)) classes++;
   if (/[A-Z]/.test(pw)) classes++;
@@ -179,13 +180,13 @@ export function passwordStrength(pw: string, context: string[] = []): PasswordSt
     "Buena contraseña.",
     "Excelente.",
   ];
-  return { score, label: labels[score], hint: hints[score] };
+  return { score, label: t(labels[score]), hint: t(hints[score]) };
 }
 
 /** Nombre de host válido (RFC 1123, una etiqueta): minúsculas, números y guiones. */
 export function validHostname(h: string): string | null {
-  if (!h) return "Elegí un nombre.";
-  if (h.length > 63) return "Máximo 63 caracteres.";
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(h)) return "Solo minúsculas, números y guiones (sin empezar ni terminar con guion).";
+  if (!h) return t("Elegí un nombre.");
+  if (h.length > 63) return t("Máximo 63 caracteres.");
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(h)) return t("Solo minúsculas, números y guiones (sin empezar ni terminar con guion).");
   return null;
 }

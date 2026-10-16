@@ -2,7 +2,7 @@ import "./monitor.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Activity, ArrowDown, ArrowUp, Cable, Cpu, Fan, FolderOpen, Globe, HardDrive, Laptop, MemoryStick, Monitor as MonitorIcon, Network, Radio, SquareTerminal, Thermometer } from "lucide-react";
-import { fmtAgo, fmtBytes, fmtPct, fmtRate, useLive, useMetrics, useTransport, fmtMem, fmtTemp, useIsReal } from "@tango/client";
+import { fmtAgo, fmtBytes, fmtPct, fmtRate, locale, t, tn, useLive, useMetrics, useTransport, fmtMem, fmtTemp, useIsReal } from "@tango/client";
 import type { Disk, MetricsFrame, RtcStats, Session } from "@tango/client";
 import { WindowToolbar } from "@tango/shell";
 import type { AppProps } from "@tango/shell";
@@ -12,12 +12,12 @@ import { Chart, Spark } from "./Chart";
 type Tab = "resumen" | "cpu" | "memoria" | "red" | "discos" | "conexiones" | "webrtc";
 
 const TABS: { value: Tab; label: string }[] = [
-  { value: "resumen", label: "Resumen" },
+  { value: "resumen", label: t("Resumen") },
   { value: "cpu", label: "CPU" },
-  { value: "memoria", label: "Memoria" },
-  { value: "red", label: "Red" },
-  { value: "discos", label: "Discos" },
-  { value: "conexiones", label: "Conexiones" },
+  { value: "memoria", label: t("Memoria") },
+  { value: "red", label: t("Red") },
+  { value: "discos", label: t("Discos") },
+  { value: "conexiones", label: t("Conexiones") },
   { value: "webrtc", label: "WebRTC" },
 ];
 
@@ -54,9 +54,9 @@ function useSeries(frames: MetricsFrame[]) {
 
 export default function App({ win }: AppProps) {
   const realData = useIsReal("rtc.stats");
-  const [tab, setTab] = useState<Tab>(TABS.some((t) => t.value === win.args.tab) ? (win.args.tab as Tab) : "resumen");
+  const [tab, setTab] = useState<Tab>(TABS.some((x) => x.value === win.args.tab) ? (win.args.tab as Tab) : "resumen");
   useEffect(() => {
-    if (TABS.some((t) => t.value === win.args.tab)) setTab(win.args.tab as Tab);
+    if (TABS.some((x) => x.value === win.args.tab)) setTab(win.args.tab as Tab);
   }, [win.args.tab]);
 
   const frames = useMetrics();
@@ -66,10 +66,10 @@ export default function App({ win }: AppProps) {
   return (
     <div className="tg-app">
       <WindowToolbar win={win}>
-        <span className="tg-tb-title">Monitor</span>
+        <span className="tg-tb-title">{t("Monitor")}</span>
         <span className="tg-tb-spacer" />
         <div data-no-drag>
-          <Segmented label="Sección" value={tab} onChange={setTab} options={TABS} />
+          <Segmented label={t("Sección")} value={tab} onChange={setTab} options={TABS} />
         </div>
         <span className="tg-tb-spacer" />
         {!realData && <DemoBadge />}
@@ -77,7 +77,7 @@ export default function App({ win }: AppProps) {
       <div className="tg-app-main">
         <div className="tg-app-content">
           {!last ? (
-            <div className="tm-root tg-muted">Esperando las primeras métricas del canal «metrics»…</div>
+            <div className="tm-root tg-muted">{t("Esperando las primeras métricas del canal «metrics»…")}</div>
           ) : (
             <div className="tm-root">
               {tab === "resumen" && <Overview s={s} last={last} />}
@@ -92,9 +92,9 @@ export default function App({ win }: AppProps) {
         </div>
         <div className="tg-app-foot">
           <Activity size={12} />
-          Canal «metrics» · 4 muestras por segundo · últimos 60 s
+          {t("Canal «metrics» · 4 muestras por segundo · últimos 60 s")}
           <span style={{ flex: 1 }} />
-          {last && `Carga ${last.load.map((l) => l.toFixed(2)).join(" · ")}`}
+          {last && t("Carga {load}", { load: last.load.map((l) => l.toFixed(2)).join(" · ") })}
         </div>
       </div>
     </div>
@@ -153,49 +153,49 @@ function Overview({ s, last }: { s: S; last: MetricsFrame }) {
   return (
     <>
       <div className="tm-grid4">
-        <Card icon={<Cpu size={13} />} title="CPU" right={<span className="tg-muted" style={{ fontSize: 11 }}>{info ? `${info.cpu} · ${info.cores} núcleos` : ""}</span>}>
+        <Card icon={<Cpu size={13} />} title="CPU" right={<span className="tg-muted" style={{ fontSize: 11 }}>{info ? `${info.cpu} · ${tn(info.cores, "{n} núcleo", "{n} núcleos")}` : ""}</span>}>
           <div className="tm-big">{pct(last.cpu)}</div>
           <Chart series={[{ label: "CPU", values: s.cpu, color: C.cpu }]} max={1} format={pct} times={s.times} height={86} />
         </Card>
-        <Card icon={<MemoryStick size={13} />} title="Memoria">
+        <Card icon={<MemoryStick size={13} />} title={t("Memoria")}>
           <div className="tm-big">
             {gb(last.memUsed)}
-            <small>de {gb(last.memTotal)}</small>
+            <small>{t("de {total}", { total: gb(last.memTotal) })}</small>
           </div>
-          <Chart series={[{ label: "Usada", values: s.mem, color: C.mem }]} max={last.memTotal} format={gb} times={s.times} height={86} />
+          <Chart series={[{ label: t("Usada"), values: s.mem, color: C.mem }]} max={last.memTotal} format={gb} times={s.times} height={86} />
         </Card>
-        <Card icon={<Network size={13} />} title="Red">
-          <Pair items={[{ label: "Recibido", value: fmtRate(last.netRx), color: C.rx }, { label: "Enviado", value: fmtRate(last.netTx), color: C.tx }]} />
-          <Chart series={[{ label: "Recibido", values: s.rx, color: C.rx }, { label: "Enviado", values: s.tx, color: C.tx }]} format={fmtRate} times={s.times} height={86} />
+        <Card icon={<Network size={13} />} title={t("Red")}>
+          <Pair items={[{ label: t("Recibido"), value: fmtRate(last.netRx), color: C.rx }, { label: t("Enviado"), value: fmtRate(last.netTx), color: C.tx }]} />
+          <Chart series={[{ label: t("Recibido"), values: s.rx, color: C.rx }, { label: t("Enviado"), values: s.tx, color: C.tx }]} format={fmtRate} times={s.times} height={86} />
         </Card>
-        <Card icon={<HardDrive size={13} />} title="Disco">
-          <Pair items={[{ label: "Lectura", value: fmtRate(last.diskRead), color: C.read }, { label: "Escritura", value: fmtRate(last.diskWrite), color: C.write }]} />
-          <Chart series={[{ label: "Lectura", values: s.read, color: C.read }, { label: "Escritura", values: s.write, color: C.write }]} format={fmtRate} times={s.times} height={86} />
+        <Card icon={<HardDrive size={13} />} title={t("Disco")}>
+          <Pair items={[{ label: t("Lectura"), value: fmtRate(last.diskRead), color: C.read }, { label: t("Escritura"), value: fmtRate(last.diskWrite), color: C.write }]} />
+          <Chart series={[{ label: t("Lectura"), values: s.read, color: C.read }, { label: t("Escritura"), values: s.write, color: C.write }]} format={fmtRate} times={s.times} height={86} />
         </Card>
       </div>
       <div className="tm-stats">
         <div className="tm-stat">
           <span>
-            <Thermometer size={11} style={{ verticalAlign: -1 }} /> Temperatura de CPU
+            <Thermometer size={11} style={{ verticalAlign: -1 }} /> {t("Temperatura de CPU")}
           </span>
           <b>{last.tempCpu > 0 ? Math.round(last.tempCpu) : "—"}</b>
           {last.tempCpu > 0 && <small>°C</small>}
           <div style={{ marginTop: 4, display: last.tempCpu > 0 ? undefined : "none" }}>
             <Status tone={last.tempCpu > 80 ? "crit" : last.tempCpu > 68 ? "warn" : "ok"} size={12}>
-              <span style={{ fontSize: 11 }}>{last.tempCpu > 80 ? "Alta" : last.tempCpu > 68 ? "Elevada" : "Normal"}</span>
+              <span style={{ fontSize: 11 }}>{last.tempCpu > 80 ? t("Alta") : last.tempCpu > 68 ? t("Elevada") : t("Normal")}</span>
             </Status>
           </div>
         </div>
         <div className="tm-stat">
           <span>
-            <Fan size={11} style={{ verticalAlign: -1 }} /> Ventilador
+            <Fan size={11} style={{ verticalAlign: -1 }} /> {t("Ventilador")}
           </span>
-          <b>{last.fanRpm > 0 ? last.fanRpm.toLocaleString("es-AR") : "—"}</b>
+          <b>{last.fanRpm > 0 ? last.fanRpm.toLocaleString(locale()) : "—"}</b>
           {last.fanRpm > 0 && <small>rpm</small>}
         </div>
-        <Stat label="Carga (1 min)" value={last.load[0].toFixed(2)} />
-        <Stat label="Carga (5 / 15 min)" value={`${last.load[1].toFixed(2)} · ${last.load[2].toFixed(2)}`} />
-        <Stat label="Memoria en caché" value={gb(last.memCache)} />
+        <Stat label={t("Carga (1 min)")} value={last.load[0].toFixed(2)} />
+        <Stat label={t("Carga (5 / 15 min)")} value={`${last.load[1].toFixed(2)} · ${last.load[2].toFixed(2)}`} />
+        <Stat label={t("Memoria en caché")} value={gb(last.memCache)} />
       </div>
     </>
   );
@@ -207,29 +207,29 @@ function CpuTab({ s, last }: { s: S; last: MetricsFrame }) {
   const { data: info } = useLive("system.info", undefined);
   return (
     <>
-      <Card icon={<Cpu size={13} />} title="Uso total" right={<span className="tm-big" style={{ fontSize: 20 }}>{pct(last.cpu)}</span>}>
+      <Card icon={<Cpu size={13} />} title={t("Uso total")} right={<span className="tm-big" style={{ fontSize: 20 }}>{pct(last.cpu)}</span>}>
         <Chart series={[{ label: "CPU", values: s.cpu, color: C.cpu }]} max={1} format={pct} times={s.times} height={160} />
       </Card>
       <div className="tm-head">
-        <h2>Por núcleo</h2>
+        <h2>{t("Por núcleo")}</h2>
         <span className="tm-sub">{info?.cpu}</span>
       </div>
       <div className="tm-cores">
         {s.cores.map((vals, i) => (
           <div key={i} className="tm-core">
             <header>
-              Núcleo {i}
+              {t("Núcleo {n}", { n: i })}
               <b>{pct(last.perCore[i] ?? 0)}</b>
             </header>
-            <Chart series={[{ label: `Núcleo ${i}`, values: vals, color: C.cpu }]} max={1} format={pct} times={s.times} height={54} compact />
+            <Chart series={[{ label: t("Núcleo {n}", { n: i }), values: vals, color: C.cpu }]} max={1} format={pct} times={s.times} height={54} compact />
           </div>
         ))}
       </div>
       <div className="tm-stats">
-        <Stat label="Carga 1 min" value={last.load[0].toFixed(2)} />
-        <Stat label="Carga 5 min" value={last.load[1].toFixed(2)} />
-        <Stat label="Carga 15 min" value={last.load[2].toFixed(2)} />
-        <Stat label="Temperatura" value={last.tempCpu > 0 ? String(Math.round(last.tempCpu)) : "—"} unit={last.tempCpu > 0 ? "°C" : undefined} />
+        <Stat label={t("Carga 1 min")} value={last.load[0].toFixed(2)} />
+        <Stat label={t("Carga 5 min")} value={last.load[1].toFixed(2)} />
+        <Stat label={t("Carga 15 min")} value={last.load[2].toFixed(2)} />
+        <Stat label={t("Temperatura")} value={last.tempCpu > 0 ? String(Math.round(last.tempCpu)) : "—"} unit={last.tempCpu > 0 ? "°C" : undefined} />
       </div>
     </>
   );
@@ -240,14 +240,14 @@ function CpuTab({ s, last }: { s: S; last: MetricsFrame }) {
 function MemTab({ s, last }: { s: S; last: MetricsFrame }) {
   const free = Math.max(0, last.memTotal - last.memUsed - last.memCache);
   const parts = [
-    { label: "Usada por servicios", v: last.memUsed, color: C.mem },
-    { label: "Caché de archivos", v: last.memCache, color: C.cache },
-    { label: "Libre", v: free, color: "transparent" },
+    { label: t("Usada por servicios"), v: last.memUsed, color: C.mem },
+    { label: t("Caché de archivos"), v: last.memCache, color: C.cache },
+    { label: t("Libre"), v: free, color: "transparent" },
   ];
   return (
     <>
-      <Card icon={<MemoryStick size={13} />} title="Uso de memoria" right={<span className="tg-muted tg-num">{gb(last.memTotal)} en total</span>}>
-        <div className="tm-stack" role="img" aria-label={`Usada ${gb(last.memUsed)}, caché ${gb(last.memCache)}, libre ${gb(free)}`}>
+      <Card icon={<MemoryStick size={13} />} title={t("Uso de memoria")} right={<span className="tg-muted tg-num">{t("{total} en total", { total: gb(last.memTotal) })}</span>}>
+        <div className="tm-stack" role="img" aria-label={t("Usada {used}, caché {cache}, libre {free}", { used: gb(last.memUsed), cache: gb(last.memCache), free: gb(free) })}>
           {parts.map((p) => (
             <div key={p.label} style={{ width: `${(p.v / last.memTotal) * 100}%`, background: p.color }} />
           ))}
@@ -261,11 +261,11 @@ function MemTab({ s, last }: { s: S; last: MetricsFrame }) {
           ))}
         </div>
       </Card>
-      <Card icon={<Activity size={13} />} title="Últimos 60 segundos">
+      <Card icon={<Activity size={13} />} title={t("Últimos 60 segundos")}>
         <Chart
           series={[
-            { label: "Usada + caché", values: s.cache, color: C.cache },
-            { label: "Usada", values: s.mem, color: C.mem },
+            { label: t("Usada + caché"), values: s.cache, color: C.cache },
+            { label: t("Usada"), values: s.mem, color: C.mem },
           ]}
           max={last.memTotal}
           format={gb}
@@ -274,7 +274,7 @@ function MemTab({ s, last }: { s: S; last: MetricsFrame }) {
         />
       </Card>
       <p className="tg-muted" style={{ margin: 0, fontSize: 12, maxWidth: "70ch", lineHeight: 1.5 }}>
-        La caché de archivos acelera las lecturas repetidas desde los volúmenes. Linux la libera sola cuando un servicio necesita memoria, así que no cuenta como ocupada.
+        {t("La caché de archivos acelera las lecturas repetidas desde los volúmenes. Linux la libera sola cuando un servicio necesita memoria, así que no cuenta como ocupada.")}
       </p>
     </>
   );
@@ -288,21 +288,21 @@ function NetTab({ s, last }: { s: S; last: MetricsFrame }) {
   const peakTx = Math.max(...s.tx);
   return (
     <>
-      <Card icon={<Network size={13} />} title="Tráfico">
+      <Card icon={<Network size={13} />} title={t("Tráfico")}>
         <Pair
           items={[
-            { label: "Recibido", value: fmtRate(last.netRx), color: C.rx, icon: <ArrowDown size={11} /> },
-            { label: "Enviado", value: fmtRate(last.netTx), color: C.tx, icon: <ArrowUp size={11} /> },
+            { label: t("Recibido"), value: fmtRate(last.netRx), color: C.rx, icon: <ArrowDown size={11} /> },
+            { label: t("Enviado"), value: fmtRate(last.netTx), color: C.tx, icon: <ArrowUp size={11} /> },
           ]}
         />
-        <Chart series={[{ label: "Recibido", values: s.rx, color: C.rx }, { label: "Enviado", values: s.tx, color: C.tx }]} format={fmtRate} times={s.times} height={180} />
+        <Chart series={[{ label: t("Recibido"), values: s.rx, color: C.rx }, { label: t("Enviado"), values: s.tx, color: C.tx }]} format={fmtRate} times={s.times} height={180} />
       </Card>
       <div className="tm-stats">
-        <Stat label="Interfaz" value="enp1s0" />
-        <Stat label="Dirección IP" value={info?.ip ?? "—"} />
-        <Stat label="Enlace" value="1 Gb/s" unit="full dúplex" />
-        <Stat label="Pico recibido (60 s)" value={fmtRate(peakRx)} />
-        <Stat label="Pico enviado (60 s)" value={fmtRate(peakTx)} />
+        <Stat label={t("Interfaz")} value="enp1s0" />
+        <Stat label={t("Dirección IP")} value={info?.ip ?? "—"} />
+        <Stat label={t("Enlace")} value="1 Gb/s" unit={t("full dúplex")} />
+        <Stat label={t("Pico recibido (60 s)")} value={fmtRate(peakRx)} />
+        <Stat label={t("Pico enviado (60 s)")} value={fmtRate(peakTx)} />
         <Stat label="MTU" value="1500" />
       </div>
     </>
@@ -327,36 +327,36 @@ function DisksTab({ s, last }: { s: S; last: MetricsFrame }) {
   const io = splitIO(disks, last.diskRead, last.diskWrite, last.t);
   return (
     <>
-      <Card icon={<HardDrive size={13} />} title="Total de todos los discos">
-        <Pair items={[{ label: "Lectura", value: fmtRate(last.diskRead), color: C.read }, { label: "Escritura", value: fmtRate(last.diskWrite), color: C.write }]} />
-        <Chart series={[{ label: "Lectura", values: s.read, color: C.read }, { label: "Escritura", values: s.write, color: C.write }]} format={fmtRate} times={s.times} height={150} />
+      <Card icon={<HardDrive size={13} />} title={t("Total de todos los discos")}>
+        <Pair items={[{ label: t("Lectura"), value: fmtRate(last.diskRead), color: C.read }, { label: t("Escritura"), value: fmtRate(last.diskWrite), color: C.write }]} />
+        <Chart series={[{ label: t("Lectura"), values: s.read, color: C.read }, { label: t("Escritura"), values: s.write, color: C.write }]} format={fmtRate} times={s.times} height={150} />
       </Card>
       <div className="tm-table-wrap">
         <table className="tg-table">
           <thead>
             <tr>
-              <th>Disco</th>
-              <th>Ubicación</th>
-              <th>Estado</th>
-              <th className="num">Lectura</th>
-              <th className="num">Escritura</th>
-              <th className="num">Temperatura</th>
+              <th>{t("Disco")}</th>
+              <th>{t("Ubicación")}</th>
+              <th>{t("Estado")}</th>
+              <th className="num">{t("Lectura")}</th>
+              <th className="num">{t("Escritura")}</th>
+              <th className="num">{t("Temperatura")}</th>
             </tr>
           </thead>
           <tbody>
             {disks.map((d, i) => (
               <tr key={d.id}>
                 <td>{d.model}</td>
-                <td className="tg-muted">{d.bay ? `Bahía ${d.bay}` : "Interno (sistema)"}</td>
+                <td className="tg-muted">{d.bay ? t("Bahía {n}", { n: d.bay }) : t("Interno (sistema)")}</td>
                 <td>
                   {d.use === "failed" ? (
-                    <Status tone="crit" size={12}>Sin respuesta</Status>
+                    <Status tone="crit" size={12}>{t("Sin respuesta")}</Status>
                   ) : d.use === "member" ? (
-                    <Status tone={d.smart === "warn" || d.smart === "crit" ? "warn" : "ok"} size={12}>En {d.volume === "vol1" ? "volume1" : d.volume}</Status>
+                    <Status tone={d.smart === "warn" || d.smart === "crit" ? "warn" : "ok"} size={12}>{t("En {volume}", { volume: d.volume === "vol1" ? "volume1" : (d.volume ?? "") })}</Status>
                   ) : d.use === "system" ? (
-                    <Badge>Sistema</Badge>
+                    <Badge>{t("Sistema")}</Badge>
                   ) : (
-                    <Badge>Sin usar</Badge>
+                    <Badge>{t("Sin usar")}</Badge>
                   )}
                 </td>
                 <td className="num">{d.use === "failed" ? "—" : fmtRate(io[i]?.r ?? 0)}</td>
@@ -374,13 +374,13 @@ function DisksTab({ s, last }: { s: S; last: MetricsFrame }) {
 // ---- Conexiones -------------------------------------------------------------------------
 
 const clients: Record<Session["client"], { label: string; icon: ReactNode; via: string }> = {
-  web: { label: "Navegador", icon: <Globe size={14} />, via: "WebRTC" },
-  "desk-win": { label: "App de Windows", icon: <MonitorIcon size={14} />, via: "WebRTC" },
-  "desk-linux": { label: "App de Linux", icon: <Laptop size={14} />, via: "WebRTC" },
-  smb: { label: "Carpeta compartida", icon: <FolderOpen size={14} />, via: "SMB3" },
-  ssh: { label: "Terminal", icon: <SquareTerminal size={14} />, via: "SSH" },
-  remote: { label: "Navegador remoto", icon: <Globe size={14} />, via: "TangoConnect" },
-  guest: { label: "Enlace público", icon: <Globe size={14} />, via: "TangoConnect" },
+  web: { label: t("Navegador"), icon: <Globe size={14} />, via: "WebRTC" },
+  "desk-win": { label: t("App de Windows"), icon: <MonitorIcon size={14} />, via: "WebRTC" },
+  "desk-linux": { label: t("App de Linux"), icon: <Laptop size={14} />, via: "WebRTC" },
+  smb: { label: t("Carpeta compartida"), icon: <FolderOpen size={14} />, via: "SMB3" },
+  ssh: { label: t("Terminal"), icon: <SquareTerminal size={14} />, via: "SSH" },
+  remote: { label: t("Navegador remoto"), icon: <Globe size={14} />, via: "TangoConnect" },
+  guest: { label: t("Enlace público"), icon: <Globe size={14} />, via: "TangoConnect" },
 };
 
 function SessionsTab() {
@@ -389,18 +389,18 @@ function SessionsTab() {
   return (
     <>
       <div className="tm-head">
-        <h2>Conexiones activas</h2>
-        <span className="tm-sub">{sessions.length} en este momento</span>
+        <h2>{t("Conexiones activas")}</h2>
+        <span className="tm-sub">{t("{n} en este momento", { n: sessions.length })}</span>
       </div>
       <div className="tm-table-wrap">
         <table className="tg-table">
           <thead>
             <tr>
-              <th>Usuario</th>
-              <th>Desde</th>
-              <th>Protocolo</th>
-              <th>Dirección IP</th>
-              <th>Conectado</th>
+              <th>{t("Usuario")}</th>
+              <th>{t("Desde")}</th>
+              <th>{t("Protocolo")}</th>
+              <th>{t("Dirección IP")}</th>
+              <th>{t("Conectado")}</th>
             </tr>
           </thead>
           <tbody>
@@ -412,7 +412,7 @@ function SessionsTab() {
                     {users.find((u) => u.name === x.user)?.full ?? x.user}
                     {x.current && (
                       <span className="tm-pill" style={{ marginLeft: 8 }}>
-                        Esta sesión
+                        {t("Esta sesión")}
                       </span>
                     )}
                   </td>
@@ -442,7 +442,7 @@ function SessionsTab() {
 const HIST = 60;
 
 function RtcTab() {
-  const t = useTransport();
+  const tp = useTransport();
   const [stats, setStats] = useState<RtcStats>();
   const hist = useRef(new Map<string, number[]>());
   const rtt = useRef<number[]>([]);
@@ -451,7 +451,7 @@ function RtcTab() {
   useEffect(() => {
     let alive = true;
     const poll = () =>
-      t.call("rtc.stats", undefined).then((st) => {
+      tp.call("rtc.stats", undefined).then((st) => {
         if (!alive) return;
         for (const ch of st.channels) {
           const h = hist.current.get(ch.label) ?? [];
@@ -469,9 +469,9 @@ function RtcTab() {
       alive = false;
       clearInterval(i);
     };
-  }, [t]);
+  }, [tp]);
 
-  if (!stats) return <div className="tg-muted">Leyendo estadísticas de la conexión…</div>;
+  if (!stats) return <div className="tg-muted">{t("Leyendo estadísticas de la conexión…")}</div>;
   const ok = stats.ice === "connected" || stats.ice === "completed";
 
   return (
@@ -481,20 +481,20 @@ function RtcTab() {
           <Radio size={22} />
         </div>
         <div>
-          <h2>Toda la administración viaja por un único RTCPeerConnection cifrado</h2>
-          <p>Archivos, eventos, métricas y la terminal comparten una conexión DTLS directa entre este navegador y el NAS. No hay API REST ni sondeos: el servidor empuja cada cambio en el momento.</p>
+          <h2>{t("Toda la administración viaja por un único RTCPeerConnection cifrado")}</h2>
+          <p>{t("Archivos, eventos, métricas y la terminal comparten una conexión DTLS directa entre este navegador y el NAS. No hay API REST ni sondeos: el servidor empuja cada cambio en el momento.")}</p>
         </div>
       </div>
 
       <div className="tm-stats">
         <div className="tm-stat">
-          <span>Estado ICE</span>
+          <span>{t("Estado ICE")}</span>
           <div style={{ marginTop: 3 }}>
-            <Status tone={ok ? "ok" : "warn"}>{ok ? "Conectado" : stats.ice}</Status>
+            <Status tone={ok ? "ok" : "warn"}>{ok ? t("Conectado") : stats.ice}</Status>
           </div>
         </div>
         <div className="tm-stat">
-          <span>Latencia (RTT)</span>
+          <span>{t("Latencia (RTT)")}</span>
           <b>{stats.rttMs.toFixed(1)}</b>
           <small>ms</small>
           <div style={{ marginTop: 4 }}>
@@ -502,19 +502,19 @@ function RtcTab() {
           </div>
         </div>
         <div className="tm-stat">
-          <span>Tipo de candidato</span>
-          <b>{stats.pair.type === "host" ? "Directo (LAN)" : stats.pair.type === "srflx" ? "STUN" : "TURN"}</b>
+          <span>{t("Tipo de candidato")}</span>
+          <b>{stats.pair.type === "host" ? t("Directo (LAN)") : stats.pair.type === "srflx" ? "STUN" : "TURN"}</b>
           <small>{stats.pair.protocol.toUpperCase()}</small>
         </div>
         <div className="tm-stat">
-          <span>Cifrado</span>
+          <span>{t("Cifrado")}</span>
           <b style={{ fontSize: 13 }}>{stats.dtls}</b>
         </div>
       </div>
 
-      <Card icon={<Cable size={13} />} title="Par de candidatos seleccionado">
+      <Card icon={<Cable size={13} />} title={t("Par de candidatos seleccionado")}>
         <div className="tm-path">
-          <span>Este equipo</span>
+          <span>{t("Este equipo")}</span>
           <code>{stats.pair.local}</code>
           <span className="tm-wire" aria-hidden="true" />
           <code>{stats.pair.remote}</code>
@@ -524,18 +524,18 @@ function RtcTab() {
 
       <div className="tm-head">
         <h2>DataChannels</h2>
-        <span className="tm-sub">{stats.channels.length} canales abiertos</span>
+        <span className="tm-sub">{tn(stats.channels.length, "{n} canal abierto", "{n} canales abiertos")}</span>
       </div>
       <div className="tm-table-wrap">
         <table className="tg-table">
           <thead>
             <tr>
-              <th>Canal</th>
-              <th>Entrega</th>
-              <th className="num">En buffer</th>
-              <th className="num">Tráfico</th>
-              <th>Últimos 60 s</th>
-              <th className="num">Mensajes</th>
+              <th>{t("Canal")}</th>
+              <th>{t("Entrega")}</th>
+              <th className="num">{t("En buffer")}</th>
+              <th className="num">{t("Tráfico")}</th>
+              <th>{t("Últimos 60 s")}</th>
+              <th className="num">{t("Mensajes")}</th>
             </tr>
           </thead>
           <tbody>
@@ -545,14 +545,14 @@ function RtcTab() {
                   <code style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12 }}>{ch.label}</code>
                 </td>
                 <td>
-                  <span className="tm-pill">{ch.ordered ? "Ordenada, confiable" : "Sin orden, sin reintentos"}</span>
+                  <span className="tm-pill">{ch.ordered ? t("Ordenada, confiable") : t("Sin orden, sin reintentos")}</span>
                 </td>
                 <td className="num">{fmtBytes(ch.buffered)}</td>
                 <td className="num">{fmtRate(ch.rate)}</td>
                 <td>
                   <Spark values={hist.current.get(ch.label) ?? []} color={ch.ordered ? "var(--tg-accent)" : C.rx} />
                 </td>
-                <td className="num">{ch.messages.toLocaleString("es-AR")}</td>
+                <td className="num">{ch.messages.toLocaleString(locale())}</td>
               </tr>
             ))}
           </tbody>

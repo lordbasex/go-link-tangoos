@@ -56,6 +56,7 @@ check:
 	@out=$$(gofmt -l cmd internal pkg); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	go vet $(GOPKGS)
 	go test $(GOPKGS)
+	go run ./scripts/i18n-extract -check
 
 ## deb: tangoos_<version>_amd64.deb in dist/
 deb: tangod tango-agent
@@ -83,6 +84,7 @@ ISO_VARIANT ?= product
 ISO_TEST_IP ?= 172.17.0.46/24
 ISO_TEST_GW ?= 172.17.0.1
 ISO_TEST_DISK ?= TANGO-SYS
+ISO_TEST_TZ ?=
 ISO_DIR    := /var/lib/vz/template/iso
 ISO_SRC    := /root/tangoos-iso/src
 iso: deb tango-installer
@@ -92,7 +94,7 @@ iso: deb tango-installer
 	ssh-keygen -y -f $(SSH_KEY) | ssh $(SSH_OPTS) root@$(PVE) 'cat > $(ISO_SRC)/dev_authorized_keys'
 	ssh $(SSH_OPTS) root@$(PVE) 'cd $(ISO_SRC)/image && ./build-image.sh --deb ../$(notdir $(DEB)) --variant $(ISO_VARIANT) \
 		--out $(ISO_DIR)/tangoos-$(VERSION)-amd64$(if $(filter test,$(ISO_VARIANT)),-test,).iso \
-		$(if $(filter test,$(ISO_VARIANT)),--authorized-keys ../dev_authorized_keys --ip $(ISO_TEST_IP) --gw $(ISO_TEST_GW) --disk $(ISO_TEST_DISK),)'
+		$(if $(filter test,$(ISO_VARIANT)),--authorized-keys ../dev_authorized_keys --ip $(ISO_TEST_IP) --gw $(ISO_TEST_GW) --disk $(ISO_TEST_DISK) $(if $(ISO_TEST_TZ),--tz $(ISO_TEST_TZ)),)'
 
 ## iso-netinst: ISO netinst + preseed (fase 1; baja Debian de internet, ~7 min)
 iso-netinst: deb

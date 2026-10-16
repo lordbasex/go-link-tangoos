@@ -2,7 +2,7 @@
 import "./log.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Ban, CheckCircle2, CircleAlert, Pause, Play, ScrollText, ShieldCheck } from "lucide-react";
-import { useIsReal, useLive, useTopic } from "@tango/client";
+import { locale, t, tn, useIsReal, useLive, useTopic } from "@tango/client";
 import type { AuditEvent, LogLine, LogUnit } from "@tango/client";
 import { WindowToolbar, useWindowMenus } from "@tango/shell";
 import type { AppProps } from "@tango/shell";
@@ -44,7 +44,7 @@ const METHOD_LABEL: Record<string, string> = {
 const fmtTime = (iso: string) => {
   const d = new Date(iso);
   const today = new Date().toDateString() === d.toDateString();
-  return today ? d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }) : d.toLocaleString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  return today ? d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }) : d.toLocaleString(locale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 };
 
 export default function LogApp({ win }: AppProps) {
@@ -56,10 +56,10 @@ export default function LogApp({ win }: AppProps) {
     win,
     [
       {
-        label: "Ver",
+        label: t("Ver"),
         items: [
-          { label: "Auditoría", checked: tab === "audit", action: () => setTab("audit") },
-          { label: "Sistema", checked: tab === "system", action: () => setTab("system") },
+          { label: t("Auditoría"), checked: tab === "audit", action: () => setTab("audit") },
+          { label: t("Sistema"), checked: tab === "system", action: () => setTab("system") },
         ],
       },
     ],
@@ -69,21 +69,21 @@ export default function LogApp({ win }: AppProps) {
   return (
     <div className="tlog">
       <WindowToolbar win={win}>
-        <span className="tg-tb-title">Registro</span>
+        <span className="tg-tb-title">{t("Registro")}</span>
         <span className="tg-tb-spacer" />
         <Segmented
-          label="Vista"
+          label={t("Vista")}
           value={tab}
           onChange={setTab}
           options={[
-            { value: "audit", label: "Auditoría" },
-            { value: "system", label: "Sistema" },
+            { value: "audit", label: t("Auditoría") },
+            { value: "system", label: t("Sistema") },
           ]}
         />
         <span className="tg-tb-spacer" />
         {!real && <DemoBadge />}
         <div style={{ width: 200 }}>
-          <SearchField value={q} onChange={setQ} placeholder={tab === "audit" ? "Usuario, acción, IP…" : "Buscar en los logs"} />
+          <SearchField value={q} onChange={setQ} placeholder={tab === "audit" ? t("Usuario, acción, IP…") : t("Buscar en los logs")} />
         </div>
       </WindowToolbar>
       {tab === "audit" ? <Audit q={q} /> : <System q={q} />}
@@ -108,31 +108,31 @@ function Audit({ q }: { q: string }) {
     <div className="tlog-main">
       <div className="tlog-filters">
         <Segmented
-          label="Resultado"
+          label={t("Resultado")}
           value={result}
           onChange={setResult}
           options={[
-            { value: "all", label: "Todo" },
-            { value: "fail", label: "Fallidos y denegados" },
+            { value: "all", label: t("Todo") },
+            { value: "fail", label: t("Fallidos y denegados") },
           ]}
         />
-        <span className="tlog-count">{rows.length} eventos</span>
+        <span className="tlog-count">{tn(rows.length, "{n} evento", "{n} eventos")}</span>
       </div>
       <div className="tg-app-content tlog-table-wrap">
         {rows.length === 0 ? (
-          <EmptyState icon={ShieldCheck} title={q ? "Nada coincide" : "Sin eventos todavía"}>
-            {q ? `Ningún evento contiene «${q}».` : "Cada acción que cambia algo en el NAS, y cada inicio de sesión, aparece acá."}
+          <EmptyState icon={ShieldCheck} title={q ? t("Nada coincide") : t("Sin eventos todavía")}>
+            {q ? t("Ningún evento contiene «{q}».", { q }) : t("Cada acción que cambia algo en el NAS, y cada inicio de sesión, aparece acá.")}
           </EmptyState>
         ) : (
           <table className="tg-table tlog-table">
             <thead>
               <tr>
-                <th>Hora</th>
-                <th>Usuario</th>
-                <th>Acción</th>
-                <th>Objetivo</th>
-                <th>Origen</th>
-                <th>Resultado</th>
+                <th>{t("Hora")}</th>
+                <th>{t("Usuario")}</th>
+                <th>{t("Acción")}</th>
+                <th>{t("Objetivo")}</th>
+                <th>{t("Origen")}</th>
+                <th>{t("Resultado")}</th>
               </tr>
             </thead>
             <tbody>
@@ -140,7 +140,7 @@ function Audit({ q }: { q: string }) {
                 <tr key={`${e.at}-${i}`} data-new={i < live.length || undefined}>
                   <td className="tg-num">{fmtTime(e.at)}</td>
                   <td>{e.actor}</td>
-                  <td title={e.method}>{METHOD_LABEL[e.method] ?? e.method}</td>
+                  <td title={e.method}>{METHOD_LABEL[e.method] ? t(METHOD_LABEL[e.method]) : e.method}</td>
                   <td>{e.target}</td>
                   <td className="tlog-dim">
                     {e.ip} · {e.client}
@@ -148,15 +148,15 @@ function Audit({ q }: { q: string }) {
                   <td>
                     {e.result === "ok" ? (
                       <span className="tlog-res" data-r="ok">
-                        <CheckCircle2 size={13} /> Correcto
+                        <CheckCircle2 size={13} /> {t("Correcto")}
                       </span>
                     ) : e.result === "denied" ? (
                       <span className="tlog-res" data-r="denied">
-                        <Ban size={13} /> Denegado
+                        <Ban size={13} /> {t("Denegado")}
                       </span>
                     ) : (
                       <span className="tlog-res" data-r="error">
-                        <CircleAlert size={13} /> Falló
+                        <CircleAlert size={13} /> {t("Falló")}
                       </span>
                     )}
                   </td>
@@ -211,14 +211,14 @@ function System({ q }: { q: string }) {
   return (
     <div className="tlog-main">
       <div className="tlog-filters">
-        <Segmented label="Servicio" value={unit} onChange={setUnit} options={UNITS} />
-        <span className="tlog-count">{lines.length} líneas</span>
-        <IconButton icon={follow ? Pause : Play} label={follow ? "Pausar" : "Seguir en vivo"} pressed={follow} onClick={() => setFollow((f) => !f)} />
+        <Segmented label={t("Servicio")} value={unit} onChange={setUnit} options={UNITS.map((u) => ({ ...u, label: t(u.label) }))} />
+        <span className="tlog-count">{tn(lines.length, "{n} línea", "{n} líneas")}</span>
+        <IconButton icon={follow ? Pause : Play} label={follow ? t("Pausar") : t("Seguir en vivo")} pressed={follow} onClick={() => setFollow((f) => !f)} />
       </div>
       <div className="tlog-console" ref={box} onWheel={(e) => e.deltaY < 0 && setFollow(false)}>
         {lines.length === 0 && (
-          <EmptyState icon={ScrollText} title="Sin líneas">
-            {q ? `Nada contiene «${q}».` : "No hay registros para este servicio."}
+          <EmptyState icon={ScrollText} title={t("Sin líneas")}>
+            {q ? t("Nada contiene «{q}».", { q }) : t("No hay registros para este servicio.")}
           </EmptyState>
         )}
         {lines.map((l, i) => {

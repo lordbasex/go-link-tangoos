@@ -1,8 +1,10 @@
+import "./i18n.en";
 import "./ui.css";
 import { useEffect, useId, useRef } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Info, Search, XOctagon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { t } from "@tango/client";
 
 export type Tone = "ok" | "warn" | "crit" | "info";
 
@@ -39,7 +41,8 @@ export function TextInput({ size, ...p }: Omit<InputHTMLAttributes<HTMLInputElem
   return <input className="tg-input" data-size={size} spellCheck={false} {...p} />;
 }
 
-export function SearchField({ value, onChange, placeholder = "Buscar", autoFocus }: { value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean }) {
+export function SearchField({ value, onChange, placeholder: ph, autoFocus }: { value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean }) {
+  const placeholder = ph ?? t("Buscar");
   return (
     <label className="tg-search">
       <Search size={14} strokeWidth={2} />
@@ -59,7 +62,7 @@ export function Badge({ tone, children }: { tone?: Tone | "demo"; children: Reac
 /** Insignia obligatoria en toda vista con datos simulados (docs/13 §8). */
 export function DemoBadge() {
   return (
-    <span className="tg-badge" data-tone="demo" title="Datos simulados: este prototipo no toca discos reales">
+    <span className="tg-badge" data-tone="demo" title={t("Datos simulados: este prototipo no toca discos reales")}>
       DEMO
     </span>
   );

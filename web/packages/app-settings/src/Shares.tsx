@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Folder, FolderPlus, HardDrive, Trash2, Users } from "lucide-react";
-import { RpcError, fmtBytes, useIsReal, useJobs, useLive, useTransport } from "@tango/client";
+import { RpcError, fmtBytes, t, tn, tr, useIsReal, useJobs, useLive, useTransport } from "@tango/client";
 import type { PermissionEntry, Share, ShareAccess, Volume } from "@tango/client";
 import { Avatar, openApp, toast } from "@tango/shell";
 import { Badge, Button, DemoBadge, EmptyState, Group, Progress, Row, Sheet, TextInput, Toggle } from "@tango/ui";
+import { tj } from "./common";
 import { NfsAccess } from "./NfsAccess";
 import { TimeMachineHelp, TimeMachineSheet, maxGBError, parseMaxGB } from "./TimeMachine";
 
@@ -26,14 +27,14 @@ export function SharesSection() {
     return (
       <EmptyState
         icon={HardDrive}
-        title="Primero creá un volumen"
+        title={t("Primero creá un volumen")}
         action={
           <Button variant="primary" onClick={() => openApp("tango.storage", { action: "create" })}>
-            Abrir Almacenamiento
+            {t("Abrir Almacenamiento")}
           </Button>
         }
       >
-        Las carpetas compartidas viven dentro de un volumen. Creá uno en Almacenamiento y volvé acá.
+        {t("Las carpetas compartidas viven dentro de un volumen. Creá uno en Almacenamiento y volvé acá.")}
       </EmptyState>
     );
 
@@ -41,16 +42,16 @@ export function SharesSection() {
     <>
       <div className="tset-titlerow">
         <div className="tg-group-title">
-          Carpetas compartidas {!real && <DemoBadge />}
+          {t("Carpetas compartidas")} {!real && <DemoBadge />}
         </div>
-        <Button onClick={() => setCreating(true)} disabled={!usable.length} title={usable.length ? undefined : "El volumen se está construyendo"}>
-          <FolderPlus size={14} /> Nueva carpeta compartida…
+        <Button onClick={() => setCreating(true)} disabled={!usable.length} title={usable.length ? undefined : t("El volumen se está construyendo")}>
+          <FolderPlus size={14} /> {t("Nueva carpeta compartida…")}
         </Button>
       </div>
       {shares.length === 0 ? (
         <div className="tg-group">
-          <EmptyState icon={Folder} title="Todavía no hay carpetas compartidas" action={<Button onClick={() => setCreating(true)} disabled={!usable.length}>Crear la primera</Button>}>
-            Por ejemplo «Familia», «Fotos» o «Documentos». Cada una puede tener permisos, instantáneas y verse en la red.
+          <EmptyState icon={Folder} title={t("Todavía no hay carpetas compartidas")} action={<Button onClick={() => setCreating(true)} disabled={!usable.length}>{t("Crear la primera")}</Button>}>
+            {t("Por ejemplo «Familia», «Fotos» o «Documentos». Cada una puede tener permisos, instantáneas y verse en la red.")}
           </EmptyState>
         </div>
       ) : (
@@ -70,22 +71,22 @@ export function SharesSection() {
                 {s.smb && <Badge>SMB</Badge>}
                 {s.timeMachine && <Badge tone="info">Time Machine</Badge>}
                 {s.nfs && <Badge>NFS</Badge>}
-                {s.snapshots && <Badge tone="ok">Instantáneas</Badge>}
-                {s.recycleBin && <Badge>Papelera</Badge>}
+                {s.snapshots && <Badge tone="ok">{t("Instantáneas")}</Badge>}
+                {s.recycleBin && <Badge>{t("Papelera")}</Badge>}
               </div>
-              <Button onClick={() => setPerm(s)}>Permisos…</Button>
+              <Button onClick={() => setPerm(s)}>{t("Permisos…")}</Button>
               <Button onClick={() => setNfs(s)}>NFS…</Button>
-              <Button onClick={() => setTm(s)} title="Usar como destino de Time Machine">
+              <Button onClick={() => setTm(s)} title={t("Usar como destino de Time Machine")}>
                 Time Machine…
               </Button>
-              <Button variant="plain" onClick={() => setDeleting(s)} aria-label={`Eliminar ${s.name}`} title={`Eliminar ${s.name}`}>
+              <Button variant="plain" onClick={() => setDeleting(s)} aria-label={t("Eliminar {name}", { name: s.name })} title={t("Eliminar {name}", { name: s.name })}>
                 <Trash2 size={14} color="var(--tg-crit)" />
               </Button>
             </Row>
           ))}
         </div>
       )}
-      <p className="tset-foot">Cada carpeta compartida es un subvolumen Btrfs: puede tener instantáneas y cuota propias.</p>
+      <p className="tset-foot">{t("Cada carpeta compartida es un subvolumen Btrfs: puede tener instantáneas y cuota propias.")}</p>
       {perm && <Permissions share={perm} onClose={() => setPerm(null)} />}
       {deleting && <DeleteShare share={deleting} onClose={() => setDeleting(null)} />}
       {nfs && <NfsAccess share={nfs} nfsEnabled={nfsEnabled} onClose={() => setNfs(null)} />}
@@ -98,7 +99,7 @@ export function SharesSection() {
 const NAME_RE = /^[\p{L}\p{N} _-]{1,64}$/u;
 
 function NewShare({ open, onClose, vols, shares }: { open: boolean; onClose: () => void; vols: Volume[]; shares: Share[] }) {
-  const t = useTransport();
+  const tp = useTransport();
   const jobs = useJobs();
   const [name, setName] = useState("");
   const [volume, setVolume] = useState("");
@@ -131,11 +132,11 @@ function NewShare({ open, onClose, vols, shares }: { open: boolean; onClose: () 
 
   const trimmed = name.trim();
   const nameErr = !trimmed
-    ? "Escribí un nombre."
+    ? t("Escribí un nombre.")
     : !NAME_RE.test(trimmed)
-      ? "Solo letras, números, espacios, guiones y guion bajo (hasta 64)."
+      ? t("Solo letras, números, espacios, guiones y guion bajo (hasta 64).")
       : shares.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())
-        ? `Ya existe una carpeta llamada «${trimmed}».`
+        ? t("Ya existe una carpeta llamada «{name}».", { name: trimmed })
         : null;
   const tmErr = timeMachine ? maxGBError(tmMax) : null;
   const valid = !nameErr && !!volume && !tmErr;
@@ -154,35 +155,35 @@ function NewShare({ open, onClose, vols, shares }: { open: boolean; onClose: () 
     setServerErr(null);
     try {
       const tmOn = smb && timeMachine;
-      const r = await t.call("shares.create", { name: trimmed, volume, description: description.trim(), smb, timeMachine: tmOn, timeMachineMaxBytes: tmOn ? parseMaxGB(tmMax) : null });
+      const r = await tp.call("shares.create", { name: trimmed, volume, description: description.trim(), smb, timeMachine: tmOn, timeMachineMaxBytes: tmOn ? parseMaxGB(tmMax) : null });
       setJobId(r.job);
     } catch (e) {
       const code = e instanceof RpcError ? e.code : "";
-      setServerErr(code === "SHARE_EXISTS" ? `Ya existe una carpeta llamada «${trimmed}».` : (e as Error).message);
+      setServerErr(code === "SHARE_EXISTS" ? t("Ya existe una carpeta llamada «{name}».", { name: trimmed }) : tr((e as Error).message));
     } finally {
       setBusy(false);
     }
   };
 
   const close = () => {
-    if (jobId && !done && !failed) toast({ level: "info", title: `Creando «${trimmed}»`, body: "Podés ver el progreso en Actividad." });
+    if (jobId && !done && !failed) toast({ level: "info", title: t("Creando «{name}»", { name: trimmed }), body: t("Podés ver el progreso en Actividad.") });
     onClose();
   };
 
   if (jobId)
     return (
-      <Sheet open={open} onClose={close} width={460} footer={<Button variant="primary" onClick={close}>{done || failed ? "Cerrar" : "Seguir en segundo plano"}</Button>}>
+      <Sheet open={open} onClose={close} width={460} footer={<Button variant="primary" onClick={close}>{done || failed ? t("Cerrar") : t("Seguir en segundo plano")}</Button>}>
         <div className="tset-done">
           {done ? <CheckCircle2 size={40} color="var(--tg-ok)" /> : <Folder size={36} color="var(--tg-text-3)" />}
-          <h2 className="tg-h2">{done ? `«${trimmed}» está lista` : failed ? `No se pudo crear «${trimmed}»` : `Creando «${trimmed}»…`}</h2>
+          <h2 className="tg-h2">{done ? t("«{name}» está lista", { name: trimmed }) : failed ? t("No se pudo crear «{name}»", { name: trimmed }) : t("Creando «{name}»…", { name: trimmed })}</h2>
           <p className="tg-muted">
             {done
               ? smb
-                ? "Ya se ve en la red desde Windows y Mac (SMB). Ajustá quién puede entrar en Permisos."
-                : "Ya podés usarla desde Archivos. Ajustá quién puede entrar en Permisos."
+                ? t("Ya se ve en la red desde Windows y Mac (SMB). Ajustá quién puede entrar en Permisos.")
+                : t("Ya podés usarla desde Archivos. Ajustá quién puede entrar en Permisos.")
               : failed
-                ? `${job?.detail ?? "La tarea falló."}`
-                : "Se crea un subvolumen Btrfs y, si elegiste SMB, se publica en la red."}
+                ? job?.detail ? tr(job.detail) : t("La tarea falló.")
+                : t("Se crea un subvolumen Btrfs y, si elegiste SMB, se publica en la red.")}
           </p>
           {!done && !failed && <Progress value={job?.progress ?? 0} indeterminate={!job || job.state !== "running"} />}
         </div>
@@ -199,46 +200,49 @@ function NewShare({ open, onClose, vols, shares }: { open: boolean; onClose: () 
       footer={
         <>
           {serverErr && <span className="tset-err" style={{ marginRight: "auto", marginTop: 0 }}>{serverErr}</span>}
-          <Button onClick={close}>Cancelar</Button>
+          <Button onClick={close}>{t("Cancelar")}</Button>
           <Button variant="primary" onClick={submit} disabled={(touched && !valid) || busy}>
-            Crear carpeta
+            {t("Crear carpeta")}
           </Button>
         </>
       }
     >
-      <h2 className="tg-h2">Nueva carpeta compartida</h2>
+      <h2 className="tg-h2">{t("Nueva carpeta compartida")}</h2>
       <p className="tg-lead" style={{ marginTop: 4 }}>
-        Una carpeta compartida es un espacio con sus propios permisos, instantáneas y papelera.
+        {t("Una carpeta compartida es un espacio con sus propios permisos, instantáneas y papelera.")}
       </p>
       <form className="tset-form" onSubmit={(e) => (e.preventDefault(), void submit())}>
         <label>
-          <span>Nombre</span>
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Familia" autoFocus />
+          <span>{t("Nombre")}</span>
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Familia")} autoFocus />
           {err(nameErr)}
         </label>
         <label>
-          <span>Volumen</span>
+          <span>{t("Volumen")}</span>
           <select className="tg-input" value={volume} onChange={(e) => setVolume(e.target.value)}>
             {vols.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.name} · {fmtBytes(v.size - v.used)} libres
+                {t("{name} · {free} libres", { name: v.name, free: fmtBytes(v.size - v.used) })}
               </option>
             ))}
           </select>
         </label>
         <label>
-          <span>Descripción (opcional)</span>
-          <TextInput value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Lo compartido de la casa" />
+          <span>{t("Descripción (opcional)")}</span>
+          <TextInput value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("Lo compartido de la casa")} />
         </label>
         <div className="tset-form-row">
-          <span>Compartir en la red (SMB)</span>
-          <Toggle checked={smb} onChange={(v) => (setSmb(v), !v && setTimeMachine(false))} label="Compartir en la red (SMB)" />
+          <span>{t("Compartir en la red (SMB)")}</span>
+          <Toggle checked={smb} onChange={(v) => (setSmb(v), !v && setTimeMachine(false))} label={t("Compartir en la red (SMB)")} />
         </div>
         <div className="tset-form-row">
           <span>
-            Usar como destino de Time Machine
+            {t("Usar como destino de Time Machine")}
             <small className="tg-muted" style={{ display: "block" }}>
-              Recomendado: una carpeta dedicada, por ejemplo «TimeMachine». <button type="button" className="tset-link" onClick={() => setHelp(true)}>¿Cómo se usa?</button>
+              {t("Recomendado: una carpeta dedicada, por ejemplo «TimeMachine».")}{" "}
+              <button type="button" className="tset-link" onClick={() => setHelp(true)}>
+                {t("¿Cómo se usa?")}
+              </button>
             </small>
           </span>
           <Toggle
@@ -248,13 +252,13 @@ function NewShare({ open, onClose, vols, shares }: { open: boolean; onClose: () 
               setTimeMachine(v);
               if (v && !name.trim()) setName("TimeMachine");
             }}
-            label="Usar como destino de Time Machine"
+            label={t("Usar como destino de Time Machine")}
           />
         </div>
         {timeMachine && (
           <label>
-            <span>Tope para los respaldos (GB, opcional)</span>
-            <TextInput value={tmMax} onChange={(e) => setTmMax(e.target.value)} inputMode="decimal" placeholder="Sin tope" />
+            <span>{t("Tope para los respaldos (GB, opcional)")}</span>
+            <TextInput value={tmMax} onChange={(e) => setTmMax(e.target.value)} inputMode="decimal" placeholder={t("Sin tope")} />
             {err(tmErr)}
           </label>
         )}
@@ -266,7 +270,7 @@ function NewShare({ open, onClose, vols, shares }: { open: boolean; onClose: () 
 }
 
 function Permissions({ share, onClose }: { share: Share; onClose: () => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const real = useIsReal("shares.permissions.get");
   const users = useLive("users.list", undefined).data ?? [];
   const groups = useLive("groups.list", undefined).data ?? [];
@@ -275,18 +279,18 @@ function Permissions({ share, onClose }: { share: Share; onClose: () => void }) 
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    t.call("shares.permissions.get", { share: share.id }).then(
+    tp.call("shares.permissions.get", { share: share.id }).then(
       (r) => setEntries(r.entries),
-      (e: Error) => setError(e.message),
+      (e: Error) => setError(tr(e.message)),
     );
-  }, [t, share.id]);
+  }, [tp, share.id]);
 
   // Filas: lo que manda el servidor + usuarios/grupos que todavía no tienen entrada ("Sin acceso").
   const key = (k: PermissionEntry["kind"], n: string) => `${k}:${n}`;
   const byKey = new Map((entries ?? []).map((e) => [key(e.kind, e.name), e]));
   const rows = [
-    ...groups.map((g) => ({ kind: "group" as const, name: g.name, label: g.name, sub: g.description || "Grupo" })),
-    ...(entries ?? []).filter((e) => e.kind === "group" && !groups.some((g) => g.name === e.name)).map((e) => ({ kind: "group" as const, name: e.name, label: e.name, sub: "Grupo" })),
+    ...groups.map((g) => ({ kind: "group" as const, name: g.name, label: g.name, sub: g.description || t("Grupo") })),
+    ...(entries ?? []).filter((e) => e.kind === "group" && !groups.some((g) => g.name === e.name)).map((e) => ({ kind: "group" as const, name: e.name, label: e.name, sub: t("Grupo") })),
     ...users.map((u) => ({ kind: "user" as const, name: u.name, label: u.full, sub: u.name, user: u })),
   ];
   const get = (k: PermissionEntry["kind"], n: string): Access => byKey.get(key(k, n))?.access ?? "none";
@@ -299,11 +303,11 @@ function Permissions({ share, onClose }: { share: Share; onClose: () => void }) 
     setError(null);
     try {
       const full = rows.map((r) => ({ kind: r.kind, name: r.name, access: get(r.kind, r.name) }));
-      await t.call("shares.permissions.set", { share: share.id, entries: full });
-      toast({ level: "ok", title: `Permisos de «${share.name}» guardados`, body: real ? "Ya rigen en el escritorio y en SMB." : "Demo: se guardaron en el NAS simulado.", app: "tango.settings" });
+      await tp.call("shares.permissions.set", { share: share.id, entries: full });
+      toast({ level: "ok", title: t("Permisos de «{name}» guardados", { name: share.name }), body: real ? t("Ya rigen en el escritorio y en SMB.") : t("Demo: se guardaron en el NAS simulado."), app: "tango.settings" });
       onClose();
     } catch (e) {
-      setError((e as Error).message);
+      setError(tr((e as Error).message));
       setBusy(false);
     }
   };
@@ -320,27 +324,27 @@ function Permissions({ share, onClose }: { share: Share; onClose: () => void }) 
               {error}
             </span>
           )}
-          <Button onClick={onClose}>Cancelar</Button>
+          <Button onClick={onClose}>{t("Cancelar")}</Button>
           <Button variant="primary" onClick={save} disabled={!entries || busy}>
-            Guardar
+            {t("Guardar")}
           </Button>
         </>
       }
     >
       <h2 className="tg-h2">
-        Permisos de «{share.name}» {!real && <DemoBadge />}
+        {t("Permisos de «{name}»", { name: share.name })} {!real && <DemoBadge />}
       </h2>
       <p className="tg-lead" style={{ marginTop: 4 }}>
-        Se aplican igual desde el escritorio y desde SMB: los hace cumplir el propio sistema.
+        {t("Se aplican igual desde el escritorio y desde SMB: los hace cumplir el propio sistema.")}
       </p>
-      {!entries && !error && <p className="tg-muted">Leyendo los permisos actuales…</p>}
+      {!entries && !error && <p className="tg-muted">{t("Leyendo los permisos actuales…")}</p>}
       {entries && (
         <table className="tset-matrix">
           <thead>
             <tr>
               <th />
               {(Object.keys(LABEL) as Access[]).map((a) => (
-                <th key={a}>{LABEL[a]}</th>
+                <th key={a}>{t(LABEL[a])}</th>
               ))}
             </tr>
           </thead>
@@ -367,7 +371,7 @@ function Permissions({ share, onClose }: { share: Share; onClose: () => void }) 
                     <input
                       type="radio"
                       name={`acl-${key(r.kind, r.name)}`}
-                      aria-label={`${r.label}: ${LABEL[a]}`}
+                      aria-label={`${r.label}: ${t(LABEL[a])}`}
                       checked={get(r.kind, r.name) === a}
                       onChange={() => set(r.kind, r.name, a)}
                     />
@@ -379,7 +383,7 @@ function Permissions({ share, onClose }: { share: Share; onClose: () => void }) 
         </table>
       )}
       <Group>
-        <Row label="Si hay conflicto" hint="«Sin acceso» de un usuario gana sobre lo que permita su grupo" />
+        <Row label={t("Si hay conflicto")} hint={t("«Sin acceso» de un usuario gana sobre lo que permita su grupo")} />
       </Group>
     </Sheet>
   );
@@ -387,7 +391,7 @@ function Permissions({ share, onClose }: { share: Share; onClose: () => void }) 
 
 /** Eliminar una carpeta compartida: hay que escribir su nombre; se borran también sus instantáneas. */
 function DeleteShare({ share, onClose }: { share: Share; onClose: () => void }) {
-  const t = useTransport();
+  const tp = useTransport();
   const jobs = useJobs();
   const snaps = useLive("snapshots.list", { share: share.id }).data ?? [];
   const [typed, setTyped] = useState("");
@@ -406,11 +410,11 @@ function DeleteShare({ share, onClose }: { share: Share; onClose: () => void }) 
     setBusy(true);
     setError(null);
     try {
-      const r = await t.call("shares.delete", { share: share.id, typed_name: typed });
+      const r = await tp.call("shares.delete", { share: share.id, typed_name: typed });
       setJobId(r.job);
     } catch (e) {
       const code = e instanceof RpcError ? e.code : "";
-      setError(code === "CONFIRMATION_MISMATCH" ? "El nombre escrito no coincide." : code === "SHARE_BUSY" ? "La carpeta está en uso. Cerrá las conexiones SMB y volvé a intentar." : (e as Error).message);
+      setError(code === "CONFIRMATION_MISMATCH" ? t("El nombre escrito no coincide.") : code === "SHARE_BUSY" ? t("La carpeta está en uso. Cerrá las conexiones SMB y volvé a intentar.") : tr((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -418,11 +422,11 @@ function DeleteShare({ share, onClose }: { share: Share; onClose: () => void }) 
 
   if (jobId)
     return (
-      <Sheet open onClose={onClose} width={460} footer={<Button variant="primary" onClick={onClose}>{done || failed ? "Cerrar" : "Seguir en segundo plano"}</Button>}>
+      <Sheet open onClose={onClose} width={460} footer={<Button variant="primary" onClick={onClose}>{done || failed ? t("Cerrar") : t("Seguir en segundo plano")}</Button>}>
         <div className="tset-done">
           {done ? <CheckCircle2 size={40} color="var(--tg-ok)" /> : <Trash2 size={36} color="var(--tg-text-3)" />}
-          <h2 className="tg-h2">{done ? `«${share.name}» se eliminó` : failed ? `No se pudo eliminar «${share.name}»` : `Eliminando «${share.name}»…`}</h2>
-          <p className="tg-muted">{done ? "Se borraron la carpeta, sus instantáneas y su publicación en la red." : failed ? (job?.detail ?? "La tarea falló.") : "Se quita de la red y se borra el subvolumen con sus instantáneas."}</p>
+          <h2 className="tg-h2">{done ? t("«{name}» se eliminó", { name: share.name }) : failed ? t("No se pudo eliminar «{name}»", { name: share.name }) : t("Eliminando «{name}»…", { name: share.name })}</h2>
+          <p className="tg-muted">{done ? t("Se borraron la carpeta, sus instantáneas y su publicación en la red.") : failed ? (job?.detail ? tr(job.detail) : t("La tarea falló.")) : t("Se quita de la red y se borra el subvolumen con sus instantáneas.")}</p>
           {!done && !failed && <Progress value={job?.progress ?? 0} tone="crit" indeterminate={!job || job.state !== "running"} />}
         </div>
       </Sheet>
@@ -440,25 +444,27 @@ function DeleteShare({ share, onClose }: { share: Share; onClose: () => void }) 
               {error}
             </span>
           )}
-          <Button onClick={onClose}>Cancelar</Button>
+          <Button onClick={onClose}>{t("Cancelar")}</Button>
           <Button variant="danger" disabled={typed !== share.name || busy} onClick={remove}>
-            Eliminar carpeta y sus datos
+            {t("Eliminar carpeta y sus datos")}
           </Button>
         </>
       }
     >
-      <h2 className="tg-h2">Eliminar «{share.name}»</h2>
+      <h2 className="tg-h2">{t("Eliminar «{name}»", { name: share.name })}</h2>
       <div className="tset-danger">
         <AlertTriangle size={18} />
         <p>
-          Se borran todos los archivos de la carpeta{snaps.length ? ` y sus ${snaps.length} ${snaps.length === 1 ? "instantánea" : "instantáneas"}` : ""}. Deja de verse en la red. No se puede deshacer.
+          {snaps.length
+            ? tn(snaps.length, "Se borran todos los archivos de la carpeta y su instantánea. Deja de verse en la red. No se puede deshacer.", "Se borran todos los archivos de la carpeta y sus {n} instantáneas. Deja de verse en la red. No se puede deshacer.")
+            : t("Se borran todos los archivos de la carpeta. Deja de verse en la red. No se puede deshacer.")}
         </p>
       </div>
       <label className="tset-form" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <span>
-          Para confirmar, escribí <code>{share.name}</code>
+          {tj("Para confirmar, escribí {name}", { name: <code>{share.name}</code> })}
         </span>
-        <TextInput value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoFocus aria-label={`Escribí ${share.name} para confirmar`} />
+        <TextInput value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoFocus aria-label={t("Escribí {name} para confirmar", { name: share.name })} />
       </label>
     </Sheet>
   );

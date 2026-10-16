@@ -3,6 +3,8 @@
 // A diferencia de go-link, cada SignalhubLink es UNA conexión de un solo uso: si se cae, el que la usa
 // (SignalhubSocket) abre otra, y el RtcTransport de TangoOS se encarga del backoff.
 
+import { t, tr } from "@tango/client";
+
 export type MessageType =
   | "hello"
   | "claim"
@@ -75,16 +77,16 @@ export function parseICEServers(v: unknown): ICEServer[] {
 export function humanSignalError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   const map: Record<string, string> = {
-    "invalid or expired code": "El código no existe o venció. Generá uno nuevo en Ajustes → TangoConnect.",
-    "device not connected": "Tu NAS no está conectado a TangoConnect ahora. Revisá que esté encendido y con internet.",
-    "invalid or expired invite": "Este enlace ya no existe: venció, lo revocaron o el NAS está apagado.",
-    "rate limit exceeded": "Demasiados intentos seguidos. Esperá un minuto y probá de nuevo.",
-    "app not allowed": "El servidor de señalización todavía no acepta TangoOS (falta «go-link-tangoos» en ALLOWED_APPS).",
-    "signaling server unreachable": "No pudimos llegar al servidor de señalización. Revisá tu conexión.",
-    "request timed out": "El servidor de señalización no respondió a tiempo.",
-    disconnected: "Se cortó la conexión con el servidor de señalización.",
+    "invalid or expired code": t("El código no existe o venció. Generá uno nuevo en Ajustes → TangoConnect."),
+    "device not connected": t("Tu NAS no está conectado a TangoConnect ahora. Revisá que esté encendido y con internet."),
+    "invalid or expired invite": t("Este enlace ya no existe: venció, lo revocaron o el NAS está apagado."),
+    "rate limit exceeded": t("Demasiados intentos seguidos. Esperá un minuto y probá de nuevo."),
+    "app not allowed": t("El servidor de señalización todavía no acepta TangoOS (falta «go-link-tangoos» en ALLOWED_APPS)."),
+    "signaling server unreachable": t("No pudimos llegar al servidor de señalización. Revisá tu conexión."),
+    "request timed out": t("El servidor de señalización no respondió a tiempo."),
+    disconnected: t("Se cortó la conexión con el servidor de señalización."),
   };
-  return map[msg] ?? msg;
+  return map[msg] ?? tr(msg);
 }
 
 interface Pending {

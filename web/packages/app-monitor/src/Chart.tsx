@@ -1,4 +1,5 @@
 import { memo, useId, useRef, useState } from "react";
+import { t } from "@tango/client";
 
 export interface Series {
   label: string;
@@ -106,7 +107,7 @@ export const Chart = memo(function Chart({
           <span className="tm-axis tm-axis-mid">{format(top / 2)}</span>
         </>
       )}
-      {frozen && <span className="tm-paused">En pausa</span>}
+      {frozen && <span className="tm-paused">{t("En pausa")}</span>}
       {hover !== null && (
         <>
           <div className="tm-cross" style={{ left: `${hx}%` }} />
@@ -114,7 +115,7 @@ export const Chart = memo(function Chart({
             <div key={s.label} className="tm-dot" style={{ left: `${hx}%`, top: height - (Math.min(s.values[hover], top) / top) * (height - 2) - 1, background: s.color }} />
           ))}
           <div className="tm-tip" style={hx > 60 ? { right: `${100 - hx}%`, marginRight: 10 } : { left: `${hx}%`, marginLeft: 10 }}>
-            <div className="tm-tip-time">{ago <= 0 ? "Ahora" : `Hace ${ago} s`}</div>
+            <div className="tm-tip-time">{ago <= 0 ? t("Ahora") : t("Hace {n} s", { n: ago })}</div>
             {data.series.map((s) => (
               <div key={s.label} className="tm-tip-row">
                 <i style={{ background: s.color }} />

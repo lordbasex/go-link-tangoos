@@ -2,6 +2,7 @@
 // arranca con 3 nodos y volúmenes (uno sano, uno curándose con un nodo lento y uno con
 // split-brain); en los demás escenarios GlusterFS no está instalado.
 import { RpcError } from "../protocol";
+import { t } from "../i18n";
 import type { Job, Method, Notice, Params, Result, Scenario, Topic, Topics, Volume } from "../protocol";
 import type { ClusterBrick, ClusterNode, ClusterPreset, ClusterQuota, ClusterSnapshot, ClusterStatus, ClusterTask, ClusterVolume } from "../protocol-cluster";
 
@@ -15,13 +16,14 @@ export interface MockClusterCtx {
 
 const GB = 1024 ** 3;
 
-const PRESETS: ClusterPreset[] = [
-  { id: "default", name: "Por defecto", desc: "Los valores de GlusterFS, sin cambios.", options: {} },
+// Funciones: los textos se traducen al pedirlos.
+const presets = (): ClusterPreset[] => [
+  { id: "default", name: t("Por defecto"), desc: t("Los valores de GlusterFS, sin cambios."), options: {} },
   {
     id: "production-replica3",
-    name: "Producción réplica 3",
+    name: t("Producción réplica {n}", { n: 3 }),
     replica: 3,
-    desc: "Quórum de servidores y de clientes, detección de caídas en 10 s, curación granular y sin cachés del cliente: cada nodo ve los cambios al instante.",
+    desc: t("Quórum de servidores y de clientes, detección de caídas en 10 s, curación granular y sin cachés del cliente: cada nodo ve los cambios al instante."),
     options: {
       "cluster.heal-timeout": "10",
       "cluster.shd-wait-qlength": "512",
@@ -52,27 +54,27 @@ const PROD_ORDER = [
   "nfs.disable", "performance.client-io-threads", "cluster.server-quorum-ratio",
 ];
 
-const OPTIONS: ClusterStatus["options"] = [
-  { key: "cluster.quorum-type", type: "enum", enum: ["auto", "fixed", "none"], desc: "Quórum de clientes: con auto, se escribe solo si responde la mayoría de las copias" },
-  { key: "cluster.server-quorum-type", type: "enum", enum: ["server", "none"], desc: "Quórum de servidores: un nodo sin mayoría apaga sus bricks" },
-  { key: "cluster.server-quorum-ratio", type: "percent", min: 1, max: 100, global: true, desc: "Porcentaje de nodos para tener quórum de servidores (todo el clúster)" },
-  { key: "cluster.heal-timeout", type: "int", min: 5, max: 86400, desc: "Segundos entre rondas del demonio de curación" },
-  { key: "cluster.shd-max-threads", type: "int", min: 1, max: 64, desc: "Hilos de curación por brick" },
-  { key: "cluster.shd-wait-qlength", type: "int", min: 1, max: 655536, desc: "Entradas en espera del demonio de curación" },
-  { key: "cluster.granular-entry-heal", type: "bool", desc: "Curación por entrada (más rápida en directorios grandes)" },
-  { key: "cluster.self-heal-daemon", type: "bool", desc: "Demonio de curación automática" },
-  { key: "cluster.favorite-child-policy", type: "enum", enum: ["none", "size", "ctime", "mtime", "majority"], desc: "Cómo resolver un split-brain sin intervención" },
-  { key: "network.ping-timeout", type: "int", min: 1, max: 1800, desc: "Segundos sin respuesta para dar un nodo por caído" },
-  { key: "performance.client-io-threads", type: "bool", desc: "Hilos de E/S en el cliente" },
-  { key: "performance.open-behind", type: "bool", desc: "Caché de aperturas" },
-  { key: "performance.quick-read", type: "bool", desc: "Lectura rápida de archivos chicos" },
-  { key: "performance.read-ahead", type: "bool", desc: "Lectura anticipada" },
-  { key: "performance.write-behind", type: "bool", desc: "Escritura diferida" },
-  { key: "diagnostics.brick-log-level", type: "enum", enum: ["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE", "NONE"], desc: "Nivel de log de los bricks" },
-  { key: "diagnostics.client-log-level", type: "enum", enum: ["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE", "NONE"], desc: "Nivel de log de los clientes" },
-  { key: "storage.fips-mode-rchecksum", type: "bool", desc: "Sumas de control compatibles con FIPS al curar" },
-  { key: "transport.address-family", type: "enum", enum: ["inet", "inet6"], desc: "IPv4 o IPv6 entre nodos" },
-  { key: "features.shard", type: "bool", desc: "Partir archivos grandes (imágenes de VM)" },
+const options = (): ClusterStatus["options"] => [
+  { key: "cluster.quorum-type", type: "enum", enum: ["auto", "fixed", "none"], desc: t("Quórum de clientes: con auto, se escribe solo si responde la mayoría de las copias") },
+  { key: "cluster.server-quorum-type", type: "enum", enum: ["server", "none"], desc: t("Quórum de servidores: un nodo sin mayoría apaga sus bricks") },
+  { key: "cluster.server-quorum-ratio", type: "percent", min: 1, max: 100, global: true, desc: t("Porcentaje de nodos para tener quórum de servidores (todo el clúster)") },
+  { key: "cluster.heal-timeout", type: "int", min: 5, max: 86400, desc: t("Segundos entre rondas del demonio de curación") },
+  { key: "cluster.shd-max-threads", type: "int", min: 1, max: 64, desc: t("Hilos de curación por brick") },
+  { key: "cluster.shd-wait-qlength", type: "int", min: 1, max: 655536, desc: t("Entradas en espera del demonio de curación") },
+  { key: "cluster.granular-entry-heal", type: "bool", desc: t("Curación por entrada (más rápida en directorios grandes)") },
+  { key: "cluster.self-heal-daemon", type: "bool", desc: t("Demonio de curación automática") },
+  { key: "cluster.favorite-child-policy", type: "enum", enum: ["none", "size", "ctime", "mtime", "majority"], desc: t("Cómo resolver un split-brain sin intervención") },
+  { key: "network.ping-timeout", type: "int", min: 1, max: 1800, desc: t("Segundos sin respuesta para dar un nodo por caído") },
+  { key: "performance.client-io-threads", type: "bool", desc: t("Hilos de E/S en el cliente") },
+  { key: "performance.open-behind", type: "bool", desc: t("Caché de aperturas") },
+  { key: "performance.quick-read", type: "bool", desc: t("Lectura rápida de archivos chicos") },
+  { key: "performance.read-ahead", type: "bool", desc: t("Lectura anticipada") },
+  { key: "performance.write-behind", type: "bool", desc: t("Escritura diferida") },
+  { key: "diagnostics.brick-log-level", type: "enum", enum: ["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE", "NONE"], desc: t("Nivel de log de los bricks") },
+  { key: "diagnostics.client-log-level", type: "enum", enum: ["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE", "NONE"], desc: t("Nivel de log de los clientes") },
+  { key: "storage.fips-mode-rchecksum", type: "bool", desc: t("Sumas de control compatibles con FIPS al curar") },
+  { key: "transport.address-family", type: "enum", enum: ["inet", "inet6"], desc: t("IPv4 o IPv6 entre nodos") },
+  { key: "features.shard", type: "bool", desc: t("Partir archivos grandes (imágenes de VM)") },
 ];
 
 const uuid = (seed: string) => {
@@ -138,13 +140,13 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
   const demoNodes = (): ClusterNode[] => [
         { uuid: uuid("tango-b"), host: "tango-b", hostnames: ["tango-b"], connected: true, state: "Peer in Cluster", self: false, latencyMs: 1 },
         { uuid: uuid("tango-c"), host: "tango-c", hostnames: ["tango-c"], connected: true, state: "Peer in Cluster", self: false, latencyMs: 38 },
-        { uuid: uuid(self), host: self, connected: true, state: "Este nodo", self: true, latencyMs: 0 },
+        { uuid: uuid(self), host: self, connected: true, state: t("Este nodo"), self: true, latencyMs: 0 },
       ];
   const brick = (host: string, vol: string, tv = "volume1", over: Partial<ClusterBrick> = {}): ClusterBrick => ({
     kind: "dir", host, path: `/${tv}/@gluster/${vol}`, hostUuid: uuid(host), online: true, port: 49152 + Math.floor(Math.random() * 900), pid: 1000 + Math.floor(Math.random() * 9000),
     sizeTotal: 7.2 * 1024 * GB, sizeFree: 5.1 * 1024 * GB, fsName: "btrfs", healPending: 0, splitBrain: 0, ...over,
   });
-  const prodOpts = { ...PRESETS[1].options, "nfs.disable": "on", "client.ssl": "on", "server.ssl": "on", "auth.ssl-allow": "tango,tango-b,tango-c" };
+  const prodOpts = { ...presets()[1].options, "nfs.disable": "on", "client.ssl": "on", "server.ssl": "on", "auth.ssl-allow": "tango,tango-b,tango-c" };
   const mkVol = (name: string, bricks: ClusterBrick[], opts: Record<string, string>, order: string[], replica = 3): ClusterVolume => {
     const v: ClusterVolume = {
       name, id: uuid(name), status: "Started", type: bricks.length > replica ? "Distributed-Replicate" : "Replicate", replica, arbiter: 0, sets: bricks.length / replica,
@@ -175,10 +177,10 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
   const allowed = () => [...new Set([...invites.flatMap((i) => i.addrs), ...nodes.filter((n) => !n.self).map((n) => `192.168.1.${10 + nodes.indexOf(n)}`)])];
   const status = (): ClusterStatus => ({
     installed, running: installed, version: installed ? "11.1" : undefined, self, selfAddrs: ["192.168.1.10"],
-    nodes: installed ? (nodes.length ? nodes : [{ uuid: uuid(self), host: self, connected: true, state: "Este nodo", self: true, latencyMs: 0 }]) : [],
+    nodes: installed ? (nodes.length ? nodes : [{ uuid: uuid(self), host: self, connected: true, state: t("Este nodo"), self: true, latencyMs: 0 }]) : [],
     volumes: structuredClone(volumes), orphans: [...orphans], mounts: [...mounts], allowed: installed ? allowed() : [], invites: [...invites],
     tangoVolumes: ctx.volumes().filter((v) => v.mount).map((v) => ({ name: v.name, mount: v.mount ?? "", free: v.size - v.used })),
-    presets: PRESETS, options: OPTIONS,
+    presets: presets(), options: options(),
     tls: { ca: secure, caFingerprint: secure ? fp(`ca${caGen}`) : "", signed: secure, fingerprint: fp(self), files: secure, secure, caSince: secure ? caSince : undefined, revoke: [...revoke] },
     nodeInfo: Object.fromEntries(
       (installed ? nodes : []).map((n) => [
@@ -199,24 +201,24 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
   };
   const vol = (name: string) => {
     const v = volumes.find((x) => x.name === name);
-    if (!v) throw new RpcError("CLUSTER_VOLUME_NOT_FOUND", `no existe el volumen ${name}`);
+    if (!v) throw new RpcError("CLUSTER_VOLUME_NOT_FOUND", t("no existe el volumen {name}", { name }));
     return v;
   };
   const need = () => {
     if (!installed) throw new RpcError("NOT_INSTALLED", "GlusterFS no está instalado");
   };
   const ensureSelf = () => {
-    if (!nodes.length) nodes.push({ uuid: uuid(self), host: self, connected: true, state: "Este nodo", self: true, latencyMs: 0 });
+    if (!nodes.length) nodes.push({ uuid: uuid(self), host: self, connected: true, state: t("Este nodo"), self: true, latencyMs: 0 });
   };
 
   const handlers: { [M in Method]?: (p: Params<M>) => Result<M> } = {
     "cluster.status": () => status(),
     "cluster.install": () => {
-      const j = ctx.startJob("cluster.install", "Instalando GlusterFS", "DEMO", 0, 0.12, undefined, () => {
+      const j = ctx.startJob("cluster.install", t("Instalando GlusterFS"), "DEMO", 0, 0.12, undefined, () => {
         installed = true;
         ensureSelf();
         changed();
-        ctx.notify("ok", "tango.cluster", "GlusterFS listo", "Este NAS ya puede formar un clúster. Los puertos quedan cerrados salvo para los nodos que invites.");
+        ctx.notify("ok", "tango.cluster", t("GlusterFS listo"), t("Este NAS ya puede formar un clúster. Los puertos quedan cerrados salvo para los nodos que invites."));
       });
       return { job: j.id };
     },
@@ -235,8 +237,8 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     "cluster.peer.prepare": ({ host, code }) => {
       need();
       ensureSelf();
-      if (/rechaz|deny/.test(host)) throw new RpcError("PEER_UNREACHABLE", `${host} no responde en el puerto 24010: invitalo primero desde la app Clúster de ${host}`);
-      if (code.replace(/[-\s]/g, "").length !== 10) throw new RpcError("JOIN_CODE", `el código no coincide con el que muestra ${host}`);
+      if (/rechaz|deny/.test(host)) throw new RpcError("PEER_UNREACHABLE", t("{host} no responde en el puerto 24010: invitalo primero desde la app Clúster de {host}", { host }));
+      if (code.replace(/[-\s]/g, "").length !== 10) throw new RpcError("JOIN_CODE", t("el código no coincide con el que muestra {host}", { host }));
       const id = `j${Object.keys(joins).length + 1}`;
       joins[id] = { host };
       return { id, host, cn: host, fingerprint: fp(host) };
@@ -251,7 +253,7 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     },
     "cluster.tls.set": ({ enabled }) => {
       need();
-      const j = ctx.startJob("cluster.tls", enabled ? "Prendiendo TLS en el clúster" : "Apagando TLS en el clúster", "Los volúmenes se detienen un momento", 0, 0.2, undefined, () => {
+      const j = ctx.startJob("cluster.tls", enabled ? t("Prendiendo TLS en el clúster") : t("Apagando TLS en el clúster"), t("Los volúmenes se detienen un momento"), 0, 0.2, undefined, () => {
         secure = enabled;
         for (const v of volumes) {
           v.options["client.ssl"] = enabled ? "on" : "off";
@@ -268,18 +270,18 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
       need();
       if (!secure) throw new RpcError("NO_CA", "este clúster todavía no tiene CA: se crea al sumar el primer nodo");
       const tlsVols = volumes.some((v) => v.tls);
-      const j = ctx.startJob("cluster.ca.rotate", "Rotando la CA del clúster", "Si GlusterFS usa TLS, los volúmenes se detienen un momento", 0, tlsVols ? 0.2 : 0.4, undefined, () => {
+      const j = ctx.startJob("cluster.ca.rotate", t("Rotando la CA del clúster"), t("Si GlusterFS usa TLS, los volúmenes se detienen un momento"), 0, tlsVols ? 0.2 : 0.4, undefined, () => {
         caGen++;
         caSince = new Date().toISOString();
         revoke = [];
         changed();
-        ctx.notify("ok", "tango.cluster", "CA del clúster rotada", "Los certificados anteriores, incluidos los de los nodos que salieron, ya no sirven.");
+        ctx.notify("ok", "tango.cluster", t("CA del clúster rotada"), t("Los certificados anteriores, incluidos los de los nodos que salieron, ya no sirven."));
       });
       return { job: j.id };
     },
     "cluster.volume.bricks.add": ({ name, bricks, replica }) => {
       const v = vol(name);
-      const j = ctx.startJob("cluster.bricks.add", `Agregando bricks a ${name}`, "DEMO", 0, 0.3, undefined, () => {
+      const j = ctx.startJob("cluster.bricks.add", t("Agregando bricks a {name}", { name }), "DEMO", 0, 0.3, undefined, () => {
         v.bricks.push(...bricks.map((b) => (b.kind === "lv" ? brick(b.host, name, "", { kind: "lv", path: `/srv/gluster/${name}/brick`, fsName: "xfs" }) : brick(b.host, name, b.tangoVolume || "volume1"))));
         if (replica) v.replica = replica;
         v.sets = v.bricks.length / v.replica;
@@ -291,7 +293,7 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     },
     "cluster.volume.bricks.replace": ({ name, from, to }) => {
       const v = vol(name);
-      const j = ctx.startJob("cluster.bricks.replace", `Reemplazando un brick de ${name}`, `${from.host}:${from.path}`, 0, 0.35, undefined, () => {
+      const j = ctx.startJob("cluster.bricks.replace", t("Reemplazando un brick de {name}", { name }), `${from.host}:${from.path}`, 0, 0.35, undefined, () => {
         const i = v.bricks.findIndex((b) => b.host === from.host && b.path === from.path);
         if (i >= 0)
           v.bricks[i] =
@@ -317,37 +319,37 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
         changed();
         return { task: null };
       }
-      const t = tasks[key];
-      if (!t) return { task: null };
-      t.progress = Math.min(1, t.progress + 0.34);
-      t.files += 412;
-      return { task: demoTask(t) };
+      const tk = tasks[key];
+      if (!tk) return { task: null };
+      tk.progress = Math.min(1, tk.progress + 0.34);
+      tk.files += 412;
+      return { task: demoTask(tk) };
     },
     "cluster.volume.rebalance": ({ name, action }) => {
       vol(name);
       const key = `rb:${name}`;
       if (action === "start") tasks[key] = { progress: 0, files: 0 };
       if (action === "stop") delete tasks[key];
-      const t = tasks[key];
-      if (!t) return { task: null };
+      const tk = tasks[key];
+      if (!tk) return { task: null };
       if (action === "status") {
-        t.progress = Math.min(1, t.progress + 0.25);
-        t.files += 1380;
+        tk.progress = Math.min(1, tk.progress + 0.25);
+        tk.files += 1380;
       }
-      return { task: demoTask(t) };
+      return { task: demoTask(tk) };
     },
     "cluster.volume.quota": ({ name, op, path, limit }) => {
       const v = vol(name);
       quotas[name] ??= [];
       if ((op === "limit" || op === "remove") && !/^\/[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/.test(path ?? ""))
-        throw new RpcError("INVALID_ARGS", `carpeta inválida: "${path ?? ""}" (una carpeta de primer nivel, por ejemplo /Documentos)`);
+        throw new RpcError("INVALID_ARGS", t("carpeta inválida: \"{path}\" (una carpeta de primer nivel, por ejemplo /Documentos)", { path: path ?? "" }));
       if (op === "enable") Object.assign(v.options, QUOTA_ON);
       if (op === "disable") v.options["feature.simple-quota-pass-through"] = "true";
       let job: string | undefined;
       if (op === "limit" && path && limit) {
         quotas[name] = [...quotas[name].filter((q) => q.path !== path), quotaRow(path, limit, 0)].sort((a, b) => a.path.localeCompare(b.path));
         // En la demo toda carpeta ya tiene archivos: un job los cuenta.
-        job = ctx.startJob("cluster.quota.count", `Contando lo que ya ocupa ${path} en ${name}`, "Los bricks reinician de a un nodo", 0, 0.25, undefined, () => {
+        job = ctx.startJob("cluster.quota.count", t("Contando lo que ya ocupa {path} en {name}", { path, name }), t("Los bricks reinician de a un nodo"), 0, 0.25, undefined, () => {
           quotas[name] = quotas[name].map((q) => (q.path === path ? quotaRow(path, limit, Math.round(limit * 0.35)) : q));
           changed();
         }).id;
@@ -364,7 +366,7 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
       if (op === "create" && snap) snaps[name] = [...snaps[name], { name: snap, uuid: uuid(snap), desc, created: new Date().toISOString().replace("T", " ").slice(0, 19) + " +0000", status: "Stopped" }];
       if (op === "delete") snaps[name] = snaps[name].filter((x) => x.name !== snap);
       if (op === "restore") {
-        if (v.status === "Started") throw new RpcError("VOLUME_STARTED", `para restaurar, primero detené el volumen ${name}`);
+        if (v.status === "Started") throw new RpcError("VOLUME_STARTED", t("para restaurar, primero detené el volumen {name}", { name }));
         snaps[name] = snaps[name].filter((x) => x.name !== snap);
       }
       recompute(v);
@@ -373,7 +375,7 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     },
     "cluster.volume.nfs": ({ name, clients }) => {
       vol(name);
-      const j = ctx.startJob("cluster.volume.nfs", `Exportando ${name} por NFS`, `/cluster/${name}`, 0, 0.5, undefined, () => {
+      const j = ctx.startJob("cluster.volume.nfs", t("Exportando {name} por NFS", { name }), `/cluster/${name}`, 0, 0.5, undefined, () => {
         const next = { ...nfs };
         if (clients.length) next[name] = clients;
         else delete next[name];
@@ -394,9 +396,9 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     "cluster.volume.create": (p) => {
       need();
       if (volumes.some((v) => v.name === p.name)) throw new RpcError("OPERATION_FAILED", `GlusterFS: Volume ${p.name} already exists`);
-      const preset = PRESETS.find((x) => x.id === p.preset);
+      const preset = presets().find((x) => x.id === p.preset);
       const opts = { ...(preset?.options ?? {}), ...(p.options ?? {}) };
-      const j = ctx.startJob("cluster.volume.create", `Creando el volumen ${p.name}`, p.bricks.length > p.replica ? "Distributed-Replicate" : "Replicate", 0, 0.25, undefined, () => {
+      const j = ctx.startJob("cluster.volume.create", t("Creando el volumen {name}", { name: p.name }), p.bricks.length > p.replica ? "Distributed-Replicate" : "Replicate", 0, 0.25, undefined, () => {
         const bricks = p.bricks.map((b, i) => brick(b.host, p.name, b.tangoVolume, { arbiter: !!p.arbiter && i % 3 === 2, sizeFree: 7.1 * 1024 * GB }));
         const v = mkVol(p.name, bricks, opts, Object.keys(opts), p.replica);
         v.arbiter = p.arbiter ? 1 : 0;
@@ -431,7 +433,7 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     "cluster.volume.options": ({ name, set, reset }) => {
       const v = vol(name);
       for (const [k, val] of Object.entries(set)) {
-        if (!OPTIONS.some((o) => o.key === k)) throw new RpcError("INVALID_ARGS", `opción no permitida: "${k}"`);
+        if (!options().some((o) => o.key === k)) throw new RpcError("INVALID_ARGS", t("opción no permitida: \"{key}\"", { key: k }));
         v.options[k] = val;
         if (!v.optOrder?.includes(k)) v.optOrder = [...(v.optOrder ?? []), k];
       }
@@ -455,7 +457,7 @@ export function clusterHandlers(ctx: MockClusterCtx): { [M in Method]?: (p: Para
     },
     "cluster.volume.mount": ({ name, enabled, share }) => {
       vol(name);
-      const j = ctx.startJob("cluster.volume.mount", enabled ? `Montando ${name}` : `Desmontando ${name}`, `/cluster/${name}`, 0, 0.4, undefined, () => {
+      const j = ctx.startJob("cluster.volume.mount", enabled ? t("Montando {name}", { name }) : t("Desmontando {name}", { name }), `/cluster/${name}`, 0, 0.4, undefined, () => {
         mounts = mounts.filter((m) => m.name !== name);
         if (enabled) mounts = [...mounts, { name, path: `/cluster/${name}`, mounted: true, share: share || undefined }];
         changed();

@@ -2,9 +2,10 @@
 // una pantalla "Reconectando…" que espera a que el transporte vuelva (protocol §12).
 import { useEffect, useRef, useState } from "react";
 import { Power, RotateCcw } from "lucide-react";
-import { RpcError, useTransport } from "@tango/client";
+import { RpcError, t, useTransport } from "@tango/client";
 import { closeOverlay, power } from "./store";
 
+// La palabra la valida el NAS (`typed`): no se traduce.
 const WORD = { reboot: "REINICIAR", shutdown: "APAGAR" } as const;
 
 export function PowerHost() {
@@ -15,7 +16,7 @@ export function PowerHost() {
 }
 
 function PowerConfirm({ kind }: { kind: "reboot" | "shutdown" }) {
-  const t = useTransport();
+  const tp = useTransport();
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -27,11 +28,11 @@ function PowerConfirm({ kind }: { kind: "reboot" | "shutdown" }) {
     setBusy(true);
     setErr(null);
     try {
-      await t.call(kind === "reboot" ? "system.reboot" : "system.shutdown", { typed });
+      await tp.call(kind === "reboot" ? "system.reboot" : "system.shutdown", { typed });
       power.set({ kind, phase: kind === "reboot" ? "waiting" : "off" });
     } catch (e) {
       setBusy(false);
-      setErr(e instanceof RpcError ? e.message : "No se pudo enviar la orden al NAS.");
+      setErr(e instanceof RpcError ? e.message : t("No se pudo enviar la orden al NAS."));
     }
   };
 
@@ -41,15 +42,15 @@ function PowerConfirm({ kind }: { kind: "reboot" | "shutdown" }) {
         <div className="tg-power-icon" data-kind={kind}>
           {kind === "reboot" ? <RotateCcw size={26} /> : <Power size={26} />}
         </div>
-        <h2 id="tg-power-title">{kind === "reboot" ? "¿Reiniciar el NAS?" : "¿Apagar el NAS?"}</h2>
+        <h2 id="tg-power-title">{kind === "reboot" ? t("¿Reiniciar el NAS?") : t("¿Apagar el NAS?")}</h2>
         <p>
           {kind === "reboot"
-            ? "Las carpetas compartidas, las apps y las transferencias en curso se cortan durante uno o dos minutos. El escritorio se reconecta solo."
-            : "Las carpetas compartidas y las apps dejan de estar disponibles hasta que lo vuelvas a encender con el botón del equipo."}
+            ? t("Las carpetas compartidas, las apps y las transferencias en curso se cortan durante uno o dos minutos. El escritorio se reconecta solo.")
+            : t("Las carpetas compartidas y las apps dejan de estar disponibles hasta que lo vuelvas a encender con el botón del equipo.")}
         </p>
         <label className="tg-power-field">
-          Para confirmar, escribí <code>{word}</code>
-          <input autoFocus value={typed} onChange={(e) => setTyped(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && void run()} spellCheck={false} aria-label={`Escribí ${word}`} />
+          {t("Para confirmar, escribí")} <code>{word}</code>
+          <input autoFocus value={typed} onChange={(e) => setTyped(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && void run()} spellCheck={false} aria-label={t("Escribí {word}", { word })} />
         </label>
         {err && (
           <div className="tg-power-err" role="alert">
@@ -58,10 +59,10 @@ function PowerConfirm({ kind }: { kind: "reboot" | "shutdown" }) {
         )}
         <div className="tg-power-actions">
           <button type="button" className="tg-btn" onClick={() => power.set(null)} disabled={busy}>
-            Cancelar
+            {t("Cancelar")}
           </button>
           <button type="button" className="tg-btn" data-variant="danger" onClick={() => void run()} disabled={!ok || busy}>
-            {busy ? "Enviando…" : kind === "reboot" ? "Reiniciar" : "Apagar"}
+            {busy ? t("Enviando…") : kind === "reboot" ? t("Reiniciar") : t("Apagar")}
           </button>
         </div>
       </div>
@@ -71,7 +72,7 @@ function PowerConfirm({ kind }: { kind: "reboot" | "shutdown" }) {
 
 /** Espera a que el transporte se caiga y vuelva (reinicio) o se queda en "apagado". */
 function PowerWait({ kind, off }: { kind: "reboot" | "shutdown"; off: boolean }) {
-  const t = useTransport();
+  const tp = useTransport();
   const [secs, setSecs] = useState(0);
   const sawDown = useRef(false);
 
@@ -83,29 +84,29 @@ function PowerWait({ kind, off }: { kind: "reboot" | "shutdown"; off: boolean })
       if (s !== "connected") sawDown.current = true;
       else if (sawDown.current) power.set(null);
     };
-    const offState = t.onState(check);
+    const offState = tp.onState(check);
     // Con el mock el transporte nunca cae: se simula un reinicio de 6 s.
-    const sim = t.kind === "mock" ? setTimeout(() => power.set(null), 6000) : undefined;
+    const sim = tp.kind === "mock" ? setTimeout(() => power.set(null), 6000) : undefined;
     return () => {
       clearInterval(tick);
       offState();
       clearTimeout(sim);
     };
-  }, [t, off]);
+  }, [tp, off]);
 
   return (
     <div className="tg-power-wait" role="status" aria-live="polite">
       {off ? (
         <>
           <Power size={34} />
-          <h2>El NAS se está apagando</h2>
-          <p>Cuando la luz del equipo se apague, podés desenchufarlo. Para volver a usarlo, encendelo con su botón y recargá esta página.</p>
+          <h2>{t("El NAS se está apagando")}</h2>
+          <p>{t("Cuando la luz del equipo se apague, podés desenchufarlo. Para volver a usarlo, encendelo con su botón y recargá esta página.")}</p>
         </>
       ) : (
         <>
           <div className="tg-power-spinner" />
-          <h2>{kind === "reboot" ? "Reiniciando el NAS…" : "Esperando…"}</h2>
-          <p>{secs < 90 ? "El escritorio se reconecta solo en cuanto el NAS vuelva." : "Está tardando más de lo normal. Si el equipo tiene monitor, fijate si muestra algún mensaje."}</p>
+          <h2>{kind === "reboot" ? t("Reiniciando el NAS…") : t("Esperando…")}</h2>
+          <p>{secs < 90 ? t("El escritorio se reconecta solo en cuanto el NAS vuelva.") : t("Está tardando más de lo normal. Si el equipo tiene monitor, fijate si muestra algún mensaje.")}</p>
           <small>{secs} s</small>
         </>
       )}

@@ -2,6 +2,7 @@
 // instala a pedido (paquetes de contrib, módulo compilado con DKMS). Un volumen ZFS es el
 // dataset <pool>/<volumen> montado en /<volumen>; sus carpetas son datasets hijos.
 import type { Bytes } from "./protocol";
+import { t } from "./i18n";
 
 
 export type ZfsLayout = "stripe" | "mirror" | "raidz1" | "raidz2" | "raidz3";
@@ -146,15 +147,16 @@ declare module "./protocol" {
 
 // ---- Reglas (las mismas que internal/zfs/zfs.go) ---------------------------------------
 
+// Los textos son getters: se traducen al leerlos.
 export const ZFS_LAYOUTS: { id: ZfsLayout; label: string; description: string; min: number; parity: number }[] = [
-  { id: "mirror", label: "Espejo", description: "Cada dato en todos los discos. Lecturas rápidas.", min: 2, parity: 0 },
-  { id: "raidz1", label: "RAIDZ1", description: "Paridad simple, como RAID 5 pero sin agujero de escritura.", min: 3, parity: 1 },
-  { id: "raidz2", label: "RAIDZ2", description: "Doble paridad. Recomendado con discos grandes.", min: 4, parity: 2 },
-  { id: "raidz3", label: "RAIDZ3", description: "Triple paridad, para muchos discos.", min: 5, parity: 3 },
-  { id: "stripe", label: "Sin redundancia", description: "Suma la capacidad de los discos (stripe).", min: 1, parity: 0 },
+  { id: "mirror", get label() { return t("Espejo"); }, get description() { return t("Cada dato en todos los discos. Lecturas rápidas."); }, min: 2, parity: 0 },
+  { id: "raidz1", label: "RAIDZ1", get description() { return t("Paridad simple, como RAID 5 pero sin agujero de escritura."); }, min: 3, parity: 1 },
+  { id: "raidz2", label: "RAIDZ2", get description() { return t("Doble paridad. Recomendado con discos grandes."); }, min: 4, parity: 2 },
+  { id: "raidz3", label: "RAIDZ3", get description() { return t("Triple paridad, para muchos discos."); }, min: 5, parity: 3 },
+  { id: "stripe", get label() { return t("Sin redundancia"); }, get description() { return t("Suma la capacidad de los discos (stripe)."); }, min: 1, parity: 0 },
 ];
 
-export const zfsLayoutLabel = (l: string) => ZFS_LAYOUTS.find((x) => x.id === l)?.label ?? (l === "mixed" ? "Mixto" : l === "disk" ? "Disco" : l);
+export const zfsLayoutLabel = (l: string) => ZFS_LAYOUTS.find((x) => x.id === l)?.label ?? (l === "mixed" ? t("Mixto") : l === "disk" ? t("Disco") : l);
 
 export function zfsTolerance(layout: ZfsLayout, n: number): number {
   if (layout === "mirror") return Math.max(0, n - 1);
@@ -164,7 +166,7 @@ export function zfsTolerance(layout: ZfsLayout, n: number): number {
 
 export function zfsCheck(layout: ZfsLayout, n: number): string | null {
   const m = ZFS_LAYOUTS.find((x) => x.id === layout)?.min ?? 1;
-  return n >= m ? null : `Elegí al menos ${m} discos`;
+  return n >= m ? null : t("Elegí al menos {n} discos", { n: m });
 }
 
 /** Capacidad útil aproximada de un vdev (sin la reserva de ~3 % de ZFS). */

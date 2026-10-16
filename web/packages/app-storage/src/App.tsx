@@ -1,7 +1,7 @@
 import "./storage.css";
 import { useEffect, useState } from "react";
 import { Boxes, Camera, Database, HardDrive, Layers, LayoutDashboard, Network, Plus, Repeat } from "lucide-react";
-import { useLive, useTransport, useIsReal } from "@tango/client";
+import { t, useLive, useTransport, useIsReal } from "@tango/client";
 import type { Disk, Pool, Volume } from "@tango/client";
 import { Button, DemoBadge, SidebarItem } from "@tango/ui";
 import { WindowToolbar, toast, useWindowMenus } from "@tango/shell";
@@ -22,19 +22,19 @@ import { ReplSection } from "./Repl";
 const SIDE = 210;
 
 const titles: Record<Section, { title: string; sub: string }> = {
-  overview: { title: "Resumen", sub: "Estado del almacenamiento" },
-  pools: { title: "Grupos de almacenamiento", sub: "Discos y su protección (RAID o híbrido)" },
-  zfs: { title: "Pools ZFS", sub: "Espejos y RAIDZ con checksums, caché SSD y cifrado nativo" },
-  repl: { title: "Replicación", sub: "Copias de los volúmenes ZFS en otro pool o en otro NAS, al día solas" },
-  volumes: { title: "Volúmenes", sub: "Donde viven los datos: Btrfs, cifrado opcional" },
-  disks: { title: "Discos", sub: "Identidad, SMART y temperatura" },
-  snapshots: { title: "Instantáneas", sub: "Puntos de restauración por carpeta" },
-  iscsi: { title: "iSCSI", sub: "Discos de red para máquinas virtuales y servidores" },
+  overview: { title: t("Resumen"), sub: t("Estado del almacenamiento") },
+  pools: { title: t("Grupos de almacenamiento"), sub: t("Discos y su protección (RAID o híbrido)") },
+  zfs: { title: t("Pools ZFS"), sub: t("Espejos y RAIDZ con checksums, caché SSD y cifrado nativo") },
+  repl: { title: t("Replicación"), sub: t("Copias de los volúmenes ZFS en otro pool o en otro NAS, al día solas") },
+  volumes: { title: t("Volúmenes"), sub: t("Donde viven los datos: Btrfs, cifrado opcional") },
+  disks: { title: t("Discos"), sub: t("Identidad, SMART y temperatura") },
+  snapshots: { title: t("Instantáneas"), sub: t("Puntos de restauración por carpeta") },
+  iscsi: { title: "iSCSI", sub: t("Discos de red para máquinas virtuales y servidores") },
 };
 
 export default function StorageApp({ win }: AppProps) {
   const realData = useIsReal("storage.disks.list");
-  const t = useTransport();
+  const rpc = useTransport();
   const disks = useLive("storage.disks.list", undefined, ["storage.changed"]).data ?? [];
   const vols = useLive("storage.volumes.list", undefined, ["storage.changed"]).data ?? [];
   const poolsOn = useAvailable("storage.pools.list");
@@ -70,19 +70,19 @@ export default function StorageApp({ win }: AppProps) {
     win,
     [
       {
-        label: "Volumen",
+        label: t("Volumen"),
         items: [
-          { label: "Crear volumen…", action: () => createVolume() },
-          ...(poolsOn ? [{ label: "Crear grupo de almacenamiento…", action: () => setCreatingPool(true) }, { label: "Volumen clásico (sin grupo)…", action: () => setCreating(true) }] : []),
+          { label: t("Crear volumen…"), action: () => createVolume() },
+          ...(poolsOn ? [{ label: t("Crear grupo de almacenamiento…"), action: () => setCreatingPool(true) }, { label: t("Volumen clásico (sin grupo)…"), action: () => setCreating(true) }] : []),
           {
-            label: v1 ? `Verificar ${v1.name}` : "Verificar volumen",
+            label: v1 ? t("Verificar {name}", { name: v1.name }) : t("Verificar volumen"),
             disabled: !v1 || v1.state !== "healthy",
-            action: () => v1 && t.call("storage.scrub.start", { volume: v1.id }).catch((e: Error) => toast({ level: "warn", title: "No se pudo verificar", body: e.message })),
+            action: () => v1 && rpc.call("storage.scrub.start", { volume: v1.id }).catch((e: Error) => toast({ level: "warn", title: t("No se pudo verificar"), body: e.message })),
           },
-          { label: "Crear instantánea…", action: () => setSection("snapshots") },
+          { label: t("Crear instantánea…"), action: () => setSection("snapshots") },
           { separator: true },
-          { label: "Resumen", checked: section === "overview", action: () => setSection("overview") },
-          { label: "Discos", checked: section === "disks", action: () => setSection("disks") },
+          { label: t("Resumen"), checked: section === "overview", action: () => setSection("overview") },
+          { label: t("Discos"), checked: section === "disks", action: () => setSection("disks") },
         ],
       },
     ],
@@ -99,16 +99,16 @@ export default function StorageApp({ win }: AppProps) {
 
   return (
     <div className="tg-app ts-app" style={{ ["--side" as string]: `${SIDE}px` }}>
-      <nav className="tg-app-side tg-sidebar" aria-label="Secciones">
-        <h4>Almacenamiento</h4>
-        <SidebarItem icon={LayoutDashboard} label="Resumen" current={section === "overview"} onClick={() => setSection("overview")} />
-        {poolsOn && <SidebarItem icon={Layers} label="Grupos" current={section === "pools"} meta={poolList.length || undefined} onClick={() => setSection("pools")} />}
-        {zfsOn && <SidebarItem icon={Boxes} label="Pools ZFS" current={section === "zfs"} onClick={() => setSection("zfs")} />}
-        {zfsOn && replOn && zfsEnabled && <SidebarItem icon={Repeat} label="Replicación" current={section === "repl"} onClick={() => setSection("repl")} />}
-        <SidebarItem icon={Database} label="Volúmenes" current={section === "volumes"} meta={vols.length || undefined} onClick={() => setSection("volumes")} />
-        <SidebarItem icon={HardDrive} label="Discos" current={section === "disks"} meta={failed ? <span className="ts-side-alert">1</span> : disks.length} onClick={() => setSection("disks")} />
-        <SidebarItem icon={Camera} label="Instantáneas" current={section === "snapshots"} onClick={() => setSection("snapshots")} />
-        <h4>Red de almacenamiento</h4>
+      <nav className="tg-app-side tg-sidebar" aria-label={t("Secciones")}>
+        <h4>{t("Almacenamiento")}</h4>
+        <SidebarItem icon={LayoutDashboard} label={t("Resumen")} current={section === "overview"} onClick={() => setSection("overview")} />
+        {poolsOn && <SidebarItem icon={Layers} label={t("Grupos", undefined, "almacenamiento")} current={section === "pools"} meta={poolList.length || undefined} onClick={() => setSection("pools")} />}
+        {zfsOn && <SidebarItem icon={Boxes} label={t("Pools ZFS")} current={section === "zfs"} onClick={() => setSection("zfs")} />}
+        {zfsOn && replOn && zfsEnabled && <SidebarItem icon={Repeat} label={t("Replicación")} current={section === "repl"} onClick={() => setSection("repl")} />}
+        <SidebarItem icon={Database} label={t("Volúmenes")} current={section === "volumes"} meta={vols.length || undefined} onClick={() => setSection("volumes")} />
+        <SidebarItem icon={HardDrive} label={t("Discos")} current={section === "disks"} meta={failed ? <span className="ts-side-alert">1</span> : disks.length} onClick={() => setSection("disks")} />
+        <SidebarItem icon={Camera} label={t("Instantáneas")} current={section === "snapshots"} onClick={() => setSection("snapshots")} />
+        <h4>{t("Red de almacenamiento")}</h4>
         <SidebarItem icon={Network} label="iSCSI" current={section === "iscsi"} onClick={() => setSection("iscsi")} />
       </nav>
       <div className="tg-app-main">
@@ -121,11 +121,11 @@ export default function StorageApp({ win }: AppProps) {
           {!realData && <DemoBadge />}
           {poolsOn && (
             <Button onClick={() => setCreatingPool(true)}>
-              <Layers size={14} /> Crear grupo
+              <Layers size={14} /> {t("Crear grupo")}
             </Button>
           )}
           <Button onClick={() => createVolume()}>
-            <Plus size={14} /> Crear volumen
+            <Plus size={14} /> {t("Crear volumen")}
           </Button>
         </WindowToolbar>
         <div className="tg-app-content">

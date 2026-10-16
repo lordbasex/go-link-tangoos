@@ -1,7 +1,7 @@
 // Subidas y bajadas con progreso, velocidad, ETA y cancelar (protocol §10).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, CheckCircle2, ChevronDown, ChevronUp, X, XCircle } from "lucide-react";
-import { RpcError, dcLink, dcReady, fmtBytes, fmtRate, pickSaveSink, saveBlob } from "@tango/client";
+import { RpcError, dcLink, dcReady, fmtBytes, fmtRate, pickSaveSink, saveBlob, t, tn } from "@tango/client";
 import type { FileEntry, Transport } from "@tango/client";
 import { toast } from "@tango/shell";
 import { Progress } from "@tango/ui";
@@ -27,12 +27,12 @@ let seq = 0;
 function eta(x: XferItem) {
   if (x.state !== "running" || x.rate < 1) return "";
   const s = Math.max(0, (x.total - x.bytes) / x.rate);
-  if (s < 1) return "menos de 1 s";
+  if (s < 1) return t("menos de 1 s");
   if (s < 60) return `${Math.ceil(s)} s`;
-  return `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
+  return t("{m} min {s} s", { m: Math.floor(s / 60), s: Math.round(s % 60) });
 }
 
-export function useTransfers(t: Transport, onUploaded?: (e: FileEntry) => void) {
+export function useTransfers(tp: Transport, onUploaded?: (e: FileEntry) => void) {
   const [items, setItems] = useState<XferItem[]>([]);
   const queue = useRef<(() => Promise<void>)[]>([]);
   const active = useRef(0);
@@ -75,9 +75,9 @@ export function useTransfers(t: Transport, onUploaded?: (e: FileEntry) => void) 
 
   const upload = useCallback(
     (dir: string, files: File[], overwrite = false) => {
-      const tr = t.transfers;
+      const tr = tp.transfers;
       if (!tr) {
-        toast({ level: "crit", title: "No se puede subir", body: "Este NAS no soporta transferencias de archivos." });
+        toast({ level: "crit", title: t("No se puede subir"), body: t("Este NAS no soporta transferencias de archivos.") });
         return;
       }
       for (const f of files) {
@@ -87,20 +87,20 @@ export function useTransfers(t: Transport, onUploaded?: (e: FileEntry) => void) 
             uploadedRef.current?.(e);
           } catch (e) {
             if (e instanceof RpcError && e.code === "EXISTS")
-              toast({ level: "warn", title: `Ya existe «${f.name}»`, body: "No se reemplazó el archivo que estaba en el NAS.", action: { label: "Reemplazar", run: () => upload(dir, [f], true) } });
+              toast({ level: "warn", title: t("Ya existe «{name}»", { name: f.name }), body: t("No se reemplazó el archivo que estaba en el NAS."), action: { label: t("Reemplazar"), run: () => upload(dir, [f], true) } });
             throw e;
           }
         });
       }
     },
-    [t, enqueue, patch],
+    [tp, enqueue, patch],
   );
 
   const download = useCallback(
     async (entry: FileEntry, snapshot?: string) => {
-      const tr = t.transfers;
+      const tr = tp.transfers;
       if (!tr) {
-        toast({ level: "crit", title: "No se puede descargar", body: "Este NAS no soporta transferencias de archivos." });
+        toast({ level: "crit", title: t("No se puede descargar"), body: t("Este NAS no soporta transferencias de archivos.") });
         return;
       }
       // Si el navegador lo permite, se elige dónde guardar y se escribe en streaming (archivos grandes sin cargar memoria).
@@ -130,7 +130,7 @@ export function useTransfers(t: Transport, onUploaded?: (e: FileEntry) => void) 
         if (blob) saveBlob(blob, entry.name);
       });
     },
-    [t, enqueue, patch],
+    [tp, enqueue, patch],
   );
 
   const cancel = useCallback(
@@ -168,13 +168,13 @@ export function TransfersPanel({ items, onCancel, onClear }: { items: XferItem[]
   const total = live.reduce((a, x) => a + x.total, 0);
   const done = live.reduce((a, x) => a + x.bytes, 0);
   const title = live.length
-    ? `${live.length === 1 ? "1 transferencia" : `${live.length} transferencias`} en curso`
+    ? tn(live.length, "1 transferencia en curso", "{n} transferencias en curso")
     : failed
-      ? `${failed === 1 ? "1 transferencia falló" : `${failed} transferencias fallaron`}`
-      : "Transferencias completas";
+      ? tn(failed, "1 transferencia falló", "{n} transferencias fallaron")
+      : t("Transferencias completas");
 
   return (
-    <section className="tf-xfers" aria-label="Transferencias">
+    <section className="tf-xfers" aria-label={t("Transferencias")}>
       <header>
         <button type="button" className="tf-xfers-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
           {open ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
@@ -187,7 +187,7 @@ export function TransfersPanel({ items, onCancel, onClear }: { items: XferItem[]
         )}
         {!live.length && (
           <button type="button" className="tf-xfers-clear" onClick={onClear}>
-            Limpiar
+            {t("Limpiar")}
           </button>
         )}
       </header>
@@ -207,22 +207,22 @@ export function TransfersPanel({ items, onCancel, onClear }: { items: XferItem[]
                     <Progress value={x.total ? x.bytes / x.total : 0} indeterminate={x.state === "queued"} />
                     <small className="tg-num">
                       {x.state === "queued"
-                        ? "En espera…"
-                        : `${fmtBytes(x.bytes)} de ${fmtBytes(x.total)}${x.rate ? ` · ${fmtRate(x.rate)}` : ""}${eta(x) ? ` · faltan ${eta(x)}` : ""}`}
+                        ? t("En espera…")
+                        : `${t("{done} de {total}", { done: fmtBytes(x.bytes), total: fmtBytes(x.total) })}${x.rate ? ` · ${fmtRate(x.rate)}` : ""}${eta(x) ? ` · ${t("faltan {eta}", { eta: eta(x) })}` : ""}`}
                     </small>
                   </>
                 ) : (
                   <small className={x.state === "error" ? "tf-xfer-err" : undefined}>
                     {x.state === "done"
-                      ? `${x.dir === "up" ? "Subido" : "Descargado"} · ${fmtBytes(x.total)}`
+                      ? `${x.dir === "up" ? t("Subido") : t("Descargado")} · ${fmtBytes(x.total)}`
                       : x.state === "cancelled"
-                        ? "Cancelada"
+                        ? t("Cancelada")
                         : x.error}
                   </small>
                 )}
               </div>
               {(x.state === "running" || x.state === "queued") && (
-                <button type="button" className="tf-xfer-x" aria-label={`Cancelar ${x.name}`} title="Cancelar" onClick={() => onCancel(x.id)}>
+                <button type="button" className="tf-xfer-x" aria-label={t("Cancelar {name}", { name: x.name })} title={t("Cancelar")} onClick={() => onCancel(x.id)}>
                   <X size={12} strokeWidth={2.6} />
                 </button>
               )}

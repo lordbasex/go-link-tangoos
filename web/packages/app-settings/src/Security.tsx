@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Globe, Laptop, Monitor, Network, Terminal, Tv } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { fmtAgo, useLive } from "@tango/client";
+import { fmtAgo, t, useLive } from "@tango/client";
 import type { Session } from "@tango/client";
 import { toast } from "@tango/shell";
 import { Badge, Button, Group, Row, Status } from "@tango/ui";
@@ -26,7 +26,7 @@ export function Security() {
 
   return (
     <>
-      <Group title="Sesiones activas">
+      <Group title={t("Sesiones activas")}>
         {sessions
           .filter((s) => !closed.includes(s.id))
           .map((s) => {
@@ -42,20 +42,20 @@ export function Security() {
                 }
                 label={
                   <span className="tset-uname">
-                    {s.user} · {c.label}
-                    {s.current && <Badge tone="info">Esta sesión</Badge>}
+                    {s.user} · {t(c.label)}
+                    {s.current && <Badge tone="info">{t("Esta sesión")}</Badge>}
                   </span>
                 }
-                hint={`${s.ip} · desde ${fmtAgo(s.since)}`}
+                hint={t("{ip} · desde {ago}", { ip: s.ip, ago: fmtAgo(s.since) })}
               >
                 {!s.current && (
                   <Button
                     onClick={() => {
                       setClosed((x) => [...x, s.id]);
-                      toast({ level: "ok", title: "Sesión cerrada", body: `Demo: ${s.user} en ${s.ip} tendría que volver a entrar.`, app: "tango.settings" });
+                      toast({ level: "ok", title: t("Sesión cerrada"), body: t("Demo: {user} en {ip} tendría que volver a entrar.", { user: s.user, ip: s.ip }), app: "tango.settings" });
                     }}
                   >
-                    Cerrar sesión
+                    {t("Cerrar sesión")}
                   </Button>
                 )}
               </Row>
@@ -63,23 +63,23 @@ export function Security() {
           })}
       </Group>
 
-      <Group title="Acceso">
+      <Group title={t("Acceso")}>
         <TwoFactor />
         <AppPasswords />
-        <Row label="Bloqueo por intentos fallidos" hint="5 intentos en 10 minutos bloquean esa IP por 30 minutos">
-          <Status tone="ok">Activo</Status>
+        <Row label={t("Bloqueo por intentos fallidos")} hint={t("5 intentos en 10 minutos bloquean esa IP por 30 minutos")}>
+          <Status tone="ok">{t("Activo")}</Status>
         </Row>
-        <Row label="Cierre por inactividad">
-          <Value>30 minutos</Value>
+        <Row label={t("Cierre por inactividad")}>
+          <Value>{t("30 minutos")}</Value>
         </Row>
       </Group>
 
       <Group title="Firewall">
-        <Row label="Acceso permitido" hint="Puertos 443, 8443 (WebRTC), 3478 (STUN), 445 (SMB), 2049 (NFS)">
-          <Value>Solo la red local 192.168.1.0/24</Value>
+        <Row label={t("Acceso permitido")} hint={t("Puertos 443, 8443 (WebRTC), 3478 (STUN), 445 (SMB), 2049 (NFS)")}>
+          <Value>{t("Solo la red local 192.168.1.0/24")}</Value>
         </Row>
         <Row label="SSH">
-          <Value>Desactivado</Value>
+          <Value>{t("Desactivado")}</Value>
         </Row>
       </Group>
 

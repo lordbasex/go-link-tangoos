@@ -12,12 +12,13 @@
 #
 # El rootfs se cachea en $WORK/rootfs-base (debootstrap tarda; reconstruir solo cambia el .deb).
 set -eu
-DEB= OUT= INSTALLER= VARIANT=product LABDISK= KEYS= IP= GW= WORK=${WORK:-/root/tangoos-iso/image-work} MIRROR=${MIRROR:-http://deb.debian.org/debian}
+DEB= OUT= INSTALLER= VARIANT=product LABDISK= LABTZ= KEYS= IP= GW= WORK=${WORK:-/root/tangoos-iso/image-work} MIRROR=${MIRROR:-http://deb.debian.org/debian}
 while [ $# -gt 0 ]; do
     case "$1" in
         --deb) DEB=$2; shift 2 ;; --out) OUT=$2; shift 2 ;; --variant) VARIANT=$2; shift 2 ;;
         --installer) INSTALLER=$2; shift 2 ;; --disk) LABDISK=$2; shift 2 ;;
         --authorized-keys) KEYS=$2; shift 2 ;; --ip) IP=$2; shift 2 ;; --gw) GW=$2; shift 2 ;;
+        --tz) LABTZ=$2; shift 2 ;;
         *) echo "argumento desconocido: $1" >&2; exit 2 ;;
     esac
 done
@@ -186,7 +187,7 @@ cp "$DEB" "$ISO/tangoos/"
 [ "$VARIANT" = test ] && cp "$KEYS" "$ISO/tangoos/authorized_keys"
 # Laboratorio (test): la entrada por defecto instala sola en modo texto (sin preguntas, IP fija).
 LAB=""
-[ "$VARIANT" = test ] && LAB="tango.auto tango.ip=$IP,$GW,8.8.8.8${LABDISK:+ tango.disk=$LABDISK}"
+[ "$VARIANT" = test ] && LAB="tango.auto tango.ip=$IP,$GW,8.8.8.8${LABDISK:+ tango.disk=$LABDISK}${LABTZ:+ tango.tz=$LABTZ}"
 # Si el medio queda puesto después de instalar (USB o CD primero en el orden de arranque), por defecto
 # se arranca el TangoOS ya instalado y no se vuelve a ofrecer instalar: evita reinstalar en bucle.
 # Menú: instalar en modo gráfico (por defecto) o en modo texto, probar sin instalar, o arrancar el

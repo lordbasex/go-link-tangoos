@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink, RotateCw, ShieldAlert } from "lucide-react";
 import { Button, EmptyState, IconButton } from "@tango/ui";
 import { WindowToolbar } from "@tango/shell";
+import { t } from "@tango/client";
 import type { AppProps } from "@tango/shell";
 
 const LOAD_TIMEOUT = 8000;
@@ -44,13 +45,13 @@ export default function AppView({ win }: AppProps) {
             {display}
           </span>
           <span className="tg-tb-spacer" />
-          <IconButton icon={RotateCw} label="Recargar" disabled={!url} onClick={() => setNonce((n) => n + 1)} />
-          <IconButton icon={ExternalLink} label="Abrir en pestaña nueva" disabled={!url || url.startsWith("data:")} onClick={openTab} />
+          <IconButton icon={RotateCw} label={t("Recargar")} disabled={!url} onClick={() => setNonce((n) => n + 1)} />
+          <IconButton icon={ExternalLink} label={t("Abrir en pestaña nueva")} disabled={!url || url.startsWith("data:")} onClick={openTab} />
         </WindowToolbar>
         <div className="tg-app-content tapp-view">
           {!url ? (
-            <EmptyState icon={ShieldAlert} title={`${title} no tiene interfaz web`}>
-              Esta app funciona en segundo plano. Administrala desde el Centro de apps.
+            <EmptyState icon={ShieldAlert} title={t("{name} no tiene interfaz web", { name: title })}>
+              {t("Esta app funciona en segundo plano. Administrala desde el Centro de apps.")}
             </EmptyState>
           ) : (
             <>
@@ -67,22 +68,22 @@ export default function AppView({ win }: AppProps) {
                   setState("ready");
                 }}
               />
-              {state === "loading" && <div className="tapp-view-loading" aria-label="Cargando" />}
+              {state === "loading" && <div className="tapp-view-loading" aria-label={t("Cargando")} />}
               {state === "failed" && (
                 <div className="tapp-view-fail">
                   <EmptyState
                     icon={ShieldAlert}
-                    title={`${title} no respondió`}
+                    title={t("{name} no respondió", { name: title })}
                     action={
                       <div className="tapp-view-fail-actions">
                         <Button variant="primary" onClick={openTab}>
-                          Abrir en pestaña nueva
+                          {t("Abrir en pestaña nueva")}
                         </Button>
-                        <Button onClick={() => setNonce((n) => n + 1)}>Reintentar</Button>
+                        <Button onClick={() => setNonce((n) => n + 1)}>{t("Reintentar")}</Button>
                       </div>
                     }
                   >
-                    Abrí la app en una pestaña nueva una vez para aceptar el certificado del NAS y después tocá Reintentar. Si sigue sin responder, revisá su registro en el Centro de apps.
+                    {t("Abrí la app en una pestaña nueva una vez para aceptar el certificado del NAS y después tocá Reintentar. Si sigue sin responder, revisá su registro en el Centro de apps.")}
                   </EmptyState>
                 </div>
               )}

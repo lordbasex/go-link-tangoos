@@ -1,8 +1,20 @@
+import { Fragment } from "react";
 import type { ReactNode } from "react";
+import { t } from "@tango/client";
 import { toast } from "@tango/shell";
 
-export function demoApply(what = "El cambio") {
-  toast({ level: "info", title: "Demo: no se aplicó", body: `${what} se ve como quedaría, pero este prototipo no modifica el NAS.`, app: "tango.settings" });
+export function demoApply(what = t("El cambio")) {
+  toast({ level: "info", title: t("Demo: no se aplicó"), body: t("{what} se ve como quedaría, pero este prototipo no modifica el NAS.", { what }), app: "tango.settings" });
+}
+
+/** t() con nodos de React en lugar de {nombre}: tj("Abrí {path}.", { path: <b>…</b> }). */
+export function tj(es: string, nodes: Record<string, ReactNode>): ReactNode {
+  return t(es)
+    .split(/(\{\w+\})/)
+    .map((part, i) => {
+      const m = /^\{(\w+)\}$/.exec(part);
+      return m && m[1] in nodes ? <Fragment key={i}>{nodes[m[1]]}</Fragment> : part;
+    });
 }
 
 export function Head({ title, children, icon }: { title: string; children?: ReactNode; icon?: ReactNode }) {
@@ -18,7 +30,7 @@ export function Head({ title, children, icon }: { title: string; children?: Reac
 }
 
 export function Soon() {
-  return <span className="tset-soon">Pronto</span>;
+  return <span className="tset-soon">{t("Pronto")}</span>;
 }
 
 export function Value({ children }: { children: ReactNode }) {

@@ -1,4 +1,6 @@
 // Datos demo. Todo lo que sale de acá se muestra con la insignia DEMO.
+import { t } from "../i18n";
+import { fmtBytes } from "../format";
 import type { Disk, FileEntry, FileKind, Group, Notice, Scenario, Session, Share, Snapshot, SystemInfo, User, Volume } from "../protocol";
 
 export const KiB = 1024;
@@ -14,7 +16,7 @@ const D = 24 * H;
 export function systemInfo(): SystemInfo {
   return {
     hostname: "tango",
-    model: "Mini-PC N150 · 4 bahías",
+    model: t("Mini-PC N150 · {n} bahías", { n: 4 }),
     cpu: "Intel N150",
     cores: 4,
     memTotal: 16 * GiB,
@@ -102,7 +104,7 @@ export function disks(s: Scenario): Disk[] {
     case "empty":
       return [systemDisk, d1, d2, d3];
     case "migrate": {
-      const foreign = { label: "NAS de 4 bahías · volume_1", profile: "RAID híbrido (2 discos)" };
+      const foreign = { label: t("NAS de {n} bahías · {volume}", { n: 4, volume: "volume_1" }), profile: t("RAID híbrido ({n} discos)", { n: 2 }) };
       return [systemDisk, { ...d1, foreign }, { ...d2, foreign }, d3];
     }
     case "degraded":
@@ -450,7 +452,7 @@ export function users(): User[] {
 
 export function groups(): Group[] {
   return [
-    { name: "administrators", description: "Administran el NAS", members: ["federico"] },
+    { name: "administrators", description: t("Administran el NAS"), members: ["federico"] },
     { name: "familia", description: "Acceso a Familia, Fotos y Documentos", members: ["federico", "sofia", "martin"] },
     { name: "media", description: "Solo lectura en Media", members: ["tv-living"] },
   ];
@@ -467,14 +469,14 @@ export function sessions(): Session[] {
 
 export function initialNotices(s: Scenario): Notice[] {
   const base: Notice[] = [
-    { id: "n-up", level: "info", app: "tango.settings", title: "Actualización disponible", body: "TangoOS 0.1.1 y 14 parches de seguridad de Debian.", at: iso(3 * H), action: { label: "Ver", app: "tango.settings", route: "updates" } },
-    { id: "n-snap", level: "ok", app: "tango.storage", title: "Instantáneas creadas", body: "5 carpetas compartidas, 1,2 GB nuevos.", at: iso(37 * 60_000) },
+    { id: "n-up", level: "info", app: "tango.settings", title: t("Actualización disponible"), body: t("TangoOS {version} y {n} parches de seguridad de Debian.", { version: "0.1.1", n: 14 }), at: iso(3 * H), action: { label: t("Ver"), app: "tango.settings", route: "updates" } },
+    { id: "n-snap", level: "ok", app: "tango.storage", title: t("Instantáneas creadas"), body: t("{n} carpetas compartidas, {size} nuevos.", { n: 5, size: fmtBytes(1.2e9) }), at: iso(37 * 60_000) },
   ];
   if (s === "degraded")
-    base.unshift({ id: "n-deg", level: "crit", app: "tango.storage", title: "volume1 sin redundancia", body: "El disco de la bahía 2 dejó de responder. Tus datos siguen completos en el disco 1.", at: iso(9 * 60_000), action: { label: "Ver qué hacer", app: "tango.storage" } });
+    base.unshift({ id: "n-deg", level: "crit", app: "tango.storage", title: t("{name} sin redundancia", { name: "volume1" }), body: t("El disco de la bahía {bay} dejó de responder. Tus datos siguen completos en el disco {other}.", { bay: 2, other: 1 }), at: iso(9 * 60_000), action: { label: t("Ver qué hacer"), app: "tango.storage" } });
   if (s === "migrate")
-    base.unshift({ id: "n-mig", level: "info", app: "tango.storage", title: "Encontramos discos de otro NAS", body: "Un volumen RAID híbrido de 2 discos. Podés montarlo en solo lectura y revisar tus datos.", at: iso(60_000), action: { label: "Abrir Almacenamiento", app: "tango.storage" } });
+    base.unshift({ id: "n-mig", level: "info", app: "tango.storage", title: t("Encontramos discos de otro NAS"), body: t("Un volumen RAID híbrido de {n} discos. Podés montarlo en solo lectura y revisar tus datos.", { n: 2 }), at: iso(60_000), action: { label: t("Abrir Almacenamiento"), app: "tango.storage" } });
   if (s === "empty")
-    base.splice(0, 2, { id: "n-new", level: "info", app: "tango.storage", title: "Tu NAS está listo", body: "Creá tu primer volumen para empezar a guardar archivos.", at: iso(60_000), action: { label: "Crear volumen", app: "tango.storage" } });
+    base.splice(0, 2, { id: "n-new", level: "info", app: "tango.storage", title: t("Tu NAS está listo"), body: t("Creá tu primer volumen para empezar a guardar archivos."), at: iso(60_000), action: { label: t("Crear volumen"), app: "tango.storage" } });
   return base;
 }

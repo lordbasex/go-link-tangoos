@@ -1,5 +1,6 @@
 import type { Transport, TransportState } from "../transport";
 import { RpcError } from "../protocol";
+import { locale, t, tn } from "../i18n";
 import type { Disk, Evt, VolumeProfile, Job, MetricsFrame, Method, Notice, Params, PermissionEntry, Result, RtcStats, Scenario, Share, Snapshot, Topic, Topics, User, Volume } from "../protocol";
 import { profileInfo, profileLabel } from "../raid";
 import * as data from "./data";
@@ -61,9 +62,9 @@ export class MockTransport implements Transport {
     if (scenario === "lab") this.fs.mkdir("/Familia");
     this.notices = data.initialNotices(scenario);
     if (scenario === "busy") {
-      this.startJob("storage.scrub", "Verificando volume1", "Scrub de md + Btrfs", 0.37, 0.0009, "142 MB/s");
-      this.startJob("files.upload", "Subiendo 214 fotos a Fotos/2026", "desde Notebook de Sofi", 0.12, 0.004, "38 MB/s");
-      this.startJob("files.copy", "Copiando Películas a Backups", "4 archivos, 41 GB", 0.64, 0.002, "96 MB/s");
+      this.startJob("storage.scrub", t("Verificando {name}", { name: "volume1" }), t("Scrub de md + Btrfs"), 0.37, 0.0009, "142 MB/s");
+      this.startJob("files.upload", t("Subiendo {n} fotos a {dir}", { n: 214, dir: "Fotos/2026" }), t("desde {device}", { device: "Notebook de Sofi" }), 0.12, 0.004, "38 MB/s");
+      this.startJob("files.copy", t("Copiando {src} a {dst}", { src: "Películas", dst: "Backups" }), t("{n} archivos, {size}", { n: 4, size: "41 GB" }), 0.64, 0.002, "96 MB/s");
     }
     setTimeout(() => this.setState("connected"), 350);
     // Los avisos críticos pendientes llegan como evento al conectar (toast persistente).
@@ -77,7 +78,7 @@ export class MockTransport implements Transport {
   async call<M extends Method>(method: M, params: Params<M>): Promise<Result<M>> {
     const h = this.handlers[method] as Handler | undefined;
     await sleep(30 + Math.random() * 90);
-    if (!h) throw new RpcError("METHOD_NOT_FOUND", `Método desconocido: ${method}`);
+    if (!h) throw new RpcError("METHOD_NOT_FOUND", t("Método desconocido: {method}", { method }));
     return structuredClone(h(params)) as Result<M>;
   }
 
@@ -148,7 +149,7 @@ export class MockTransport implements Transport {
     "storage.volumes.list": () => this.vols,
     "storage.volumes.plan": ({ name, profile, disks }) => {
       if (!/^[a-z][a-z0-9_-]{1,30}$/.test(name)) throw new RpcError("INVALID_PARAMS", "Nombre de volumen inválido");
-      if (this.vols.some((v) => v.name === name)) throw new RpcError("VOLUME_EXISTS", `Ya existe un volumen llamado ${name}`);
+      if (this.vols.some((v) => v.name === name)) throw new RpcError("VOLUME_EXISTS", t("Ya existe un volumen llamado {name}", { name }));
       const chosen = this.disks.filter((d) => disks.includes(d.id));
       if (chosen.length !== disks.length) throw new RpcError("DEVICE_CHANGED", "Un disco ya no está conectado");
       if (chosen.some((d) => d.use !== "free" || d.foreign)) throw new RpcError("DEVICE_NOT_ELIGIBLE", "Uno de los discos no es elegible");
@@ -159,7 +160,7 @@ export class MockTransport implements Transport {
       const usable = info.usable(sizes) * 0.98;
       const minSize = Math.min(...sizes);
       const notes = sizes.some((x) => x !== minSize)
-        ? [`Los discos tienen tamaños distintos: se usan ${fmtBytes(minSize)} de cada uno y sobran ${fmtBytes(sizes.reduce((a, x) => a + x - minSize, 0))}.`]
+        ? [t("Los discos tienen tamaños distintos: se usan {used} de cada uno y sobran {extra}.", { used: fmtBytes(minSize), extra: fmtBytes(sizes.reduce((a, x) => a + x - minSize, 0)) })]
         : [];
       const plan_id = `p_${Math.random().toString(36).slice(2, 10)}`;
       const confirm_token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
@@ -169,7 +170,7 @@ export class MockTransport implements Transport {
         plan_id, expires, confirm_token,
         summary: {
           name, profile, fs: "btrfs", usable, notes,
-          disks: chosen.map((d) => ({ id: d.id, model: d.model, serial: d.serial, size: d.size, content: d.bay === 3 ? "Una partición ext4 (sin montar)" : "Vacío: sin tabla de particiones" })),
+          disks: chosen.map((d) => ({ id: d.id, model: d.model, serial: d.serial, size: d.size, content: d.bay === 3 ? t("Una partición ext4 (sin montar)") : t("Vacío: sin tabla de particiones") })),
         },
       };
     },
@@ -182,7 +183,7 @@ export class MockTransport implements Transport {
       }
       if (confirm_token !== plan.token || typed_name !== plan.name) throw new RpcError("CONFIRMATION_MISMATCH", "La confirmación no coincide con el plan");
       const { name, profile, disks } = plan;
-      if (this.vols.some((v) => v.name === name)) throw new RpcError("VOLUME_EXISTS", `Ya existe un volumen llamado ${name}`);
+      if (this.vols.some((v) => v.name === name)) throw new RpcError("VOLUME_EXISTS", t("Ya existe un volumen llamado {name}", { name }));
       const chosen = this.disks.filter((d) => disks.includes(d.id));
       if (chosen.length !== disks.length) throw new RpcError("DEVICE_CHANGED", "Un disco cambió desde que armaste el plan");
       if (chosen.some((d) => d.use !== "free" || d.foreign)) throw new RpcError("DEVICE_NOT_ELIGIBLE", "Uno de los discos ya no es elegible");
@@ -196,11 +197,11 @@ export class MockTransport implements Transport {
       chosen.forEach((d) => Object.assign(d, { use: "member", volume: vol.id }));
       this.emit("storage.changed", { what: "volumes" });
       this.emit("storage.changed", { what: "disks" });
-      const job = this.startJob("storage.volume.create", `Creando ${name}`, `${profileLabel(profile)} · ${chosen.length} disco${chosen.length > 1 ? "s" : ""}`, 0, 0.012, undefined, () => {
+      const job = this.startJob("storage.volume.create", t("Creando {name}", { name }), `${profileLabel(profile)} · ${tn(chosen.length, "{n} disco", "{n} discos")}`, 0, 0.012, undefined, () => {
         vol.state = "healthy";
         vol.progress = undefined;
         this.emit("storage.changed", { what: "volumes" });
-        this.notify("ok", "tango.storage", `${name} está listo`, `${fmtBytes(size)} disponibles con ${profile === "basic" ? "perfil básico" : profileLabel(profile)}.`);
+        this.notify("ok", "tango.storage", t("{name} está listo", { name }), t("{size} disponibles con {profile}.", { size: fmtBytes(size), profile: profile === "basic" ? t("perfil básico") : profileLabel(profile) }));
       });
       job.onTick = (p) => {
         vol.progress = p;
@@ -210,15 +211,15 @@ export class MockTransport implements Transport {
     },
     "shares.create": ({ name, volume, description, smb, timeMachine, timeMachineMaxBytes }) => {
       if (!/^[\p{L}\p{N} _-]{1,64}$/u.test(name)) throw new RpcError("INVALID_PARAMS", "Nombre de carpeta inválido");
-      if (this.shares.some((x) => x.name.toLowerCase() === name.toLowerCase())) throw new RpcError("SHARE_EXISTS", `Ya existe una carpeta llamada ${name}`);
+      if (this.shares.some((x) => x.name.toLowerCase() === name.toLowerCase())) throw new RpcError("SHARE_EXISTS", t("Ya existe una carpeta llamada {name}", { name }));
       const v = this.vols.find((x) => x.id === volume);
       if (!v) throw new RpcError("VOLUME_NOT_FOUND", "No existe el volumen");
       const id = name.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `share-${this.shares.length + 1}`;
-      const j = this.startJob("shares.create", `Creando carpeta ${name}`, smb ? "Subvolumen Btrfs + Samba" : "Subvolumen Btrfs", 0, 0.25, undefined, () => {
+      const j = this.startJob("shares.create", t("Creando carpeta {name}", { name }), smb ? t("Subvolumen Btrfs + Samba") : t("Subvolumen Btrfs"), 0, 0.25, undefined, () => {
         this.shares.push({ id, name, volume, path: `${v.mount}/@shares/${name}`, size: 0, description, smb, nfs: false, snapshots: true, recycleBin: true, color: "#2F7CF6", timeMachine: !!(smb && timeMachine), timeMachineMaxBytes: smb && timeMachine ? (timeMachineMaxBytes ?? null) : null });
         this.fs.mkdir(`/${name}`);
         this.emit("shares.changed", { id });
-        this.notify("ok", "tango.settings", "Carpeta compartida creada", smb ? `${name} ya se ve en la red (SMB).` : `${name} está lista.`);
+        this.notify("ok", "tango.settings", t("Carpeta compartida creada"), smb ? t("{name} ya se ve en la red (SMB).", { name }) : t("{name} está lista.", { name }));
       });
       return { job: j.id };
     },
@@ -253,7 +254,7 @@ export class MockTransport implements Transport {
       const v = this.vols.find((x) => x.id === plan.volume);
       if (!v) throw new RpcError("VOLUME_NOT_FOUND", "El volumen ya no existe");
       this.deletePlans.delete(plan_id);
-      const j = this.startJob("storage.volume.delete", `Eliminando ${v.name}`, "Desmontar, detener el array y limpiar los discos", 0, 0.06, undefined, () => {
+      const j = this.startJob("storage.volume.delete", t("Eliminando {name}", { name: v.name }), t("Desmontar, detener el array y limpiar los discos"), 0, 0.06, undefined, () => {
         const gone = this.shares.filter((s) => s.volume === v.id).map((s) => s.id);
         this.shares = this.shares.filter((s) => s.volume !== v.id);
         this.snaps = this.snaps.filter((s) => !gone.includes(s.share));
@@ -264,7 +265,7 @@ export class MockTransport implements Transport {
         this.emit("storage.changed", { what: "volumes" });
         this.emit("storage.changed", { what: "disks" });
         this.emit("shares.changed", {});
-        this.notify("ok", "tango.storage", `${v.name} se eliminó`, "Los discos quedaron libres para un volumen nuevo.");
+        this.notify("ok", "tango.storage", t("{name} se eliminó", { name: v.name }), t("Los discos quedaron libres para un volumen nuevo."));
       });
       return { job: j.id };
     },
@@ -272,13 +273,13 @@ export class MockTransport implements Transport {
       const s = this.shares.find((x) => x.id === share);
       if (!s) throw new RpcError("SHARE_NOT_FOUND", "No existe la carpeta compartida");
       if (typed_name !== s.name) throw new RpcError("CONFIRMATION_MISMATCH", "El nombre escrito no coincide");
-      const j = this.startJob("shares.delete", `Eliminando ${s.name}`, "Subvolumen, instantáneas y bloque SMB", 0, 0.2, undefined, () => {
+      const j = this.startJob("shares.delete", t("Eliminando {name}", { name: s.name }), t("Subvolumen, instantáneas y bloque SMB"), 0, 0.2, undefined, () => {
         this.shares = this.shares.filter((x) => x.id !== share);
         this.snaps = this.snaps.filter((x) => x.share !== share);
         this.perms.delete(share);
         this.emit("shares.changed", { id: share });
         this.emit("snapshots.changed", { share });
-        this.notify("ok", "tango.settings", "Carpeta compartida eliminada", `${s.name} y sus instantáneas se borraron.`);
+        this.notify("ok", "tango.settings", t("Carpeta compartida eliminada"), t("{name} y sus instantáneas se borraron.", { name: s.name }));
       });
       return { job: j.id };
     },
@@ -307,12 +308,12 @@ export class MockTransport implements Transport {
       v.state = "scrubbing";
       v.progress = 0;
       this.emit("storage.changed", { what: "volumes" });
-      const j = this.startJob("storage.scrub", `Verificando ${v.name}`, "Scrub de md + Btrfs", 0, 0.006, "151 MB/s", () => {
+      const j = this.startJob("storage.scrub", t("Verificando {name}", { name: v.name }), t("Scrub de md + Btrfs"), 0, 0.006, "151 MB/s", () => {
         v.state = "healthy";
         v.progress = undefined;
         v.lastScrub = new Date().toISOString();
         this.emit("storage.changed", { what: "volumes" });
-        this.notify("ok", "tango.storage", `Verificación de ${v.name} terminada`, "Sin errores. Todos los datos coinciden con sus checksums.");
+        this.notify("ok", "tango.storage", t("Verificación de {name} terminada", { name: v.name }), t("Sin errores. Todos los datos coinciden con sus checksums."));
       });
       j.onTick = (p) => {
         v.progress = p;
@@ -321,8 +322,8 @@ export class MockTransport implements Transport {
       return { job: j.id };
     },
     "storage.foreign.mount": ({ label }) => {
-      const j = this.startJob("storage.foreign.mount", "Montando volumen de otro NAS", `${label} · solo lectura`, 0, 0.02, undefined, () => {
-        this.notify("ok", "tango.storage", "Volumen de otro NAS montado", "Está en /import/volume_1 en solo lectura. Nada se modificó en los discos.");
+      const j = this.startJob("storage.foreign.mount", t("Montando volumen de otro NAS"), t("{label} · solo lectura", { label }), 0, 0.02, undefined, () => {
+        this.notify("ok", "tango.storage", t("Volumen de otro NAS montado"), t("Está en /import/volume_1 en solo lectura. Nada se modificó en los discos."));
       });
       return { job: j.id };
     },
@@ -330,21 +331,21 @@ export class MockTransport implements Transport {
     "snapshots.list": ({ share }) => (share ? this.snaps.filter((s) => s.share === share) : this.snaps),
     "snapshots.create": ({ share }) => {
       const name = this.shares.find((s) => s.id === share)?.name ?? share;
-      const j = this.startJob("snapshots.create", `Instantánea de ${name}`, "Btrfs, solo lectura", 0, 0.08, undefined, () => {
+      const j = this.startJob("snapshots.create", t("Instantánea de {name}", { name }), t("Btrfs, solo lectura"), 0, 0.08, undefined, () => {
         this.snaps.unshift({ id: `${share}-${Date.now()}`, share, at: new Date().toISOString(), size: 12 * MiB, kind: "manual", locked: false });
         this.emit("snapshots.changed", { share });
-        this.notify("ok", "tango.storage", "Instantánea creada", `Se guardó el estado actual de ${name}.`);
+        this.notify("ok", "tango.storage", t("Instantánea creada"), t("Se guardó el estado actual de {name}.", { name }));
       });
       return { job: j.id };
     },
     "files.list": ({ path }) => {
       const l = this.fs.list(path);
-      if (!l) throw new RpcError("PATH_NOT_FOUND", `No existe ${path}`);
+      if (!l) throw new RpcError("PATH_NOT_FOUND", t("No existe {path}", { path }));
       return l;
     },
     "files.search": ({ q, path }) => this.fs.search(q, path),
     "files.move": ({ paths, dest }) => {
-      if (!this.fs.list(dest)) throw new RpcError("PATH_NOT_FOUND", `No existe ${dest}`);
+      if (!this.fs.list(dest)) throw new RpcError("PATH_NOT_FOUND", t("No existe {path}", { path: dest }));
       const count = this.fs.move(paths, dest);
       new Set([...paths.map(parentOf), dest]).forEach((dir) => this.emit("files.changed", { dir }));
       return { count };
@@ -362,9 +363,10 @@ export class MockTransport implements Transport {
       const e = this.fs.find(path);
       const snap = this.snaps.find((s) => s.id === snapshot);
       if (!e || !snap) throw new RpcError("PATH_NOT_FOUND", "No existe esa versión");
-      const when = new Date(snap.at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).replace(/[/:]/g, ".").replace(",", "");
+      const when = new Date(snap.at).toLocaleString(locale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).replace(/[/:]/g, ".").replace(",", "");
       const dot = e.name.lastIndexOf(".");
-      const name = dot > 0 ? `${e.name.slice(0, dot)} (restaurado ${when})${e.name.slice(dot)}` : `${e.name} (restaurado ${when})`;
+      const tag = t("restaurado {when}", { when });
+      const name = dot > 0 ? `${e.name.slice(0, dot)} (${tag})${e.name.slice(dot)}` : `${e.name} (${tag})`;
       const dir = parentOf(path);
       const copy = this.fs.add(dir, name, e.size);
       this.emit("files.changed", { dir });
@@ -381,7 +383,7 @@ export class MockTransport implements Transport {
     "files.rename": ({ path, name }) => {
       if (/[/\0]/.test(name)) throw new RpcError("INVALID_NAME", "El nombre no puede tener /");
       const e = this.fs.rename(path, name);
-      if (!e) throw new RpcError("PATH_NOT_FOUND", `No existe ${path}`);
+      if (!e) throw new RpcError("PATH_NOT_FOUND", t("No existe {path}", { path }));
       this.emit("files.changed", { dir: parentOf(path) });
       return e;
     },
@@ -406,7 +408,7 @@ export class MockTransport implements Transport {
     "users.list": () => this.users,
     "users.create": ({ name, full, email, password, admin, groups }) => {
       if (!/^[a-z][a-z0-9_-]{1,31}$/.test(name)) throw new RpcError("INVALID_PARAMS", "Nombre de usuario inválido");
-      if (this.users.some((u) => u.name === name)) throw new RpcError("USER_EXISTS", `Ya existe el usuario ${name}`);
+      if (this.users.some((u) => u.name === name)) throw new RpcError("USER_EXISTS", t("Ya existe el usuario {name}", { name }));
       if (password.length < 10) throw new RpcError("WEAK_PASSWORD", "La contraseña tiene que tener al menos 10 caracteres");
       const palette = ["#2F7CF6", "#EC4899", "#22C55E", "#F97316", "#8B5CF6", "#EAB308"];
       const u: User = {
@@ -418,7 +420,7 @@ export class MockTransport implements Transport {
     },
     "users.delete": ({ name, typed_name, keepFiles: _keep }) => {
       const u = this.users.find((x) => x.name === name);
-      if (!u) throw new RpcError("USER_NOT_FOUND", `No existe el usuario ${name}`);
+      if (!u) throw new RpcError("USER_NOT_FOUND", t("No existe el usuario {name}", { name }));
       if (typed_name !== name) throw new RpcError("CONFIRMATION_MISMATCH", "Escribí el nombre del usuario para confirmar");
       if (name === (this.currentUser ?? "federico")) throw new RpcError("CANNOT_DELETE_SELF", "No podés borrar tu propio usuario");
       if (u.admin && this.users.filter((x) => x.admin).length <= 1) throw new RpcError("LAST_ADMIN", "No se puede borrar el último administrador");
@@ -428,7 +430,7 @@ export class MockTransport implements Transport {
       return {};
     },
     "users.setPassword": ({ name, password }) => {
-      if (!this.users.some((u) => u.name === name)) throw new RpcError("USER_NOT_FOUND", `No existe el usuario ${name}`);
+      if (!this.users.some((u) => u.name === name)) throw new RpcError("USER_NOT_FOUND", t("No existe el usuario {name}", { name }));
       if (password.length < 10) throw new RpcError("WEAK_PASSWORD", "La contraseña tiene que tener al menos 10 caracteres");
       return {};
     },
@@ -445,9 +447,9 @@ export class MockTransport implements Transport {
 
   readonly transfers: Transfers = {
     upload: async (dir, file, onProgress, opts = {}) => {
-      if (!this.fs.list(dir)) throw new RpcError("PATH_NOT_FOUND", `No existe ${dir}`);
+      if (!this.fs.list(dir)) throw new RpcError("PATH_NOT_FOUND", t("No existe {path}", { path: dir }));
       const target = `${dir === "/" ? "" : dir}/${file.name}`;
-      if (this.fs.has(target) && !opts.overwrite) throw new RpcError("EXISTS", `Ya existe «${file.name}»`);
+      if (this.fs.has(target) && !opts.overwrite) throw new RpcError("EXISTS", t("Ya existe «{name}»", { name: file.name }));
       await this.simulateXfer(file.size, onProgress, opts.signal);
       const e = this.fs.add(dir, file.name, file.size);
       this.emit("files.changed", { dir });
@@ -455,9 +457,9 @@ export class MockTransport implements Transport {
     },
     download: async (path, onProgress, opts = {}) => {
       const e = this.fs.find(path);
-      if (!e || e.kind === "dir") throw new RpcError("PATH_NOT_FOUND", `No existe ${path}`);
+      if (!e || e.kind === "dir") throw new RpcError("PATH_NOT_FOUND", t("No existe {path}", { path }));
       await this.simulateXfer(e.size, onProgress, opts.signal);
-      const body = new TextEncoder().encode(`TangoOS · demo\n\nContenido simulado de «${e.name}» (${e.size} bytes en el NAS de prueba).\n`);
+      const body = new TextEncoder().encode(`TangoOS · demo\n\n${t("Contenido simulado de «{name}» ({size} bytes en el NAS de prueba).", { name: e.name, size: e.size })}\n`);
       if (opts.sink) {
         await opts.sink.write(body, 0);
         await opts.sink.close();
@@ -572,5 +574,5 @@ export function fmtBytes(n: number, digits = 1): string {
     n /= 1000;
     i++;
   }
-  return `${n.toLocaleString("es-AR", { maximumFractionDigits: i === 0 ? 0 : digits })} ${u[i]}`;
+  return `${n.toLocaleString(locale(), { maximumFractionDigits: i === 0 ? 0 : digits })} ${u[i]}`;
 }

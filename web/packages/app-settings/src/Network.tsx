@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { EthernetPort } from "lucide-react";
-import { useLive, useMetrics, fmtRate } from "@tango/client";
+import { useLive, useMetrics, fmtRate, t } from "@tango/client";
 import { Button, Group, Row, Segmented, Status, TextInput } from "@tango/ui";
 import { Value, demoApply } from "./common";
 
@@ -13,7 +13,7 @@ export function NetworkSection() {
 
   return (
     <>
-      <Group title="Interfaces">
+      <Group title={t("Interfaces")}>
         <Row
           icon={
             <span className="tset-row-icon" style={{ background: "#2F7CF6" }}>
@@ -21,9 +21,9 @@ export function NetworkSection() {
             </span>
           }
           label="enp1s0 · Ethernet"
-          hint={`${info?.ip ?? "—"} · 2,5 GbE full duplex · MAC 7c:2b:e1:13:4a:9f`}
+          hint={t("{ip} · 2,5 GbE full duplex · MAC {mac}", { ip: info?.ip ?? "—", mac: "7c:2b:e1:13:4a:9f" })}
         >
-          <Status tone="ok">Conectada</Status>
+          <Status tone="ok">{t("Conectada")}</Status>
         </Row>
         <Row
           icon={
@@ -32,11 +32,11 @@ export function NetworkSection() {
             </span>
           }
           label="enp2s0 · Ethernet"
-          hint="Sin cable · MAC 7c:2b:e1:13:4a:a0"
+          hint={t("Sin cable · MAC {mac}", { mac: "7c:2b:e1:13:4a:a0" })}
         >
-          <span className="tg-muted">Desconectada</span>
+          <span className="tg-muted">{t("Desconectada")}</span>
         </Row>
-        <Row label="Tráfico ahora">
+        <Row label={t("Tráfico ahora")}>
           <Value>
             ↓ {fmtRate(last?.netRx ?? 0)} · ↑ {fmtRate(last?.netTx ?? 0)}
           </Value>
@@ -44,39 +44,39 @@ export function NetworkSection() {
       </Group>
 
       <Group title="enp1s0">
-        <Row label="Configurar IPv4">
+        <Row label={t("Configurar IPv4")}>
           <Segmented
-            label="Configurar IPv4"
+            label={t("Configurar IPv4")}
             value={mode}
             onChange={setMode}
             options={[
-              { value: "dhcp", label: "Automático (DHCP)" },
-              { value: "static", label: "Manual" },
+              { value: "dhcp", label: t("Automático (DHCP)") },
+              { value: "static", label: t("Manual") },
             ]}
           />
         </Row>
-        <Row label="Dirección IP">
-          <TextInput defaultValue={info?.ip ?? ""} disabled={mode === "dhcp"} style={{ width: 160 }} aria-label="Dirección IP" />
+        <Row label={t("Dirección IP")}>
+          <TextInput defaultValue={info?.ip ?? ""} disabled={mode === "dhcp"} style={{ width: 160 }} aria-label={t("Dirección IP")} />
         </Row>
-        <Row label="Máscara de subred">
-          <TextInput defaultValue="255.255.255.0" disabled={mode === "dhcp"} style={{ width: 160 }} aria-label="Máscara" />
+        <Row label={t("Máscara de subred")}>
+          <TextInput defaultValue="255.255.255.0" disabled={mode === "dhcp"} style={{ width: 160 }} aria-label={t("Máscara")} />
         </Row>
-        <Row label="Puerta de enlace">
-          <TextInput defaultValue="192.168.1.1" disabled={mode === "dhcp"} style={{ width: 160 }} aria-label="Puerta de enlace" />
+        <Row label={t("Puerta de enlace")}>
+          <TextInput defaultValue="192.168.1.1" disabled={mode === "dhcp"} style={{ width: 160 }} aria-label={t("Puerta de enlace")} />
         </Row>
         <Row label="DNS">
           <TextInput defaultValue="192.168.1.1, 1.1.1.1" disabled={mode === "dhcp"} style={{ width: 160 }} aria-label="DNS" />
         </Row>
       </Group>
 
-      <Group title="Nombre en la red">
-        <Row label="Nombre del NAS" hint={`Se anuncia como ${host || "tango"}.local en macOS, Windows y Linux`}>
-          <TextInput value={host} onChange={(e) => setHost(e.target.value.replace(/[^a-z0-9-]/gi, "").toLowerCase())} style={{ width: 160 }} aria-label="Nombre del NAS" />
+      <Group title={t("Nombre en la red")}>
+        <Row label={t("Nombre del NAS")} hint={t("Se anuncia como {host}.local en macOS, Windows y Linux", { host: host || "tango" })}>
+          <TextInput value={host} onChange={(e) => setHost(e.target.value.replace(/[^a-z0-9-]/gi, "").toLowerCase())} style={{ width: 160 }} aria-label={t("Nombre del NAS")} />
         </Row>
       </Group>
       <div className="tset-actions">
-        <Button variant="primary" onClick={() => demoApply("La configuración de red")}>
-          Aplicar
+        <Button variant="primary" onClick={() => demoApply(t("La configuración de red"))}>
+          {t("Aplicar")}
         </Button>
       </div>
     </>

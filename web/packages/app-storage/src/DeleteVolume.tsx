@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock, FolderOpen, HardDrive, RotateCcw, Trash2, XOctagon } from "lucide-react";
-import { RpcError, fmtBytes, useJobs, useTransport } from "@tango/client";
+import { RpcError, fmtBytes, t, tr, useJobs, useTransport } from "@tango/client";
 import type { DeletePlan, Disk, Volume } from "@tango/client";
 import { Button, Progress, Sheet, TextInput } from "@tango/ui";
 import { toast } from "@tango/shell";
 
 const errorText: Record<string, string> = {
-  PLAN_EXPIRED: "El plan venció. Lo volvemos a armar con el estado actual del volumen.",
-  CONFIRMATION_MISMATCH: "La confirmación no coincide. Escribí el nombre exacto del volumen.",
-  VOLUME_BUSY: "El volumen está ocupado (verificando o construyéndose). Esperá a que termine y volvé a intentar.",
-  VOLUME_NOT_FOUND: "El volumen ya no existe.",
-  DEVICE_CHANGED: "Un disco del volumen cambió. Volvé a revisar el plan.",
+  PLAN_EXPIRED: t("El plan venció. Lo volvemos a armar con el estado actual del volumen."),
+  CONFIRMATION_MISMATCH: t("La confirmación no coincide. Escribí el nombre exacto del volumen."),
+  VOLUME_BUSY: t("El volumen está ocupado (verificando o construyéndose). Esperá a que termine y volvé a intentar."),
+  VOLUME_NOT_FOUND: t("El volumen ya no existe."),
+  DEVICE_CHANGED: t("Un disco del volumen cambió. Volvé a revisar el plan."),
 };
 
 /** Eliminar un volumen: plan del servidor → escribir el nombre → job. Nunca hay un "borrar" de un clic. */
 export function DeleteVolume({ vol, disks, onClose }: { vol: Volume | null; disks: Disk[]; onClose: () => void }) {
-  const t = useTransport();
+  const rpc = useTransport();
   const jobs = useJobs();
   const [plan, setPlan] = useState<DeletePlan | null>(null);
   const [typed, setTyped] = useState("");
@@ -31,12 +31,12 @@ export function DeleteVolume({ vol, disks, onClose }: { vol: Volume | null; disk
     setTyped("");
     setError(null);
     try {
-      setPlan(await t.call("storage.volumes.deletePlan", { volume: vol.id }));
+      setPlan(await rpc.call("storage.volumes.deletePlan", { volume: vol.id }));
     } catch (e) {
       const code = e instanceof RpcError ? e.code : "INTERNAL";
       setError({ code, text: errorText[code] ?? (e as Error).message });
     }
-  }, [t, vol]);
+  }, [rpc, vol]);
 
   useEffect(() => {
     setJobId(null);
@@ -67,7 +67,7 @@ export function DeleteVolume({ vol, disks, onClose }: { vol: Volume | null; disk
     setBusy(true);
     setError(null);
     try {
-      const r = await t.call("storage.volumes.delete", { plan_id: plan.plan_id, confirm_token: plan.confirm_token, typed_name: typed });
+      const r = await rpc.call("storage.volumes.delete", { plan_id: plan.plan_id, confirm_token: plan.confirm_token, typed_name: typed });
       setJobId(r.job);
     } catch (e) {
       const code = e instanceof RpcError ? e.code : "INTERNAL";
@@ -79,7 +79,7 @@ export function DeleteVolume({ vol, disks, onClose }: { vol: Volume | null; disk
   };
 
   const close = () => {
-    if (jobId && !done && !failed) toast({ level: "info", title: `${vol?.name} se sigue eliminando`, body: "Podés ver el progreso en Actividad, en la barra de menús." });
+    if (jobId && !done && !failed) toast({ level: "info", title: t("{name} se sigue eliminando", { name: String(vol?.name) }), body: t("Podés ver el progreso en Actividad, en la barra de menús.") });
     onClose();
   };
 
@@ -87,20 +87,20 @@ export function DeleteVolume({ vol, disks, onClose }: { vol: Volume | null; disk
 
   if (jobId) {
     return (
-      <Sheet open onClose={close} width={500} footer={<Button variant="primary" onClick={close}>{done || failed ? "Cerrar" : "Seguir en segundo plano"}</Button>}>
+      <Sheet open onClose={close} width={500} footer={<Button variant="primary" onClick={close}>{done || failed ? t("Cerrar") : t("Seguir en segundo plano")}</Button>}>
         <div className="ts-wiz-done">
           {done ? <CheckCircle2 size={44} className="ts-ok-icon" /> : failed ? <XOctagon size={44} className="ts-crit-icon" /> : <Trash2 size={40} className="ts-muted-icon" />}
-          <h2 className="tg-h2">{done ? `${vol.name} se eliminó` : failed ? `No se pudo eliminar ${vol.name}` : `Eliminando ${vol.name}…`}</h2>
+          <h2 className="tg-h2">{done ? t("{name} se eliminó", { name: vol.name }) : failed ? t("No se pudo eliminar {name}", { name: vol.name }) : t("Eliminando {name}…", { name: vol.name })}</h2>
           <p className="tg-muted">
             {done
               ? vol.kind === "pool"
-                ? "Su espacio volvió al grupo de almacenamiento."
-                : "Los discos quedaron libres para un volumen nuevo."
+                ? t("Su espacio volvió al grupo de almacenamiento.")
+                : t("Los discos quedaron libres para un volumen nuevo.")
               : failed
-                ? `${job?.detail ?? ""} El volumen puede haber quedado parcialmente desarmado: revisalo en Discos.`
+                ? `${tr(job?.detail)} ${t("El volumen puede haber quedado parcialmente desarmado: revisalo en Discos.")}`
                 : vol.kind === "pool"
-                  ? "Se desmonta, se quitan sus carpetas compartidas y se borra el volumen lógico. Los discos siguen en el grupo."
-                  : "Se desmonta, se quitan sus carpetas compartidas, se detiene el array y se limpian los discos."}
+                  ? t("Se desmonta, se quitan sus carpetas compartidas y se borra el volumen lógico. Los discos siguen en el grupo.")
+                  : t("Se desmonta, se quitan sus carpetas compartidas, se detiene el array y se limpian los discos.")}
           </p>
           {!done && !failed && (
             <div className="ts-wiz-progress">
@@ -125,42 +125,42 @@ export function DeleteVolume({ vol, disks, onClose }: { vol: Volume | null; disk
               <AlertTriangle size={14} /> {error.text}
               {(error.code === "PLAN_EXPIRED" || error.code === "DEVICE_CHANGED") && (
                 <Button variant="plain" onClick={makePlan}>
-                  <RotateCcw size={12} /> Volver a revisar
+                  <RotateCcw size={12} /> {t("Volver a revisar")}
                 </Button>
               )}
             </span>
           )}
-          <Button onClick={close}>Cancelar</Button>
+          <Button onClick={close}>{t("Cancelar")}</Button>
           <Button variant="danger" disabled={!plan || typed !== plan.summary.name || busy} onClick={remove}>
-            Eliminar volumen y borrar sus datos
+            {t("Eliminar volumen y borrar sus datos")}
           </Button>
         </>
       }
     >
       <div className="ts-wiz-head">
-        <h2 className="tg-h2">Eliminar {vol.name}</h2>
+        <h2 className="tg-h2">{t("Eliminar {name}", { name: vol.name })}</h2>
       </div>
       <div className="ts-danger">
         <AlertTriangle size={18} />
         <div>
-          <strong>Se pierde todo lo que hay en este volumen</strong>
-          <p>No hay papelera ni instantáneas que lo recuperen: las instantáneas viven dentro del volumen y se borran con él.</p>
+          <strong>{t("Se pierde todo lo que hay en este volumen")}</strong>
+          <p>{t("No hay papelera ni instantáneas que lo recuperen: las instantáneas viven dentro del volumen y se borran con él.")}</p>
         </div>
       </div>
-      {!plan && !error && <p className="tg-muted ts-wiz-lead">Revisando qué contiene el volumen…</p>}
+      {!plan && !error && <p className="tg-muted ts-wiz-lead">{t("Revisando qué contiene el volumen…")}</p>}
       {plan && (
         <>
           <div className="ts-loss">
             <div>
-              <small>Datos</small>
+              <small>{t("Datos")}</small>
               <strong className="tg-num">{fmtBytes(plan.summary.used)}</strong>
             </div>
             <div>
-              <small>Carpetas compartidas</small>
+              <small>{t("Carpetas compartidas")}</small>
               <strong className="tg-num">{plan.summary.shares.length}</strong>
             </div>
             <div>
-              <small>Instantáneas</small>
+              <small>{t("Instantáneas")}</small>
               <strong className="tg-num">{plan.summary.snapshots}</strong>
             </div>
           </div>
@@ -181,10 +181,10 @@ export function DeleteVolume({ vol, disks, onClose }: { vol: Volume | null; disk
                   <HardDrive size={18} strokeWidth={1.6} />
                   <div>
                     <strong>
-                      {local?.bay ? `Bahía ${local.bay}` : "Disco"} · {d.model}
+                      {local?.bay ? t("Bahía {n}", { n: local.bay }) : t("Disco")} · {d.model}
                     </strong>
                     <small>
-                      Serie {d.serial} · queda libre y vacío
+                      {t("Serie {serial} · queda libre y vacío", { serial: d.serial })}
                     </small>
                   </div>
                 </div>
@@ -195,15 +195,15 @@ export function DeleteVolume({ vol, disks, onClose }: { vol: Volume | null; disk
             <span />
             {left !== null && (
               <span className="ts-plan-exp" data-soon={left < 60 || undefined}>
-                <Clock size={12} /> Este plan vence en {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
+                <Clock size={12} /> {t("Este plan vence en {time}", { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` })}
               </span>
             )}
           </div>
           <label className="ts-field">
             <span>
-              Para confirmar, escribí <code>{plan.summary.name}</code>
+              {t("Para confirmar, escribí")} <code>{plan.summary.name}</code>
             </span>
-            <TextInput value={typed} onChange={(e) => setTyped(e.target.value)} aria-label={`Escribí ${plan.summary.name} para confirmar`} autoComplete="off" />
+            <TextInput value={typed} onChange={(e) => setTyped(e.target.value)} aria-label={t("Escribí {name} para confirmar", { name: plan.summary.name })} autoComplete="off" />
           </label>
         </>
       )}

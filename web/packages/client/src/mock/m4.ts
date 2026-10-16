@@ -5,6 +5,7 @@ import type { Job, Method, Notice, Params, Result, Scenario, Share, Topic, Topic
 import type { AuditEvent, CertInfo, IscsiTarget, LogLine, NfsClient, NotifyChannels, RollbackPoint, ServiceInfo, UpdatesInfo } from "../protocol-m4";
 import { passwordStrength, validHostname } from "../protocol-m4";
 import * as data from "./data";
+import { t } from "../i18n";
 
 export interface MockM4Ctx {
   scenario: () => Scenario;
@@ -44,15 +45,15 @@ export function m4Handlers(ctx: MockM4Ctx): { [M in Method]?: (p: Params<M>) => 
       { name: "ca-certificates", from: "20250419", to: "20250419+deb13u1", security: false },
     ],
     rollback: [
-      { id: "rootfs-2026-10-01T03:12", at: iso(13 * D), label: "Antes de actualizar a 0.1.0-dev" },
-      { id: "rootfs-2026-09-20T03:05", at: iso(24 * D), label: "Antes de 9 parches de seguridad de Debian" },
+      { id: "rootfs-2026-10-01T03:12", at: iso(13 * D), label: t("Antes de actualizar a {version}", { version: "0.1.0-dev" }) },
+      { id: "rootfs-2026-09-20T03:05", at: iso(24 * D), label: t("Antes de {n} parches de seguridad de Debian", { n: 9 }) },
     ] as RollbackPoint[],
     cert: { mode: "selfsigned", subject: "CN=tango.local", sans: ["tango", "tango.local", "192.168.1.50"], notAfter: new Date(Date.now() + 360 * D).toISOString(), fingerprint: "SHA-256 1D:CD:71:53:F3:4F:A3:43:2A:6C:3F:D4:59:8F:4F:F7:CD:0E:58:E7:DE:7F:17:23:2D:EE:0A:6B:DC:A7:59:12" } as CertInfo,
     services: [
-      { id: "smb", enabled: true, running: true, port: 445, detail: "SMB 3.1.1 · Time Machine activado" },
+      { id: "smb", enabled: true, running: true, port: 445, detail: t("SMB 3.1.1 · Time Machine activado") },
       { id: "nfs", enabled: false, running: false, port: 2049, detail: "NFS v4.2" },
-      { id: "sftp", enabled: true, running: true, port: 22, detail: "Solo SFTP, cada usuario en sus carpetas" },
-      { id: "webdav", enabled: false, running: false, port: 5006, detail: "WebDAV sobre HTTPS" },
+      { id: "sftp", enabled: true, running: true, port: 22, detail: t("Solo SFTP, cada usuario en sus carpetas") },
+      { id: "webdav", enabled: false, running: false, port: 5006, detail: t("WebDAV sobre HTTPS") },
       { id: "iscsi", enabled: false, running: false, port: 3260, detail: "LIO (targetcli)" },
     ] as ServiceInfo[],
     nfs: new Map<string, NfsClient[]>([["media", [{ host: "192.168.1.0/24", access: "ro" }]]]),
@@ -111,7 +112,7 @@ export function m4Handlers(ctx: MockM4Ctx): { [M in Method]?: (p: Params<M>) => 
   }
 
   const typed = (got: string, want: string) => {
-    if (got !== want) throw new RpcError("CONFIRMATION_MISMATCH", `Escribí ${want} para confirmar`);
+    if (got !== want) throw new RpcError("CONFIRMATION_MISMATCH", t("Escribí {word} para confirmar", { word: want }));
   };
 
   return {
@@ -134,21 +135,21 @@ export function m4Handlers(ctx: MockM4Ctx): { [M in Method]?: (p: Params<M>) => 
     "system.updates.apply": ({ scope }) => {
       const pkgs = scope === "security" ? st.debian.filter((d) => d.security) : st.debian;
       const lines = [
-        "Creando instantánea del sistema (@rootfs)…",
-        "Instantánea rootfs-" + new Date().toISOString().slice(0, 16) + " lista",
-        "Descargando paquetes…",
-        ...pkgs.map((p) => `Desempaquetando ${p.name} (${p.to})…`),
-        ...(scope === "all" && st.tangoos.available ? [`Desempaquetando tangoos (${st.tangoos.available})…`] : []),
-        "Configurando paquetes…",
-        "Reiniciando servicios (tangod sigue disponible)…",
-        "Listo",
+        t("Creando instantánea del sistema (@rootfs)…"),
+        t("Instantánea {name} lista", { name: "rootfs-" + new Date().toISOString().slice(0, 16) }),
+        t("Descargando paquetes…"),
+        ...pkgs.map((p) => t("Desempaquetando {name} ({version})…", { name: p.name, version: p.to })),
+        ...(scope === "all" && st.tangoos.available ? [t("Desempaquetando {name} ({version})…", { name: "tangoos", version: st.tangoos.available })] : []),
+        t("Configurando paquetes…"),
+        t("Reiniciando servicios (tangod sigue disponible)…"),
+        t("Listo"),
       ];
       const j = withLog(
-        ctx.startJob("system.updates.apply", scope === "security" ? "Instalando parches de seguridad" : "Actualizando el sistema", lines[0], 0, 0.035, undefined, () => {
-          st.rollback.unshift({ id: `rootfs-${new Date().toISOString().slice(0, 16)}`, at: new Date().toISOString(), label: scope === "security" ? `Antes de ${pkgs.length} parches de seguridad` : "Antes de actualizar el sistema" });
+        ctx.startJob("system.updates.apply", scope === "security" ? t("Instalando parches de seguridad") : t("Actualizando el sistema"), lines[0], 0, 0.035, undefined, () => {
+          st.rollback.unshift({ id: `rootfs-${new Date().toISOString().slice(0, 16)}`, at: new Date().toISOString(), label: scope === "security" ? t("Antes de {n} parches de seguridad", { n: pkgs.length }) : t("Antes de actualizar el sistema") });
           st.debian = st.debian.filter((d) => !pkgs.includes(d));
           if (scope === "all" && st.tangoos.available) st.tangoos = { current: st.tangoos.available, available: null };
-          ctx.notify("ok", "tango.settings", "Sistema actualizado", `${pkgs.length} paquetes. Si algo falla, podés volver al estado anterior.`);
+          ctx.notify("ok", "tango.settings", t("Sistema actualizado"), t("{n} paquetes. Si algo falla, podés volver al estado anterior.", { n: pkgs.length }));
         }),
         lines,
       );
@@ -156,32 +157,32 @@ export function m4Handlers(ctx: MockM4Ctx): { [M in Method]?: (p: Params<M>) => 
       return { job: j.id };
     },
     "system.rollback.list": () => st.rollback,
-    "system.rollback.apply": ({ id, typed: t }) => {
-      typed(t, "VOLVER");
+    "system.rollback.apply": ({ id, typed: word }) => {
+      typed(word, "VOLVER");
       const p = st.rollback.find((r) => r.id === id);
       if (!p) throw new RpcError("NOT_FOUND", "Ese punto ya no existe");
-      const j = withLog(ctx.startJob("system.rollback", "Volviendo a una versión anterior", "Marcando la instantánea como sistema por defecto…", 0, 0.08, undefined, () => {
-        ctx.notify("info", "tango.settings", "Listo para volver atrás", "Demo: en un NAS real se reinicia con el sistema anterior.");
-      }), ["Marcando la instantánea como sistema por defecto…", "Actualizando el menú de arranque…", "Reinicio programado"]);
+      const j = withLog(ctx.startJob("system.rollback", t("Volviendo a una versión anterior"), t("Marcando la instantánea como sistema por defecto…"), 0, 0.08, undefined, () => {
+        ctx.notify("info", "tango.settings", t("Listo para volver atrás"), t("Demo: en un NAS real se reinicia con el sistema anterior."));
+      }), [t("Marcando la instantánea como sistema por defecto…"), t("Actualizando el menú de arranque…"), t("Reinicio programado")]);
       audit("system.rollback.apply", id);
       return { job: j.id };
     },
-    "system.reboot": ({ typed: t }) => {
-      typed(t, "REINICIAR");
+    "system.reboot": ({ typed: word }) => {
+      typed(word, "REINICIAR");
       audit("system.reboot", st.hostname);
       return {};
     },
-    "system.shutdown": ({ typed: t }) => {
-      typed(t, "APAGAR");
+    "system.shutdown": ({ typed: word }) => {
+      typed(word, "APAGAR");
       audit("system.shutdown", st.hostname);
       return {};
     },
     "cert.info": () => st.cert,
     "cert.localca": () => {
-      const j = withLog(ctx.startJob("cert.localca", "Creando la CA local", "Generando la autoridad certificante…", 0, 0.12, undefined, () => {
+      const j = withLog(ctx.startJob("cert.localca", t("Creando la CA local"), t("Generando la autoridad certificante…"), 0, 0.12, undefined, () => {
         st.cert = { ...st.cert, mode: "localca", fingerprint: "SHA-256 7A:02:9C:" + Math.random().toString(16).slice(2, 10).toUpperCase().replace(/(..)/g, "$1:") + "…" };
-        ctx.notify("ok", "tango.settings", "Certificado listo", "Instalá el certificado raíz en tus equipos para no ver más advertencias.");
-      }), ["Generando la autoridad certificante…", "Firmando el certificado del NAS…", "Recargando HTTPS sin cortar sesiones…", "Listo"]);
+        ctx.notify("ok", "tango.settings", t("Certificado listo"), t("Instalá el certificado raíz en tus equipos para no ver más advertencias."));
+      }), [t("Generando la autoridad certificante…"), t("Firmando el certificado del NAS…"), t("Recargando HTTPS sin cortar sesiones…"), t("Listo")]);
       audit("cert.localca", st.hostname);
       return { job: j.id };
     },
@@ -193,7 +194,7 @@ export function m4Handlers(ctx: MockM4Ctx): { [M in Method]?: (p: Params<M>) => 
     "services.set": ({ id, enabled }) => {
       const s = st.services.find((x) => x.id === id);
       if (!s) throw new RpcError("NOT_FOUND", "Servicio desconocido");
-      const j = ctx.startJob("services.set", `${enabled ? "Activando" : "Desactivando"} ${id.toUpperCase()}`, enabled ? "Generando configuración y arrancando" : "Deteniendo", 0, 0.34, undefined, () => {
+      const j = ctx.startJob("services.set", enabled ? t("Activando {name}", { name: id.toUpperCase() }) : t("Desactivando {name}", { name: id.toUpperCase() }), enabled ? t("Generando configuración y arrancando") : t("Deteniendo"), 0, 0.34, undefined, () => {
         s.enabled = enabled;
         s.running = enabled;
         ctx.emit("services.changed", { id });
@@ -203,7 +204,7 @@ export function m4Handlers(ctx: MockM4Ctx): { [M in Method]?: (p: Params<M>) => 
     },
     "nfs.exports.get": ({ share }) => ({ clients: st.nfs.get(share) ?? [] }),
     "nfs.exports.set": ({ share, clients }) => {
-      for (const c of clients) if (!/^[\w.*:/-]+$/.test(c.host)) throw new RpcError("INVALID_PARAMS", `«${c.host}» no es un host, IP o red válida`);
+      for (const c of clients) if (!/^[\w.*:/-]+$/.test(c.host)) throw new RpcError("INVALID_PARAMS", t("«{host}» no es un host, IP o red válida", { host: c.host }));
       st.nfs.set(share, clients.map((c) => ({ ...c })));
       audit("nfs.exports.set", share);
       return {};
@@ -214,31 +215,31 @@ export function m4Handlers(ctx: MockM4Ctx): { [M in Method]?: (p: Params<M>) => 
       if (st.iscsi.some((t) => t.name === name)) throw new RpcError("TARGET_EXISTS", "Ya existe un destino con ese nombre");
       if (chap && (chap.secret.length < 12 || chap.secret.length > 16)) throw new RpcError("INVALID_PARAMS", "El secreto CHAP debe tener entre 12 y 16 caracteres");
       let target: IscsiTarget;
-      let detail = "LUN sobre archivo en Btrfs (nodatacow)";
+      let detail = t("LUN sobre archivo en Btrfs (nodatacow)");
       if (pool) {
         if (sizeBytes < 64 * 1024 ** 2) throw new RpcError("INVALID_PARAMS", "El tamaño debe estar entre 64 MB y 64 TB");
         target = { name, iqn: `iqn.2026-10.local.${st.hostname}:${name}`, volume: pool, sizeBytes, chap: !!chap, sessions: 0, lv: `/dev/${pool.replace(/^pool_/, "")}/il_${name}`, thin: !!thin };
-        detail = `LUN en un volumen lógico${thin ? " thin" : ""} del grupo`;
+        detail = thin ? t("LUN en un volumen lógico thin del grupo") : t("LUN en un volumen lógico del grupo");
       } else if (zvol) {
         target = { name, iqn: `iqn.2026-10.local.${st.hostname}:${name}`, volume: "zfs:tanque", sizeBytes, chap: !!chap, sessions: 0, zvol };
-        detail = "LUN sobre un volumen de bloque ZFS";
+        detail = t("LUN sobre un volumen de bloque ZFS");
       } else {
         const v = ctx.vols().find((x) => x.id === volume);
         if (!v) throw new RpcError("VOLUME_NOT_FOUND", "No existe el volumen");
         if (sizeBytes <= 0 || sizeBytes > v.size - v.used) throw new RpcError("NO_SPACE", "No hay espacio suficiente en el volumen");
         target = { name, iqn: `iqn.2026-10.local.${st.hostname}:${name}`, volume: v.id, sizeBytes, chap: !!chap, sessions: 0 };
       }
-      const j = ctx.startJob("iscsi.targets.create", `Creando destino ${name}`, detail, 0, 0.2, undefined, () => {
+      const j = ctx.startJob("iscsi.targets.create", t("Creando destino {name}", { name }), detail, 0, 0.2, undefined, () => {
         st.iscsi.push(target);
         ctx.emit("services.changed", { id: "iscsi" });
       });
       audit("iscsi.targets.create", name);
       return { job: j.id };
     },
-    "iscsi.targets.delete": ({ name, typed: t }) => {
-      typed(t, name);
+    "iscsi.targets.delete": ({ name, typed: word }) => {
+      typed(word, name);
       if (!st.iscsi.some((x) => x.name === name)) throw new RpcError("NOT_FOUND", "No existe ese destino");
-      const j = ctx.startJob("iscsi.targets.delete", `Eliminando destino ${name}`, "Desconectando sesiones y borrando el LUN", 0, 0.3, undefined, () => {
+      const j = ctx.startJob("iscsi.targets.delete", t("Eliminando destino {name}", { name }), t("Desconectando sesiones y borrando el LUN"), 0, 0.3, undefined, () => {
         st.iscsi = st.iscsi.filter((x) => x.name !== name);
         ctx.emit("services.changed", { id: "iscsi" });
       });
@@ -256,7 +257,7 @@ export function m4Handlers(ctx: MockM4Ctx): { [M in Method]?: (p: Params<M>) => 
     },
     "notify.test": ({ channel }) => {
       if (!st.notify[channel].enabled) throw new RpcError("CHANNEL_DISABLED", "Activá el canal antes de probarlo");
-      ctx.notify("info", "tango.settings", "Notificación de prueba", `Demo: se habría enviado por ${channel === "email" ? "correo" : channel === "ntfy" ? "ntfy" : "Telegram"}.`);
+      ctx.notify("info", "tango.settings", t("Notificación de prueba"), t("Demo: se habría enviado por {channel}.", { channel: channel === "email" ? t("correo") : channel === "ntfy" ? "ntfy" : "Telegram" }));
       return {};
     },
     "audit.list": ({ q, limit }) => {
@@ -270,6 +271,6 @@ export function m4Handlers(ctx: MockM4Ctx): { [M in Method]?: (p: Params<M>) => 
     "term.open": () => ({ id: 1 }),
     "term.resize": () => ({}),
     "term.close": () => ({}),
-    "apps.ticket": ({ id }) => ({ url: `data:text/html;charset=utf-8,${encodeURIComponent(`<h1 style="font-family:system-ui">${id}</h1><p>Demo: el NAS real devuelve una URL de un solo uso que abre la app con tu sesión.</p>`)}` }),
+    "apps.ticket": ({ id }) => ({ url: `data:text/html;charset=utf-8,${encodeURIComponent(`<h1 style="font-family:system-ui">${id}</h1><p>${t("Demo: el NAS real devuelve una URL de un solo uso que abre la app con tu sesión.")}</p>`)}` }),
   };
 }

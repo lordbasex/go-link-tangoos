@@ -1,5 +1,6 @@
 // Replicación de volúmenes ZFS (protocol/README.md §18.1, ADR 0016).
 import type { Bytes } from "./protocol";
+import { t } from "./i18n";
 
 export interface ReplRun {
   at: string;
@@ -85,11 +86,12 @@ declare module "./protocol" {
   }
 }
 
+// Las etiquetas son getters: se traducen al leerlas.
 export const REPL_EVERY: { hours: number; label: string }[] = [
-  { hours: 1, label: "Cada hora" },
-  { hours: 6, label: "Cada 6 horas" },
-  { hours: 12, label: "Cada 12 horas" },
-  { hours: 24, label: "Una vez por día" },
-  { hours: 168, label: "Una vez por semana" },
-  { hours: 0, label: "Solo a mano" },
+  { hours: 1, get label() { return t("Cada hora"); } },
+  { hours: 6, get label() { return t("Cada {n} horas", { n: 6 }); } },
+  { hours: 12, get label() { return t("Cada {n} horas", { n: 12 }); } },
+  { hours: 24, get label() { return t("Una vez por día"); } },
+  { hours: 168, get label() { return t("Una vez por semana"); } },
+  { hours: 0, get label() { return t("Solo a mano"); } },
 ];

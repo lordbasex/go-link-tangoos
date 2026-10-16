@@ -2,7 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, Boxes, CheckCircle2, Clock3, Cpu, Database, Fan, HardDrive, Loader2, Lock, MemoryStick, Network, RefreshCw, Server, Thermometer, Timer, Users, XOctagon, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { clusterVolumeTone, fmtBytes, fmtDuration, fmtRate, useJobs, useLive, useMetrics, fmtCpuTemp, fmtRpm } from "@tango/client";
+import { clusterVolumeTone, fmtBytes, fmtDuration, fmtRate, locale, t, tn, tr, useJobs, useLive, useMetrics, fmtCpuTemp, fmtRpm } from "@tango/client";
 import type { Disk, MetricsFrame, Volume } from "@tango/client";
 import { AreaChart, Ring } from "@tango/ui";
 
@@ -21,8 +21,8 @@ export interface WidgetDef {
   Component: ComponentType;
 }
 
-const MONITOR = { id: "tango.monitor", name: "Monitor" };
-const STORAGE = { id: "tango.storage", name: "Almacenamiento" };
+const MONITOR = { id: "tango.monitor", name: t("Monitor") };
+const STORAGE = { id: "tango.storage", name: t("Almacenamiento") };
 
 // ---- Piezas comunes ---------------------------------------------------------------
 
@@ -36,8 +36,8 @@ function Head({ icon: Icon, children, right }: { icon: LucideIcon; children: Rea
   );
 }
 
-const nf1 = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
-const nf0 = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat(locale(), { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+const nf0 = new Intl.NumberFormat(locale(), { maximumFractionDigits: 0 });
 /** La RAM se cuenta en GiB, como la muestran todos los sistemas operativos. */
 const gib = (b: number) => nf1.format(b / 2 ** 30);
 
@@ -101,7 +101,7 @@ function CpuWidget() {
             <small>%</small>
           </span>
         </Ring>
-        <div className="tw-cores" aria-label="Carga por núcleo">
+        <div className="tw-cores" aria-label={t("Carga por núcleo")}>
           {(m?.perCore ?? [0, 0, 0, 0]).map((c, i) => (
             <div key={i} className="tw-core">
               {i + 1}
@@ -128,7 +128,7 @@ function MemoryWidget() {
   const cache = m?.memCache ?? 0;
   return (
     <>
-      <Head icon={MemoryStick}>Memoria</Head>
+      <Head icon={MemoryStick}>{t("Memoria")}</Head>
       <div className="tw-mem">
         <Donut
           size={56}
@@ -142,17 +142,17 @@ function MemoryWidget() {
           <div className="tw-big" style={{ fontSize: 26 }}>
             {gib(used)}
           </div>
-          <div className="tw-sub">de {nf0.format(total / 2 ** 30)} GB</div>
+          <div className="tw-sub">{t("de {n} GB", { n: nf0.format(total / 2 ** 30) })}</div>
         </div>
       </div>
       <div className="tw-legend">
         <div className="tw-legend-row">
           <span className="tw-dot" style={{ background: "var(--tg-accent)" }} />
-          En uso <b>{Math.round((used / total) * 100)} %</b>
+          {t("En uso")} <b>{Math.round((used / total) * 100)} %</b>
         </div>
         <div className="tw-legend-row">
           <span className="tw-dot" style={{ background: "rgb(var(--tg-accent-rgb) / 0.38)" }} />
-          Caché <b>{gib(cache)} GB</b>
+          {t("Caché")} <b>{gib(cache)} GB</b>
         </div>
       </div>
     </>
@@ -170,19 +170,19 @@ function NetworkWidget() {
   return (
     <>
       <Head icon={Network} right="eth0 · 1 GbE">
-        Red
+        {t("Red")}
       </Head>
       <div className="tw-net">
         <div className="tw-net-rates">
           <div>
             <div className="tw-rate-label" style={{ color: "var(--tg-accent)" }}>
-              <ArrowDown size={12} strokeWidth={2.8} /> Bajada
+              <ArrowDown size={12} strokeWidth={2.8} /> {t("Bajada")}
             </div>
             <div className="tw-mid">{fmtRate(m?.netRx ?? 0)}</div>
           </div>
           <div>
             <div className="tw-rate-label" style={{ color: UP }}>
-              <ArrowUp size={12} strokeWidth={2.8} /> Subida
+              <ArrowUp size={12} strokeWidth={2.8} /> {t("Subida")}
             </div>
             <div className="tw-mid">{fmtRate(m?.netTx ?? 0)}</div>
           </div>
@@ -190,8 +190,8 @@ function NetworkWidget() {
         <div className="tw-net-chart">
           <AreaChart values={rx} width={200} height={92} color="var(--tg-accent)" secondary={{ values: tx, color: UP }} strokeWidth={1.5} />
           <div className="tw-net-axis">
-            <span>hace 60 s</span>
-            <span>ahora</span>
+            <span>{t("hace 60 s")}</span>
+            <span>{t("ahora")}</span>
           </div>
         </div>
       </div>
@@ -204,17 +204,17 @@ function NetworkWidget() {
 function volumeStatus(v: Volume): { tone: "ok" | "warn" | "crit" | "info"; label: string; icon: LucideIcon } {
   switch (v.state) {
     case "degraded":
-      return { tone: "crit", label: "Sin redundancia", icon: XOctagon };
+      return { tone: "crit", label: t("Sin redundancia"), icon: XOctagon };
     case "scrubbing":
-      return { tone: "info", label: `Verificando ${Math.round((v.progress ?? 0) * 100)} %`, icon: Loader2 };
+      return { tone: "info", label: t("Verificando {pct} %", { pct: Math.round((v.progress ?? 0) * 100) }), icon: Loader2 };
     case "building":
-      return { tone: "info", label: `Construyendo ${Math.round((v.progress ?? 0) * 100)} %`, icon: Loader2 };
+      return { tone: "info", label: t("Construyendo {pct} %", { pct: Math.round((v.progress ?? 0) * 100) }), icon: Loader2 };
     case "readonly":
-      return { tone: "warn", label: "Solo lectura", icon: AlertTriangle };
+      return { tone: "warn", label: t("Solo lectura"), icon: AlertTriangle };
     case "locked":
-      return { tone: "warn", label: "Bloqueado (cifrado)", icon: Lock };
+      return { tone: "warn", label: t("Bloqueado (cifrado)"), icon: Lock };
     default:
-      return { tone: "ok", label: "En orden", icon: CheckCircle2 };
+      return { tone: "ok", label: t("En orden"), icon: CheckCircle2 };
   }
 }
 
@@ -225,7 +225,7 @@ function bayTone(d?: Disk): "ok" | "warn" | "crit" | "idle" | undefined {
   return d.use === "member" ? "ok" : "idle";
 }
 
-const profileName: Record<Volume["profile"], string> = { basic: "Básico", raid1: "RAID 1", raid5: "RAID 5", raid6: "RAID 6", raid10: "RAID 10", hybrid1: "Híbrido-1", hybrid2: "Híbrido-2", stripe: "ZFS", mirror: "Espejo ZFS", raidz1: "RAIDZ1", raidz2: "RAIDZ2", raidz3: "RAIDZ3", mixed: "ZFS" };
+const profileName: Record<Volume["profile"], string> = { basic: t("Básico"), raid1: "RAID 1", raid5: "RAID 5", raid6: "RAID 6", raid10: "RAID 10", hybrid1: t("Híbrido-1"), hybrid2: t("Híbrido-2"), stripe: "ZFS", mirror: t("Espejo ZFS"), raidz1: "RAIDZ1", raidz2: "RAIDZ2", raidz3: "RAIDZ3", mixed: "ZFS" };
 const fsName: Record<Volume["fs"], string> = { btrfs: "Btrfs", xfs: "XFS", ext4: "ext4", zfs: "ZFS" };
 
 function StorageWidget() {
@@ -236,11 +236,11 @@ function StorageWidget() {
   const bays = Array.from({ length: bayCount }, (_, i) => disks.find((d) => d.bay === i + 1));
   const compact = bayCount > 4; // con muchas bahías solo se muestran los LEDs
   const bayRow = (
-    <div className="tw-bays" aria-label="Bahías" data-compact={compact || undefined}>
+    <div className="tw-bays" aria-label={t("Bahías")} data-compact={compact || undefined}>
       {bays.map((d, i) => {
         const tone = bayTone(d);
         return (
-          <span key={i} className="tw-bay" title={d ? `Bahía ${i + 1} · ${d.model} · ${d.use === "failed" ? "falló" : d.use === "member" ? "en uso" : "libre"}` : "Bahía vacía"}>
+          <span key={i} className="tw-bay" title={d ? t("Bahía {n} · {model} · {state}", { n: i + 1, model: d.model, state: d.use === "failed" ? t("falló") : d.use === "member" ? t("en uso") : t("libre") }) : t("Bahía vacía")}>
             <span className="tw-led" data-tone={tone} />
             {!compact && i + 1}
           </span>
@@ -249,20 +249,20 @@ function StorageWidget() {
     </div>
   );
 
-  if (!vols) return <Head icon={HardDrive}>Almacenamiento</Head>;
+  if (!vols) return <Head icon={HardDrive}>{t("Almacenamiento")}</Head>;
 
   if (!v) {
     const foreign = disks.some((d) => d.foreign);
     return (
       <>
-        <Head icon={HardDrive}>Almacenamiento</Head>
+        <Head icon={HardDrive}>{t("Almacenamiento")}</Head>
         <div className="tw-vol">
           <Donut size={86} stroke={9} segments={[]}>
             <HardDrive size={22} strokeWidth={1.7} style={{ color: "var(--tg-widget-text-2)" }} />
           </Donut>
           <div className="tw-vol-info">
-            <strong style={{ fontSize: 15, fontWeight: 650 }}>{foreign ? "Discos de otro NAS" : "Sin volúmenes"}</strong>
-            <span className="tw-sub">{foreign ? "Podés montarlos en solo lectura y revisar tus datos." : `${disks.filter((d) => d.use === "free").length} discos listos para crear el primero.`}</span>
+            <strong style={{ fontSize: 15, fontWeight: 650 }}>{foreign ? t("Discos de otro NAS") : t("Sin volúmenes")}</strong>
+            <span className="tw-sub">{foreign ? t("Podés montarlos en solo lectura y revisar tus datos.") : tn(disks.filter((d) => d.use === "free").length, "{n} disco listo para crear el primero.", "{n} discos listos para crear el primero.")}</span>
             {bayRow}
           </div>
         </div>
@@ -276,8 +276,8 @@ function StorageWidget() {
   const busy = v.state === "scrubbing" || v.state === "building";
   return (
     <>
-      <Head icon={HardDrive} right={`${vols.length} ${vols.length === 1 ? "volumen" : "volúmenes"}`}>
-        Almacenamiento
+      <Head icon={HardDrive} right={tn(vols.length, "{n} volumen", "{n} volúmenes")}>
+        {t("Almacenamiento")}
       </Head>
       <div className="tw-vol">
         <Donut size={86} stroke={9} segments={[{ value: pct, color: v.state === "degraded" ? "var(--tg-crit)" : "var(--tg-accent)" }]}>
@@ -287,7 +287,7 @@ function StorageWidget() {
               <small>%</small>
             </div>
             <div className="tw-sub" style={{ fontSize: 10 }}>
-              usado
+              {t("usado")}
             </div>
           </div>
         </Donut>
@@ -308,12 +308,12 @@ function StorageWidget() {
             </div>
           ) : (
             <span className="tw-sub">
-              {fmtBytes(v.size - v.used)} libres de {fmtBytes(v.size)}
+              {t("{free} libres de {size}", { free: fmtBytes(v.size - v.used), size: fmtBytes(v.size) })}
             </span>
           )}
           {cached && (
-            <span className="tw-sub tw-cache" title="Caché SSD: lecturas servidas desde la SSD sobre el total">
-              <Zap size={11} strokeWidth={2.4} /> Caché SSD{cached.cache?.hitRatio != null ? ` · ${Math.round(cached.cache.hitRatio * 100)} % aciertos` : ""}
+            <span className="tw-sub tw-cache" title={t("Caché SSD: lecturas servidas desde la SSD sobre el total")}>
+              <Zap size={11} strokeWidth={2.4} /> {t("Caché SSD")}{cached.cache?.hitRatio != null ? ` · ${t("{pct} % aciertos", { pct: Math.round(cached.cache.hitRatio * 100) })}` : ""}
             </span>
           )}
           {bayRow}
@@ -331,14 +331,14 @@ function ActivityWidget() {
   const running = jobs.filter((j) => j.state === "running").length;
   return (
     <>
-      <Head icon={Activity} right={running ? `${running} en curso` : undefined}>
-        Actividad
+      <Head icon={Activity} right={running ? t("{n} en curso", { n: running }) : undefined}>
+        {t("Actividad")}
       </Head>
       {list.length === 0 ? (
         <div className="tw-calm">
           <CheckCircle2 size={26} strokeWidth={2} />
-          <strong>Todo tranquilo</strong>
-          <span className="tw-sub">No hay tareas en curso.</span>
+          <strong>{t("Todo tranquilo")}</strong>
+          <span className="tw-sub">{t("No hay tareas en curso.")}</span>
         </div>
       ) : (
         <div className="tw-jobs">
@@ -347,8 +347,8 @@ function ActivityWidget() {
             return (
               <div key={j.id}>
                 <div className="tw-job-head">
-                  <span>{j.title}</span>
-                  <span>{done ? "Listo" : `${Math.round(j.progress * 100)} %${j.rate ? ` · ${j.rate}` : ""}`}</span>
+                  <span>{tr(j.title)}</span>
+                  <span>{done ? t("Listo") : `${Math.round(j.progress * 100)} %${j.rate ? ` · ${j.rate}` : ""}`}</span>
                 </div>
                 <div className="tw-bar" style={{ marginTop: 5 }}>
                   <div style={{ width: `${j.progress * 100}%`, background: done ? "var(--tg-ok)" : undefined }} />
@@ -369,7 +369,7 @@ const TZ = "America/Argentina/Buenos_Aires";
 function baNow() {
   // Hora de Buenos Aires sin depender de la zona del navegador.
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", minute: "numeric", second: "numeric", hourCycle: "h23" }).formatToParts(new Date());
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
   return { h: get("hour"), m: get("minute"), s: get("second") + (Date.now() % 1000) / 1000 };
 }
 
@@ -447,7 +447,7 @@ function ClockWidget() {
 
   return (
     <>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`Hora en Buenos Aires: ${label.time}`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={t("Hora en Buenos Aires: {time}", { time: label.time })}>
         <ClockFace size={size} />
         <line ref={hRef} x1={c} y1={c + 6} x2={c} y2={c - 26} stroke="var(--tg-text-1)" strokeWidth={3.6} strokeLinecap="round" />
         <line ref={mRef} x1={c} y1={c + 8} x2={c} y2={c - 40} stroke="var(--tg-text-1)" strokeWidth={2.6} strokeLinecap="round" />
@@ -467,8 +467,8 @@ function ClockWidget() {
 
 function dateLabel() {
   const d = new Date();
-  const date = new Intl.DateTimeFormat("es-AR", { timeZone: TZ, weekday: "short", day: "numeric", month: "short" }).format(d).replace(/\./g, "");
-  const time = new Intl.DateTimeFormat("es-AR", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+  const date = new Intl.DateTimeFormat(locale(), { timeZone: TZ, weekday: "short", day: "numeric", month: "short" }).format(d).replace(/\./g, "");
+  const time = new Intl.DateTimeFormat(locale(), { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
   return { date: date.charAt(0).toUpperCase() + date.slice(1), time };
 }
 
@@ -485,12 +485,12 @@ function SystemWidget() {
   return (
     <>
       <Head icon={Server} right={info?.hostname}>
-        Sistema
+        {t("Sistema")}
       </Head>
       <div className="tw-sys">
         <div className="tw-sys-row">
           <Timer size={13} />
-          <span>Encendido</span>
+          <span>{t("Encendido")}</span>
           <b>{info ? fmtDuration(uptime) : "—"}</b>
         </div>
         <div className="tw-sys-row">
@@ -500,12 +500,12 @@ function SystemWidget() {
         </div>
         <div className="tw-sys-row">
           <Fan size={13} />
-          <span>Ventilador</span>
+          <span>{t("Ventilador")}</span>
           <b>{fmtRpm(m?.fanRpm)}</b>
         </div>
         <div className="tw-sys-row">
           <Users size={13} />
-          <span>Sesiones</span>
+          <span>{t("Sesiones")}</span>
           <b>{sessions ? sessions.length : "—"}</b>
         </div>
       </div>
@@ -515,17 +515,17 @@ function SystemWidget() {
 
 // ---- Clúster (GlusterFS, protocol/README.md §17) -------------------------------------
 
-const CLUSTER = { id: "tango.cluster", name: "Clúster" };
+const CLUSTER = { id: "tango.cluster", name: t("Clúster") };
 
 function ClusterWidget() {
   const st = useLive("cluster.status", undefined, ["cluster.changed"]).data;
-  if (!st) return <Head icon={Boxes}>Clúster</Head>;
+  if (!st) return <Head icon={Boxes}>{t("Clúster")}</Head>;
   if (!st.installed || !st.running)
     return (
       <>
-        <Head icon={Boxes}>Clúster</Head>
+        <Head icon={Boxes}>{t("Clúster")}</Head>
         <div className="tw-sys">
-          <span className="tw-sub">{st.installed ? "GlusterFS no está corriendo." : "Este NAS no está en un clúster."}</span>
+          <span className="tw-sub">{st.installed ? t("GlusterFS no está corriendo.") : t("Este NAS no está en un clúster.")}</span>
         </div>
       </>
     );
@@ -533,28 +533,28 @@ function ClusterWidget() {
   const split = st.volumes.reduce((s, v) => s + v.splitBrain, 0);
   const heal = st.volumes.reduce((s, v) => s + v.healPending, 0);
   const bad = st.volumes.filter((v) => clusterVolumeTone(v) !== "ok" && clusterVolumeTone(v) !== "info").length;
-  const tone = (t: string) => (t === "crit" ? "var(--tg-crit)" : t === "warn" ? "var(--tg-warn)" : undefined);
+  const tone = (x: string) => (x === "crit" ? "var(--tg-crit)" : x === "warn" ? "var(--tg-warn)" : undefined);
   return (
     <>
-      <Head icon={Boxes} right={`${st.volumes.length} vol.`}>
-        Clúster
+      <Head icon={Boxes} right={t("{n} vol.", { n: st.volumes.length })}>
+        {t("Clúster")}
       </Head>
       <div className="tw-sys">
         <div className="tw-sys-row">
           <Server size={13} />
-          <span>Nodos</span>
+          <span>{t("Nodos")}</span>
           <b style={{ color: tone(up < st.nodes.length ? "crit" : "ok") }}>
             {up}/{st.nodes.length}
           </b>
         </div>
         <div className="tw-sys-row">
           <Database size={13} />
-          <span>Volúmenes</span>
-          <b style={{ color: tone(bad ? "warn" : "ok") }}>{bad ? `${bad} con avisos` : "en orden"}</b>
+          <span>{t("Volúmenes")}</span>
+          <b style={{ color: tone(bad ? "warn" : "ok") }}>{bad ? t("{n} con avisos", { n: bad }) : t("en orden")}</b>
         </div>
         <div className="tw-sys-row">
           <RefreshCw size={13} />
-          <span>Por curar</span>
+          <span>{t("Por curar")}</span>
           <b style={{ color: tone(heal ? "warn" : "ok") }}>{heal}</b>
         </div>
         <div className="tw-sys-row">
@@ -570,14 +570,14 @@ function ClusterWidget() {
 // ---- Catálogo -----------------------------------------------------------------------
 
 export const catalog: WidgetDef[] = [
-  { id: "clock", name: "Reloj", description: "Hora de Buenos Aires", size: "small", icon: Clock3, className: "tw-clock", Component: ClockWidget },
-  { id: "cpu", name: "CPU", description: "Uso por núcleo y temperatura", size: "small", icon: Cpu, app: MONITOR, Component: CpuWidget },
-  { id: "net", name: "Red", description: "Bajada y subida en vivo", size: "medium", icon: Network, app: MONITOR, Component: NetworkWidget },
-  { id: "storage", name: "Almacenamiento", description: "Volumen, salud y bahías", size: "medium", icon: HardDrive, app: STORAGE, Component: StorageWidget },
-  { id: "mem", name: "Memoria", description: "RAM en uso y caché", size: "small", icon: MemoryStick, app: MONITOR, Component: MemoryWidget },
-  { id: "system", name: "Sistema", description: "Encendido, temperatura y sesiones", size: "small", icon: Server, app: MONITOR, Component: SystemWidget },
-  { id: "activity", name: "Actividad", description: "Tareas en curso", size: "medium", icon: Activity, Component: ActivityWidget },
-  { id: "cluster", name: "Clúster", description: "Nodos, curación y split-brain", size: "small", icon: Boxes, app: CLUSTER, optional: true, Component: ClusterWidget },
+  { id: "clock", name: t("Reloj"), description: t("Hora de Buenos Aires"), size: "small", icon: Clock3, className: "tw-clock", Component: ClockWidget },
+  { id: "cpu", name: "CPU", description: t("Uso por núcleo y temperatura"), size: "small", icon: Cpu, app: MONITOR, Component: CpuWidget },
+  { id: "net", name: t("Red"), description: t("Bajada y subida en vivo"), size: "medium", icon: Network, app: MONITOR, Component: NetworkWidget },
+  { id: "storage", name: t("Almacenamiento"), description: t("Volumen, salud y bahías"), size: "medium", icon: HardDrive, app: STORAGE, Component: StorageWidget },
+  { id: "mem", name: t("Memoria"), description: t("RAM en uso y caché"), size: "small", icon: MemoryStick, app: MONITOR, Component: MemoryWidget },
+  { id: "system", name: t("Sistema"), description: t("Encendido, temperatura y sesiones"), size: "small", icon: Server, app: MONITOR, Component: SystemWidget },
+  { id: "activity", name: t("Actividad"), description: t("Tareas en curso"), size: "medium", icon: Activity, Component: ActivityWidget },
+  { id: "cluster", name: t("Clúster"), description: t("Nodos, curación y split-brain"), size: "small", icon: Boxes, app: CLUSTER, optional: true, Component: ClusterWidget },
 ];
 
 export const sizeUnits: Record<WidgetSize, number> = { small: 1, medium: 2, large: 4 };

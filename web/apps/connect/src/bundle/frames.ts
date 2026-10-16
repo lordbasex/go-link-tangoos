@@ -1,6 +1,6 @@
 // Recolector de frames binarios [u32 xfer][u64 offset][datos] (mismo framing que files.N, protocol §10).
 // Escucha uno o más DataChannels (bundle, files.*) y arma cada transferencia por xfer.
-import { decodeFrame } from "@tango/client";
+import { decodeFrame, t } from "@tango/client";
 
 interface Pending {
   size: number;
@@ -42,7 +42,7 @@ export class FrameCollector {
       this.early.set(f.xfer, list);
       return;
     }
-    if (f.offset + f.data.byteLength > p.size) return p.reject(new Error("frame fuera de rango"));
+    if (f.offset + f.data.byteLength > p.size) return p.reject(new Error(t("frame fuera de rango")));
     p.buf.set(f.data, f.offset);
     p.got += f.data.byteLength;
     p.onProgress?.(p.got, p.size);
@@ -74,7 +74,7 @@ export class FrameCollector {
     clearTimeout(p.timer);
     p.timer = setTimeout(() => {
       this.pending.delete(xfer);
-      p.reject(new Error("La transferencia se quedó sin datos"));
+      p.reject(new Error(t("La transferencia se quedó sin datos")));
     }, this.idleMs);
   }
 

@@ -1,5 +1,6 @@
 import { Component, Suspense, memo, useLayoutEffect, useMemo, useRef } from "react";
 import type { ErrorInfo, PointerEvent as RPointerEvent, ReactNode } from "react";
+import { t, tr } from "@tango/client";
 import { closeWin, focusWin, minimizeWin, patch, registry, snapRect, toggleMaximize, ui, workArea } from "./store";
 import type { Menu, Rect, SnapZone, WinState, WindowHandle } from "./store";
 
@@ -170,13 +171,13 @@ export const Window = memo(function Window({ w, focused }: { w: WinState; focuse
     >
       <div className="tg-titlebar" onPointerDown={startDrag} onDoubleClick={(e) => !(e.target as HTMLElement).closest("button,input,[data-no-drag]") && toggleMaximize(w.id)}>
         <div className="tg-traffic" data-no-drag>
-          <button type="button" className="tg-tl tg-tl-close" aria-label="Cerrar" onClick={() => closeWin(w.id)}>
+          <button type="button" className="tg-tl tg-tl-close" aria-label={t("Cerrar")} onClick={() => closeWin(w.id)}>
             <svg viewBox="0 0 12 12"><path d="M3.5 3.5l5 5m0-5l-5 5" /></svg>
           </button>
-          <button type="button" className="tg-tl tg-tl-min" aria-label="Minimizar" onClick={() => minimizeWin(w.id)}>
+          <button type="button" className="tg-tl tg-tl-min" aria-label={t("Minimizar")} onClick={() => minimizeWin(w.id)}>
             <svg viewBox="0 0 12 12"><path d="M3 6h6" /></svg>
           </button>
-          <button type="button" className="tg-tl tg-tl-max" aria-label="Ampliar" onClick={() => toggleMaximize(w.id)}>
+          <button type="button" className="tg-tl tg-tl-max" aria-label={t("Ampliar")} onClick={() => toggleMaximize(w.id)}>
             <svg viewBox="0 0 12 12"><path d="M3.6 8.4V4.8l3.6 3.6Z M8.4 3.6v3.6L4.8 3.6Z" fill="currentColor" stroke="none" /></svg>
           </button>
         </div>
@@ -208,8 +209,8 @@ class AppBoundary extends Component<{ name: string; children: ReactNode }, { err
     if (this.state.error)
       return (
         <div className="tg-empty">
-          <strong>{this.props.name} se cerró por un error</strong>
-          <p>{this.state.error.message}</p>
+          <strong>{t("{name} se cerró por un error", { name: this.props.name })}</strong>
+          <p>{tr(this.state.error.message)}</p>
         </div>
       );
     return this.props.children;

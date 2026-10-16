@@ -12,6 +12,8 @@ export default defineConfig({
   reporter: [["list"], ["json", { outputFile: "../../tests/e2e-ui/results.json" }]],
   outputDir: "../../tests/e2e-ui/test-results",
   use: {
+    // La interfaz sigue el idioma del navegador: las pruebas esperan textos en español.
+    locale: "es-AR",
     baseURL: `https://${process.env.TANGO_HOST ?? "172.17.0.44"}`,
     ignoreHTTPSErrors: true, // certificado autofirmado del laboratorio
     viewport: { width: 1600, height: 1000 },

@@ -5,6 +5,7 @@ import type { MaintenancePlan, SnapshotSchedule, StorageAlert } from "../protoco
 import { defaultSchedule } from "../protocol-m22";
 import { profileInfo, profileLabel } from "../raid";
 import { fmtBytes } from "../format";
+import { t, tn } from "../i18n";
 
 export interface MockM22Ctx {
   scenario: () => Scenario;
@@ -52,7 +53,7 @@ function takePlan(plans: Map<string, PlanRec>, kind: PlanRec["kind"], p: { plan_
   return { rec, v };
 }
 
-const content = (d: Disk) => (d.bay === 3 ? "Una partición ext4 (sin montar)" : "Vacío: sin tabla de particiones");
+const content = (d: Disk) => (d.bay === 3 ? t("Una partición ext4 (sin montar)") : t("Vacío: sin tabla de particiones"));
 
 export function m22Handlers(ctx: MockM22Ctx): { [M in Method]?: (p: Params<M>) => Result<M> } {
   const plans = new Map<string, PlanRec>();
@@ -60,7 +61,7 @@ export function m22Handlers(ctx: MockM22Ctx): { [M in Method]?: (p: Params<M>) =
   const resolved: StorageAlert[] = [
     {
       id: "a_old_scrub", level: "info", source: "btrfs", resolved: true, at: new Date(Date.now() - 12 * 86400_000).toISOString(),
-      title: "Verificación mensual terminada", body: "volume1: sin errores, todos los datos coinciden con sus checksums.",
+      title: t("Verificación mensual terminada"), body: t("{name}: sin errores, todos los datos coinciden con sus checksums.", { name: "volume1" }),
     },
   ];
 
@@ -92,7 +93,7 @@ export function m22Handlers(ctx: MockM22Ctx): { [M in Method]?: (p: Params<M>) =
       if (!d) throw new RpcError("DEVICE_CHANGED", "El disco nuevo ya no está conectado");
       if (d.use !== "free" || d.foreign) throw new RpcError("DEVICE_NOT_ELIGIBLE", "El disco elegido no está libre");
       const need = memberSize(v);
-      if (d.size < need) throw new RpcError("DEVICE_TOO_SMALL", `El disco tiene que ser de ${fmtBytes(need)} o más`);
+      if (d.size < need) throw new RpcError("DEVICE_TOO_SMALL", t("El disco tiene que ser de {size} o más", { size: fmtBytes(need) }));
       const bad = failed ? members(v).find((x) => x.id === failed) : members(v).find((x) => x.use === "failed");
       const p = newPlan(plans, { kind: "replace", volume, failed: bad?.id ?? null, disks: [d.id] });
       const plan: MaintenancePlan = {
@@ -101,7 +102,7 @@ export function m22Handlers(ctx: MockM22Ctx): { [M in Method]?: (p: Params<M>) =
           name: v.name, profile: v.profile, fs: "btrfs", usable: v.size,
           disks: [{ id: d.id, model: d.model, serial: d.serial, size: d.size, content: content(d) }],
           rebuild: { from: bad?.id ?? null, to: d.id, estimatedSec: Math.round(need / REBUILD_SPEED) },
-          notes: d.size > need ? [`El disco nuevo es más grande: se usan ${fmtBytes(need)} y sobran ${fmtBytes(d.size - need)}.`] : [],
+          notes: d.size > need ? [t("El disco nuevo es más grande: se usan {used} y sobran {extra}.", { used: fmtBytes(need), extra: fmtBytes(d.size - need) })] : [],
         },
       };
       return plan;
@@ -126,7 +127,7 @@ export function m22Handlers(ctx: MockM22Ctx): { [M in Method]?: (p: Params<M>) =
       if (v.state === "healthy") v.state = "degraded";
       const total = memberSize(v);
       changed();
-      const j = ctx.startJob("storage.disk.replace", `Reconstruyendo ${v.name}`, `${d.model} · bahía ${d.bay ?? "—"}`, 0, 0.01, `${Math.round(REBUILD_SPEED / 1e6)} MB/s`, () => {
+      const j = ctx.startJob("storage.disk.replace", t("Reconstruyendo {name}", { name: v.name }), t("{model} · bahía {bay}", { model: d.model, bay: d.bay ?? "—" }), 0, 0.01, `${Math.round(REBUILD_SPEED / 1e6)} MB/s`, () => {
         d.rebuilding = undefined;
         v.task = undefined;
         v.taskSpeed = undefined;
@@ -134,7 +135,7 @@ export function m22Handlers(ctx: MockM22Ctx): { [M in Method]?: (p: Params<M>) =
         v.progress = undefined;
         v.state = "healthy";
         changed();
-        ctx.notify("ok", "tango.storage", `${v.name} recuperó la redundancia`, `La reconstrucción terminó: ${profileLabel(v.profile)} vuelve a soportar la falla de un disco.`);
+        ctx.notify("ok", "tango.storage", t("{name} recuperó la redundancia", { name: v.name }), t("La reconstrucción terminó: {profile} vuelve a soportar la falla de un disco.", { profile: profileLabel(v.profile) }));
       });
       j.onTick = (pr) => {
         v.progress = pr;
@@ -147,7 +148,7 @@ export function m22Handlers(ctx: MockM22Ctx): { [M in Method]?: (p: Params<M>) =
     "storage.volumes.expandPlan": ({ volume, add }) => {
       const v = ctx.vols().find((x) => x.id === volume);
       if (!v) throw new RpcError("VOLUME_NOT_FOUND", "El volumen ya no existe");
-      if (v.profile === "basic" || v.profile === "raid1") throw new RpcError("INVALID_PARAMS", `Un volumen ${profileLabel(v.profile)} no se puede ampliar sumando discos`);
+      if (v.profile === "basic" || v.profile === "raid1") throw new RpcError("INVALID_PARAMS", t("Un volumen {profile} no se puede ampliar sumando discos", { profile: profileLabel(v.profile) }));
       if (v.state !== "healthy" || v.task) throw new RpcError("VOLUME_BUSY", "Esperá a que el volumen esté en orden y sin tareas");
       if (!add.length) throw new RpcError("INVALID_PARAMS", "Elegí al menos un disco");
       const chosen = ctx.disks().filter((d) => add.includes(d.id));
@@ -155,14 +156,14 @@ export function m22Handlers(ctx: MockM22Ctx): { [M in Method]?: (p: Params<M>) =
       if (chosen.some((d) => d.use !== "free" || d.foreign)) throw new RpcError("DEVICE_NOT_ELIGIBLE", "Uno de los discos no está libre");
       const need = memberSize(v);
       const small = chosen.find((d) => d.size < need);
-      if (small) throw new RpcError("DEVICE_TOO_SMALL", `${small.model} es más chico que los discos del volumen (${fmtBytes(need)})`);
+      if (small) throw new RpcError("DEVICE_TOO_SMALL", t("{model} es más chico que los discos del volumen ({size})", { model: small.model, size: fmtBytes(need) }));
       const n = members(v).length + chosen.length;
       const why = profileInfo(v.profile).check(n);
       if (why) throw new RpcError("INVALID_PARAMS", why);
       const newUsable = profileInfo(v.profile).usable(Array(n).fill(need)) * 0.98;
       const p = newPlan(plans, { kind: "expand", volume, failed: null, disks: [...add], newUsable });
-      const notes = [`La reorganización mueve datos entre todos los discos: con ${n} discos de ${fmtBytes(need)} tarda alrededor de ${Math.max(1, Math.round((need * n) / RESHAPE_SPEED / 60))} min.`];
-      if (chosen.some((d) => d.size > need)) notes.push(`Los discos más grandes se usan hasta ${fmtBytes(need)}.`);
+      const notes = [t("La reorganización mueve datos entre todos los discos: con {n} discos de {size} tarda alrededor de {min} min.", { n, size: fmtBytes(need), min: Math.max(1, Math.round((need * n) / RESHAPE_SPEED / 60)) })];
+      if (chosen.some((d) => d.size > need)) notes.push(t("Los discos más grandes se usan hasta {size}.", { size: fmtBytes(need) }));
       const plan: MaintenancePlan = {
         ...p,
         summary: {
@@ -184,14 +185,14 @@ export function m22Handlers(ctx: MockM22Ctx): { [M in Method]?: (p: Params<M>) =
       v.progress = 0;
       const total = memberSize(v) * v.disks.length;
       changed();
-      const j = ctx.startJob("storage.volume.expand", `Ampliando ${v.name}`, `+${chosen.length} disco${chosen.length > 1 ? "s" : ""} · reorganización de ${profileLabel(v.profile)}`, 0, 0.006, `${Math.round(RESHAPE_SPEED / 1e6)} MB/s`, () => {
+      const j = ctx.startJob("storage.volume.expand", t("Ampliando {name}", { name: v.name }), `+${tn(chosen.length, "{n} disco", "{n} discos")} · ${t("reorganización de {profile}", { profile: profileLabel(v.profile) })}`, 0, 0.006, `${Math.round(RESHAPE_SPEED / 1e6)} MB/s`, () => {
         v.size = rec.newUsable ?? v.size;
         v.task = undefined;
         v.taskSpeed = undefined;
         v.taskEtaSec = undefined;
         v.progress = undefined;
         changed();
-        ctx.notify("ok", "tango.storage", `${v.name} se amplió`, `Ahora tiene ${fmtBytes(v.size)} de capacidad.`);
+        ctx.notify("ok", "tango.storage", t("{name} se amplió", { name: v.name }), t("Ahora tiene {size} de capacidad.", { size: fmtBytes(v.size) }));
       });
       j.onTick = (pr) => {
         v.progress = pr;
@@ -240,18 +241,18 @@ export function m22Handlers(ctx: MockM22Ctx): { [M in Method]?: (p: Params<M>) =
       for (const v of ctx.vols()) {
         const bad = members(v).find((d) => d.use === "failed");
         if (v.task === "rebuild")
-          out.push({ id: `a_rebuild_${v.id}`, level: "warn", source: "md", resolved: false, at: now, title: `${v.name} se está reconstruyendo`, body: `Hasta que termine, el volumen no tiene redundancia. Progreso: ${Math.round((v.progress ?? 0) * 100)} %.` });
+          out.push({ id: `a_rebuild_${v.id}`, level: "warn", source: "md", resolved: false, at: now, title: t("{name} se está reconstruyendo", { name: v.name }), body: t("Hasta que termine, el volumen no tiene redundancia. Progreso: {pct} %.", { pct: Math.round((v.progress ?? 0) * 100) }) });
         else if (v.state === "degraded")
           out.push({
             id: `a_deg_${v.id}`, level: "crit", source: "md", resolved: false, at: new Date(Date.now() - 9 * 60_000).toISOString(),
-            title: `${v.name} sin redundancia`, body: bad ? `El disco de la bahía ${bad.bay ?? "—"} (${bad.model}) dejó de responder. Reemplazalo cuanto antes.` : "Falta un disco del array.",
+            title: t("{name} sin redundancia", { name: v.name }), body: bad ? t("El disco de la bahía {bay} ({model}) dejó de responder. Reemplazalo cuanto antes.", { bay: bad.bay ?? "—", model: bad.model }) : t("Falta un disco del array."),
           });
         if (v.size && v.used / v.size > 0.9)
-          out.push({ id: `a_space_${v.id}`, level: "warn", source: "space", resolved: false, at: now, title: `${v.name} casi lleno`, body: `Quedan ${fmtBytes(v.size - v.used)} libres (menos del 10 %).` });
+          out.push({ id: `a_space_${v.id}`, level: "warn", source: "space", resolved: false, at: now, title: t("{name} casi lleno", { name: v.name }), body: t("Quedan {size} libres (menos del 10 %).", { size: fmtBytes(v.size - v.used) }) });
       }
       for (const d of ctx.disks())
         if (d.smart === "warn")
-          out.push({ id: `a_smart_${d.id}`, level: "warn", source: "smart", resolved: false, at: now, title: `SMART: el disco de la bahía ${d.bay ?? "—"} muestra desgaste`, body: `${d.model} · ${d.reallocated} sectores reasignados. Todavía funciona; conviene tener un repuesto.` });
+          out.push({ id: `a_smart_${d.id}`, level: "warn", source: "smart", resolved: false, at: now, title: t("SMART: el disco de la bahía {bay} muestra desgaste", { bay: d.bay ?? "—" }), body: t("{model} · {n} sectores reasignados. Todavía funciona; conviene tener un repuesto.", { model: d.model, n: d.reallocated }) });
       return [...out, ...resolved];
     },
   };
