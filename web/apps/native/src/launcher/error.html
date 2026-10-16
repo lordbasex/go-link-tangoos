@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>TangoOS</title>
+    <style>
+      body { margin: 0; height: 100vh; display: grid; place-items: center; background: #1b1530; color: #fff; font: 14px system-ui, sans-serif; }
+      main { max-width: 460px; text-align: center; line-height: 1.5; }
+      h1 { font-size: 20px; margin: 0 0 8px; }
+      p { opacity: 0.8; margin: 0 0 6px; }
+      code { opacity: 0.6; font-size: 12px; }
+      button { margin-top: 16px; border: 0; border-radius: 8px; padding: 8px 16px; background: #2f7cf6; color: #fff; font: inherit; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="t"></h1>
+      <p id="d"></p>
+      <code id="c"></code><br />
+      <button id="r"></button>
+    </main>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const en = !(navigator.language || "es").toLowerCase().startsWith("es") && localStorage.getItem("tango.lang") !== "es";
+      const code = Number(q.get("code"));
+      const cert = q.get("cert") === "1" || (code <= -200 && code > -300);
+      document.getElementById("t").textContent = en ? `Could not open ${q.get("name")}` : `No se pudo abrir ${q.get("name")}`;
+      document.getElementById("d").textContent = cert
+        ? en ? "The NAS presented a different certificate than the one this app trusts. If you replaced the certificate, remove the NAS from the list and add it again; if not, someone may be impersonating it." : "El NAS presentó otro certificado que el que esta app conoce. Si cambiaste el certificado, quitá el NAS de la lista y agregalo de nuevo; si no, alguien podría estar haciéndose pasar por él."
+        : en ? "Check that the NAS is on and reachable from this computer." : "Revisá que el NAS esté prendido y se llegue a él desde este equipo.";
+      document.getElementById("c").textContent = `${q.get("desc")} (${code}) · ${q.get("url")}`;
+      const b = document.getElementById("r");
+      b.textContent = en ? "Try again" : "Volver a intentar";
+      b.onclick = () => (location.href = q.get("url"));
+    </script>
+  </body>
+</html>

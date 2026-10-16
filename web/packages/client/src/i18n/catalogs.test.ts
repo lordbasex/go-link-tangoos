@@ -19,6 +19,7 @@ import "../../../ui/src/i18n.en";
 import "../../../widgets/src/i18n.en";
 import "../../../../apps/desktop/src/i18n.en";
 import "../../../../apps/connect/src/i18n.en";
+import "../../../../apps/native/src/launcher/i18n.en";
 
 describe("catálogos en inglés", () => {
   it("ninguna clave tiene dos traducciones distintas", () => {

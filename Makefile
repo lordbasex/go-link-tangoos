@@ -201,6 +201,20 @@ e2e-cluster:
 ##   cuotas, instantáneas, agregar/quitar/reemplazar bricks, rebalance, NFS y revocación. Además de lo de
 ##   e2e-cluster, cada nodo necesita un disco libre TANGO-P<n> (grupo gpool). Empieza reseteando los nodos
 ##   (tests/cluster-reset.sh: solo para el laboratorio de 3 VMs del clúster).
+## native: app de escritorio (Electron, ADR 0018) compilada en web/apps/native/dist; `make native-run` la abre.
+.PHONY: native native-run native-dist e2e-native
+native:
+	npm run build -w @tango/native --prefix web
+native-run: native
+	cd web/apps/native && ../../node_modules/.bin/electron .
+## native-dist: instaladores de Linux (AppImage, deb, rpm) y Windows (NSIS) con Docker (electron-builder).
+native-dist: native
+	sh web/apps/native/scripts/package.sh all
+## e2e-native: la app contra un NAS real. NATIVE_NAS=ip y TANGO_E2E_ADMIN_PASSWORD.
+e2e-native: native
+	@test -n "$(NATIVE_NAS)" || { echo "definí NATIVE_NAS=ip"; exit 1; }
+	cd web/e2e && TANGO_E2E_NATIVE_NAS=$(NATIVE_NAS) npx playwright test native.spec.ts
+
 ## e2e-repl: llave USB de ZFS y replicación entre dos NAS (ADR 0016). REPL=origen,destino con ZFS y los
 ##   discos TANGO-Z<n> y TANGO-KEY<n> libres.
 .PHONY: e2e-repl

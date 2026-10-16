@@ -1,0 +1,29 @@
+# Empaquetado de TangoOS para escritorio (ADR 0018).
+appId: org.tangoos.desktop
+productName: TangoOS
+copyright: Copyright © TangoOS contributors (MIT)
+directories:
+  output: release
+  buildResources: assets
+files:
+  - dist/**
+  - assets/**
+  - package.json
+asar: true
+linux:
+  target: [AppImage, deb, rpm]
+  category: Network
+  icon: assets/icon.png
+  maintainer: TangoOS <noreply@tangoos.org>
+  synopsis: Open your TangoOS NAS desktop in its own window
+win:
+  target: [nsis]
+  icon: assets/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+mac:
+  target: [dmg]
+  category: public.app-category.utilities
+  icon: assets/icon.png
