@@ -10,13 +10,14 @@
 #   tango-install                          modo texto interactivo
 #   tango-install --list-disks             discos candidatos, TSV: dispositivo, bytes, modelo, serie
 #   tango-install --disk /dev/sda --yes [--hostname tango] [--keyboard latam]
-#                 [--ip A/N,GW,DNS] [--no-reboot] [--progress]
+#                 [--timezone America/Sao_Paulo] [--ip A/N,GW,DNS] [--no-reboot] [--progress]
 #       --progress   agrega líneas "@@ <0-100> <texto>" para la interfaz gráfica
 #
 # Parámetros de kernel:
 #   tango.auto            no pregunta nada si hay un solo disco destino (laboratorio)
 #   tango.disk=SERIE|RUTA con tango.auto: el disco de sistema aunque haya varios (laboratorio)
 #   tango.ip=A/N,GW,DNS   IP fija en vez de DHCP (laboratorio)
+#   tango.tz=Área/Ciudad  zona horaria del sistema instalado (si no, la de la imagen)
 set -eu
 export LANG=C.UTF-8 TERM=${TERM:-linux}
 LOG=/run/tango-install.log
@@ -26,6 +27,7 @@ arg() { for a in $CMDLINE; do case "$a" in "$1"=*) echo "${a#*=}"; return;; "$1"
 AUTO=$(arg tango.auto || true)
 AUTODISK=$(arg tango.disk || true)
 IPCFG=$(arg tango.ip || true)
+TZNEW=$(arg tango.tz || true)
 MEDIUM=/run/live/medium
 SQUASH=$MEDIUM/live/filesystem.squashfs
 
@@ -37,6 +39,7 @@ while [ $# -gt 0 ]; do
         --yes) YES=1; shift ;;
         --hostname) HOSTNAME_NEW=$2; shift 2 ;;
         --keyboard) KEYMAP=$2; shift 2 ;;
+        --timezone) TZNEW=$2; shift 2 ;;
         --ip) IPCFG=$2; shift 2 ;;
         --no-reboot) REBOOT=; shift ;;
         --progress) PROGRESS=1; shift ;;
@@ -153,6 +156,14 @@ FSTAB
 echo "$HOSTNAME_NEW" > $T/etc/hostname
 printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s.local %s\n::1\tlocalhost ip6-localhost ip6-loopback\n' "$HOSTNAME_NEW" "$HOSTNAME_NEW" > $T/etc/hosts
 printf 'XKBMODEL="pc105"\nXKBLAYOUT="%s"\n' "$KEYMAP" > $T/etc/default/keyboard
+
+# Zona horaria (solo nombres de tzdata: sin "..", y el archivo tiene que existir).
+if [ -n "$TZNEW" ]; then
+    case "$TZNEW" in *..*|/*|*[!A-Za-z0-9_+/-]*) fail "zona horaria inválida: $TZNEW" ;; esac
+    [ -f "/usr/share/zoneinfo/$TZNEW" ] || fail "zona horaria desconocida: $TZNEW"
+    ln -sf "/usr/share/zoneinfo/$TZNEW" $T/etc/localtime
+    echo "$TZNEW" > $T/etc/timezone
+fi
 
 # Red: DHCP por defecto (systemd-networkd); IP fija si se pidió.
 mkdir -p $T/etc/systemd/network

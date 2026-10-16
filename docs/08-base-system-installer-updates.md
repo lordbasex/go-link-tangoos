@@ -75,9 +75,12 @@ Consequence: everything TangoOS adds is installed as **`.deb` packages** and upd
      in Settings.
    - **Graphical installer by default** (see below); the **text mode** (whiptail) remains as the second
      boot menu entry. Both use the same engine (`tango-install`).
-   - Questions: **language and keyboard**, **system disk** (with an erase confirmation that shows
-     model, serial and size), **computer name** and **network** (DHCP or static IP). The time zone is fixed to Buenos Aires;
-     it is changed later from the desktop. The other disks **are not touched**.
+   - Questions: **language** (Español, English, Português), **keyboard** and **time zone**, **system disk** (with an
+     erase confirmation that shows model, serial and size), **computer name** and **network** (DHCP or static IP). The
+     time zone list comes from tzdata (`zone1970.tab`) with a search box; the default is the browser's zone (from another
+     PC) or the language's (Buenos Aires, São Paulo, UTC). `tango-install --timezone Area/City` (or `tango.tz=` on the
+     kernel command line) links `/etc/localtime` and writes `/etc/timezone`; it can be changed later in Settings. The
+     installer's progress and error messages are translated in the page. The other disks **are not touched**.
    - When it finishes, the console shows `https://<name>.local` and `https://<ip>`. The rest (admin,
      name, certificate, first volume) goes in the web desktop's **first-boot wizard**.
    - If the USB/CD is left in, the ISO menu detects the installed TangoOS and boots it by
